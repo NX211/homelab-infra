@@ -7,9 +7,9 @@ echo "🚀 Installing ArgoCD to k3s cluster..."
 echo "📦 Creating argocd namespace..."
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 
-# Install ArgoCD
+# Install ArgoCD (using server-side apply to handle large CRDs)
 echo "📥 Installing ArgoCD..."
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for ArgoCD to be ready
 echo "⏳ Waiting for ArgoCD to be ready..."
@@ -22,16 +22,12 @@ echo "📝 Next steps:"
 echo "1. Get initial admin password:"
 echo "   kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
 echo ""
-echo "2. Port-forward to access UI:"
-echo "   kubectl port-forward svc/argocd-server -n argocd 8080:443"
+echo "2. Port-forward to access UI (TEMPORARY - only until Traefik is deployed):"
+echo "   kubectl port-forward svc/argocd-server -n argocd 8080:443 &"
 echo ""
-echo "3. Access ArgoCD UI:"
-echo "   https://localhost:8080"
-echo "   Username: admin"
-echo "   Password: (from step 1)"
+echo "3. Configure ArgoCD and deploy infrastructure:"
+echo "   Follow ../BOOTSTRAP.md for complete deployment steps"
 echo ""
-echo "4. Deploy ArgoCD Application (ArgoCD manages itself):"
-echo "   kubectl apply -f ../argocd/applications/argocd.yaml"
-echo ""
-echo "5. Deploy Traefik:"
-echo "   kubectl apply -f ../argocd/applications/traefik.yaml"
+echo "4. After Traefik + IngressRoute are deployed, access ArgoCD at:"
+echo "   https://cd.authoritah.com"
+echo "   (No more port-forwarding needed!)"
