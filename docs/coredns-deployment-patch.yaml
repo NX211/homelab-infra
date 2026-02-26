@@ -1,0 +1,22 @@
+---
+# Patch to add CustomHosts volume mount to CoreDNS deployment
+# This fixes split-horizon DNS by making the CustomHosts entries available to CoreDNS
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coredns
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      volumes:
+      - name: config-volume
+        configMap:
+          name: coredns
+          items:
+          - key: Corefile
+            path: Corefile
+          - key: NodeHosts
+            path: NodeHosts
+          - key: CustomHosts      # ADD THIS
+            path: CustomHosts     # ADD THIS
