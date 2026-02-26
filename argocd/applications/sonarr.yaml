@@ -1,0 +1,36 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sonarr
+  namespace: argocd
+  annotations:
+    # Auto-update Sonarr to latest stable version
+    argocd-image-updater.argoproj.io/image-list: sonarr=lscr.io/linuxserver/sonarr
+    argocd-image-updater.argoproj.io/sonarr.update-strategy: semver
+    argocd-image-updater.argoproj.io/sonarr.helm.image-name: image.repository
+    argocd-image-updater.argoproj.io/sonarr.helm.image-tag: image.tag
+    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-creds
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://gitea.authoritah.com/youruser/homelab-infra  # UPDATE THIS
+    targetRevision: HEAD
+    path: helm-charts/sonarr
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

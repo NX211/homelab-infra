@@ -1,0 +1,20 @@
+apiVersion: v2
+name: argocd
+description: ArgoCD - GitOps Continuous Delivery for Homelab
+type: application
+version: 1.0.0
+appVersion: "2.13.3"
+
+dependencies:
+  - name: argo-cd
+    version: "7.7.14"
+    repository: https://argoproj.github.io/argo-helm
+
+keywords:
+  - argocd
+  - gitops
+  - continuous-delivery
+  - homelab
+
+maintainers:
+  - name: Homelab Admin

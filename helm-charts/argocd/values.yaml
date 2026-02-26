@@ -1,0 +1,99 @@
+# ArgoCD Helm Chart Configuration
+# Wraps the official argo-cd chart for homelab k3s cluster
+
+argo-cd:
+  # Global settings
+  global:
+    domain: cd.authoritah.com
+
+  # Configuration
+  configs:
+    cm:
+      # Repository timeout (useful for self-hosted Gitea)
+      timeout.reconciliation: 180s
+
+    params:
+      # Run server without TLS (Traefik handles TLS termination)
+      server.insecure: true
+
+  # Application Controller - manages application state
+  controller:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  # API Server - UI and API endpoint
+  server:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+    # Run in insecure mode since Traefik handles TLS termination
+    extraArgs:
+      - --insecure
+
+    # Ingress is handled separately via Traefik IngressRoute
+    ingress:
+      enabled: false
+
+  # Repo Server - clones and renders manifests
+  repoServer:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+  # ApplicationSet Controller - manages ApplicationSets
+  applicationSet:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  # Notifications Controller - sends notifications
+  notifications:
+    enabled: true
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  # Dex - OAuth/SSO (disabled, using Authelia instead)
+  dex:
+    enabled: false
+
+  # Redis - caching
+  redis:
+    enabled: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  # Disable high availability components (homelab doesn't need HA)
+  redis-ha:
+    enabled: false

@@ -1,0 +1,11 @@
+# ArgoCD Installation
+# This file references the official ArgoCD installation manifest
+# Source: https://github.com/argoproj/argo-cd
+
+# To install manually (or use bootstrap/install-argocd.sh):
+# kubectl create namespace argocd
+# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# After installation, ArgoCD will manage itself via helm-charts/argocd
+# Deploy the self-managing Application:
+# kubectl apply -f applications/argocd.yaml

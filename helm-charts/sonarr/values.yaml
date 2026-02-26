@@ -1,0 +1,51 @@
+# Sonarr Helm Chart Values
+
+# Image configuration
+image:
+  repository: lscr.io/linuxserver/sonarr
+  tag: "4.0.11"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 8989
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: sonarr.authoritah.com
+  certResolver: letsencrypt
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+
+  # Media directories (hostPath for large libraries)
+  media:
+    enabled: true
+    tv:
+      hostPath: /blacktalon/media/tv
+    downloads:
+      hostPath: /blacktalon/media/downloads
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"  # media user
+  PGID: "8675309"  # media group
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
