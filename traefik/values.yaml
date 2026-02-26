@@ -30,7 +30,7 @@ ports:
 
 # Let's Encrypt with DNS challenge
 additionalArguments:
-  - "--certificatesresolvers.letsencrypt.acme.email=your-email@example.com"
+  - "--certificatesresolvers.letsencrypt.acme.email=contact@authoritah.com"
   - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
   - "--certificatesresolvers.letsencrypt.acme.dnschallenge=true"
   - "--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=dreamhost"

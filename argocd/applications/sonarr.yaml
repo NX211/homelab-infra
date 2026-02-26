@@ -16,7 +16,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://gitea.authoritah.com/youruser/homelab-infra  # UPDATE THIS
+    repoURL: https://authoritah.io/Authoritah/homelab-infra.git
     targetRevision: HEAD
     path: helm-charts/sonarr
   destination:

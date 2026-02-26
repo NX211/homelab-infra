@@ -27,7 +27,9 @@ homelab-infra/
 │       └── traefik.yaml  # Traefik ingress controller
 ├── traefik/               # Traefik configuration reference
 │   └── values.yaml
-├── external-secrets/      # External Secrets Operator (future)
+├── external-secrets-operator/  # External Secrets Operator with Bitwarden
+│   ├── clustersecretstore.yaml
+│   └── examples/
 └── helm-charts/           # Custom Helm charts
     ├── argocd/           # ArgoCD wrapper chart
     ├── sonarr/           # Sonarr service

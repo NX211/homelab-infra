@@ -41,6 +41,15 @@ env:
   PUID: "8675309"  # media user
   PGID: "8675309"  # media group
 
+# External Secrets (optional - if using ESO)
+externalSecrets:
+  enabled: false
+  # secretName: sonarr-secrets  # Name of ExternalSecret to create
+  # refreshInterval: 1h
+  # secrets:
+  #   - name: SONARR_API_KEY
+  #     key: sonarr-api-key  # Key in Bitwarden Secrets Manager
+
 # Resource limits
 resources:
   requests:

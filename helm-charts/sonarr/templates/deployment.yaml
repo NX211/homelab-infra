@@ -48,6 +48,12 @@ spec:
           value: {{ .Values.env.PUID | quote }}
         - name: PGID
           value: {{ .Values.env.PGID | quote }}
+        {{- if .Values.externalSecrets.enabled }}
+        # Load secrets from ExternalSecret
+        envFrom:
+        - secretRef:
+            name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "sonarr.fullname" .)) }}
+        {{- end }}
         volumeMounts:
         - name: config
           mountPath: /config

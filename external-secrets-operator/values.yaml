@@ -1,0 +1,35 @@
+# External Secrets Operator Helm values
+# Syncs secrets from Bitwarden Secrets Manager to Kubernetes
+
+installCRDs: true
+
+# Resource limits (homelab-sized)
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Enable webhook for validation
+webhook:
+  create: true
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Single replica is fine for homelab
+replicaCount: 1
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+
+podSecurityContext:
+  fsGroup: 65534
