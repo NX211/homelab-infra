@@ -3,4 +3,4 @@ name: homer
 description: Homer dashboard for homelab
 type: application
 version: 1.0.0
-appVersion: "v24.05.1"
+appVersion: "v25.11.1"
