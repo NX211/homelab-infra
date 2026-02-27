@@ -4,10 +4,9 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: traefik-dashboard
-  namespace: {{ .Release.Namespace }}
+  namespace: default
   labels:
     app: traefik
-    {{- include "traefik.labels" . | nindent 4 }}
 spec:
   entryPoints:
     - websecure
