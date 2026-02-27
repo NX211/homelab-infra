@@ -52,3 +52,10 @@ config:
   footer: false
   theme: dark
   connectivityCheck: false
+
+# Domain configuration (TLDs)
+media_tld: "authoritah.tv"
+photo_tld: "authoritah.photos"
+click_tld: "authoritah.click"
+link_tld: "authoritah.link"
+git_tld: "authoritah.io"
