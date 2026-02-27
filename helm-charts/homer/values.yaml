@@ -1,0 +1,54 @@
+# Homer Dashboard Configuration
+
+image:
+  repository: b4bz/homer
+  tag: "v24.05.1"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# Node selector - deploy to yellowtalon
+nodeSelector:
+  kubernetes.io/hostname: yellowtalon
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8080
+
+# Resources
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Environment variables
+env:
+  uid: "1000"
+  gid: "1000"
+  port: "8080"
+  initAssets: "0"
+
+# Git repository for tools (optional)
+gitRepo:
+  enabled: false
+  url: ""
+
+# Ingress configuration
+ingress:
+  enabled: true
+  domain: dashboard.authoritah.com
+  certResolver: dnschallenge
+  middleware: default-headers
+
+# Homer configuration (will be in ConfigMap)
+config:
+  title: "Authoritah Dashboard"
+  subtitle: "Homelab Services"
+  logo: "assets/icons/apple-touch-icon.png"
+  footer: false
+  theme: dark
+  connectivityCheck: false

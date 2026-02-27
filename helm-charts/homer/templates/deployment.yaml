@@ -1,0 +1,93 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "homer.fullname" . }}
+  labels:
+    {{- include "homer.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "homer.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "homer.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- if .Values.gitRepo.enabled }}
+      initContainers:
+      - name: git-clone
+        image: alpine/git:latest
+        command:
+        - sh
+        - -c
+        - |
+          git clone {{ .Values.gitRepo.url }} /tools || true
+        volumeMounts:
+        - name: tools
+          mountPath: /tools
+      {{- end }}
+
+      containers:
+      - name: homer
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+        env:
+        - name: UID
+          value: "{{ .Values.env.uid }}"
+        - name: GID
+          value: "{{ .Values.env.gid }}"
+        - name: PORT
+          value: "{{ .Values.env.port }}"
+        - name: INIT_ASSETS
+          value: "{{ .Values.env.initAssets }}"
+
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+
+        volumeMounts:
+        - name: config
+          mountPath: /www/assets/config.yml
+          subPath: config.yml
+          readOnly: true
+
+        {{- if .Values.gitRepo.enabled }}
+        - name: tools
+          mountPath: /www/assets/tools
+        {{- end }}
+
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "homer.fullname" . }}-config
+
+      {{- if .Values.gitRepo.enabled }}
+      - name: tools
+        emptyDir: {}
+      {{- end }}

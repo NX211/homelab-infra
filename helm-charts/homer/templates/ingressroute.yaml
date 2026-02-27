@@ -1,0 +1,22 @@
+{{- if .Values.ingress.enabled -}}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "homer.fullname" . }}
+  labels:
+    {{- include "homer.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+
+  routes:
+  - match: Host(`{{ .Values.ingress.domain }}`)
+    kind: Rule
+    services:
+    - name: {{ include "homer.fullname" . }}
+      port: {{ .Values.service.port }}
+
+  tls:
+    certResolver: {{ .Values.ingress.certResolver }}
+{{- end }}

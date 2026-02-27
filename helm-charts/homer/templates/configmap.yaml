@@ -1,0 +1,57 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "homer.fullname" . }}-config
+  labels:
+    {{- include "homer.labels" . | nindent 4 }}
+data:
+  config.yml: |
+    ---
+    title: "{{ .Values.config.title }}"
+    subtitle: "{{ .Values.config.subtitle }}"
+    logo: "{{ .Values.config.logo }}"
+    footer: {{ .Values.config.footer }}
+
+    theme: {{ .Values.config.theme }}
+
+    defaults:
+      colorTheme: auto
+
+    connectivityCheck: {{ .Values.config.connectivityCheck }}
+
+    colors:
+      dark:
+        highlight-primary: "#3367d6"
+        highlight-secondary: "#4285f4"
+        highlight-hover: "#5a95f5"
+        background: "#485564"
+        card-background: "#333c46"
+        text: "#eaeaea"
+        text-header: "#ffffff"
+        text-title: "#fafafa"
+        text-subtitle: "#f5f5f5"
+        card-shadow: rgba(0, 0, 0, 0.4)
+        link: "#3273dc"
+        link-hover: "#ffdd57"
+
+    links:
+      - name: "ArgoCD"
+        icon: "fas fa-sync-alt"
+        url: "https://cd.authoritah.com/"
+      - name: "Traefik"
+        icon: "fas fa-network-wired"
+        url: "https://api.authoritah.com/"
+
+    services:
+      - name: "Infrastructure"
+        icon: "fas fa-server"
+        items:
+          - name: "ArgoCD"
+            subtitle: "GitOps Continuous Delivery"
+            url: "https://cd.authoritah.com/"
+            tag: "gitops"
+          - name: "Traefik"
+            subtitle: "Ingress Controller"
+            url: "https://api.authoritah.com/"
+            tag: "ingress"
