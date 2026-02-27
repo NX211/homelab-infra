@@ -12,6 +12,10 @@ spec:
     repoURL: https://github.com/NX211/homelab-infra.git
     targetRevision: HEAD
     path: helm-charts/traefik
+    helm:
+      skipCrds: false
+      # Tell ArgoCD to build Helm dependencies
+      releaseName: traefik
   destination:
     server: https://kubernetes.default.svc
     namespace: default
