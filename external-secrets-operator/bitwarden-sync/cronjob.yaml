@@ -21,7 +21,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: sync
-              image: bitnami/kubectl:latest
+              image: alpine/k8s:1.28.3
               command: ["/bin/bash"]
               args: ["/scripts/sync.sh"]
               env:
