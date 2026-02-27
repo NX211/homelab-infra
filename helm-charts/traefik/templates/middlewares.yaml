@@ -1,0 +1,136 @@
+---
+# Default Headers Middleware
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: default-headers
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: traefik
+    {{- include "traefik.labels" . | nindent 4 }}
+spec:
+  headers:
+    referrerPolicy: "strict-origin-when-cross-origin"
+    forceSTSHeader: true
+    stsSeconds: 31536000
+    stsIncludeSubdomains: true
+    stsPreload: true
+    contentTypeNosniff: true
+    browserXssFilter: true
+    customRequestHeaders:
+      X-Forwarded-Proto: "https"
+
+---
+# Global Rate Limit Middleware
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: global-rate-limit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: traefik
+    {{- include "traefik.labels" . | nindent 4 }}
+spec:
+  rateLimit:
+    average: 100
+    burst: 50
+    period: 1s
+
+---
+# Compression Middleware
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: compression
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: traefik
+    {{- include "traefik.labels" . | nindent 4 }}
+spec:
+  compress:
+    excludedContentTypes:
+      - "text/event-stream"
+    minResponseBodyBytes: 1024
+
+---
+# Circuit Breaker Middleware
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: circuit-breaker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: traefik
+    {{- include "traefik.labels" . | nindent 4 }}
+spec:
+  circuitBreaker:
+    expression: "NetworkErrorRatio() > 0.30 || ResponseCodeRatio(500, 600, 0, 600) > 0.25"
+    checkPeriod: "10s"
+    fallbackDuration: "30s"
+    recoveryDuration: "10s"
+
+---
+# In-Flight Request Limit Middleware
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: inflight-limit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: traefik
+    {{- include "traefik.labels" . | nindent 4 }}
+spec:
+  inFlightReq:
+    amount: 100
+    sourceCriterion:
+      ipStrategy:
+        depth: 1
+
+---
+# Retry Middleware
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: retry
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: traefik
+    {{- include "traefik.labels" . | nindent 4 }}
+spec:
+  retry:
+    attempts: 3
+    initialInterval: "100ms"
+
+---
+# Internal Only (IP Allowlist) Middleware
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: internal-only
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: traefik
+    {{- include "traefik.labels" . | nindent 4 }}
+spec:
+  ipAllowList:
+    sourceRange:
+      - "127.0.0.1/32"
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+
+---
+# Auth Rate Limit Middleware
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: auth-rate-limit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: traefik
+    {{- include "traefik.labels" . | nindent 4 }}
+spec:
+  rateLimit:
+    average: 20
+    burst: 5
+    period: 1m

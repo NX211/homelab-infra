@@ -39,12 +39,26 @@ homelab-infra/
 
 ## Bootstrap Process
 
-### 1. Install ArgoCD
+**Choose your path:**
+
+- **[BOOTSTRAP_EXISTING_TRAEFIK.md](BOOTSTRAP_EXISTING_TRAEFIK.md)** - If Traefik is already running (deployed via Ansible)
+- **[BOOTSTRAP.md](BOOTSTRAP.md)** - If deploying everything from scratch
+
+### Quick Start (Existing Traefik)
 
 ```bash
+# 1. Install ArgoCD
 cd bootstrap
 ./install-argocd.sh
+
+# 2. Deploy ArgoCD IngressRoute (Traefik already running!)
+kubectl apply -f argocd/traefik/ingressroute.yaml
+
+# 3. Access ArgoCD immediately at:
+# https://cd.authoritah.com
 ```
+
+See **BOOTSTRAP_EXISTING_TRAEFIK.md** for complete steps.
 
 This will:
 - Create argocd namespace
@@ -154,8 +168,19 @@ spec:
 
 ## Secrets Management
 
-**Current:** Ansible + direnv for bootstrapping
-**Future:** External Secrets Operator with Bitwarden
+**External Secrets Operator + Bitwarden Secrets Manager**
+
+All secrets are stored in Bitwarden Secrets Manager and synced to Kubernetes via ESO:
+- ✅ **Single source of truth** - All secrets in Bitwarden
+- ✅ **No manual kubectl** - Only ONE bootstrap secret needed
+- ✅ **Automatic sync** - ESO pulls from Bitwarden every hour
+- ✅ **No secrets in Git** - ExternalSecret manifests only reference secret names
+- ✅ **Easy rotation** - Update in Bitwarden, ESO syncs automatically
+
+**Quick Links:**
+- [Secrets Summary](docs/SECRETS_SUMMARY.md) - Quick overview
+- [Bitwarden Setup Guide](docs/BITWARDEN_SECRETS.md) - Detailed instructions
+- [ESO Documentation](external-secrets-operator/README.md) - Complete setup
 
 ## Migration from Ansible
 

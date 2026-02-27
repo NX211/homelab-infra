@@ -6,129 +6,32 @@ metadata:
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
-  annotations:
-    # Auto-update Traefik to latest stable version (semver)
-    argocd-image-updater.argoproj.io/image-list: traefik=traefik:3.3
-    argocd-image-updater.argoproj.io/traefik.update-strategy: semver
 spec:
   project: default
   source:
-    # Use official Traefik Helm chart
-    repoURL: https://traefik.github.io/charts
-    chart: traefik
-    targetRevision: 33.2.1  # Chart version (will auto-update with Image Updater)
-    helm:
-      valuesObject:
-        deployment:
-          kind: DaemonSet  # Run on all nodes for HA
-
-        # Enable Traefik Hub (optional - for advanced features)
-        hub:
-          enabled: false
-
-        # Service configuration
-        service:
-          type: LoadBalancer  # k3s servicelb will expose on node IPs
-
-        # Disable default dashboard IngressRoute (we'll create our own)
-        ingressRoute:
-          dashboard:
-            enabled: false
-
-        # Logging
-        logs:
-          general:
-            level: INFO
-          access:
-            enabled: true
-
-        # Ports configuration
-        ports:
-          web:
-            port: 8000
-            exposedPort: 80
-            # Redirect HTTP to HTTPS
-            redirectTo:
-              port: websecure
-          websecure:
-            port: 8443
-            exposedPort: 443
-            # Enable HTTP/3
-            http3:
-              enabled: true
-            tls:
-              enabled: true
-
-        # Let's Encrypt configuration
-        additionalArguments:
-          - "--certificatesresolvers.letsencrypt.acme.email=contact@authoritah.com"  # UPDATE THIS
-          - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
-          - "--certificatesresolvers.letsencrypt.acme.dnschallenge=true"
-          - "--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=dreamhost"  # Your DNS provider
-          # Uncomment for Let's Encrypt staging (testing)
-          # - "--certificatesresolvers.letsencrypt.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
-
-        # Environment variables for DNS challenge (for Let's Encrypt)
-        env:
-          - name: DREAMHOST_API_KEY
-            valueFrom:
-              secretKeyRef:
-                name: traefik-dns-secret
-                key: api-key
-
-        # Enable CRD provider
-        providers:
-          kubernetesCRD:
-            enabled: true
-            allowCrossNamespace: true
-            allowExternalNameServices: true
-          kubernetesIngress:
-            enabled: true
-            allowExternalNameServices: true
-
-        # Persistence for ACME certificates
-        persistence:
-          enabled: true
-          size: 1Gi
-          storageClass: local-path  # k3s default storage class
-          accessMode: ReadWriteOnce
-
-        # Resource limits (homelab-sized)
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
-
-        # Security context
-        securityContext:
-          capabilities:
-            drop: [ALL]
-            add: [NET_BIND_SERVICE]
-          readOnlyRootFilesystem: true
-          runAsGroup: 65532
-          runAsNonRoot: true
-          runAsUser: 65532
-
-        # Pod security context
-        podSecurityContext:
-          fsGroup: 65532
-
+    repoURL: https://authoritah.io/Authoritah/homelab-infra.git
+    targetRevision: HEAD
+    path: helm-charts/traefik
   destination:
     server: https://kubernetes.default.svc
-    namespace: traefik
-
+    namespace: default
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+      allowEmpty: false
     syncOptions:
-      - CreateNamespace=true
+      - CreateNamespace=false  # Use existing default namespace
+      - ServerSideApply=true
     retry:
       limit: 5
       backoff:
         duration: 5s
         factor: 2
         maxDuration: 3m
+  ignoreDifferences:
+    # Ignore differences in DaemonSet hash annotations
+    - group: apps
+      kind: DaemonSet
+      jqPathExpressions:
+        - '.spec.template.metadata.annotations."checksum/config"'
