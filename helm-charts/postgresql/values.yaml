@@ -1,0 +1,56 @@
+# PostgreSQL CloudNativePG Cluster Configuration
+
+# Cluster settings
+instances: 1
+imageName: "ghcr.io/cloudnative-pg/postgresql:16.1"
+
+# Node affinity - run on greytalon
+nodeSelector:
+  kubernetes.io/hostname: greytalon
+
+# Storage
+storage:
+  size: "20Gi"
+  storageClass: "local-path"
+
+# Resources
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# PostgreSQL configuration parameters
+postgresql:
+  parameters:
+    max_connections: "200"
+    shared_buffers: "256MB"
+    effective_cache_size: "1GB"
+    maintenance_work_mem: "64MB"
+    checkpoint_completion_target: "0.9"
+    wal_buffers: "16MB"
+    default_statistics_target: "100"
+    random_page_cost: "1.1"
+    effective_io_concurrency: "200"
+    work_mem: "1MB"
+    min_wal_size: "1GB"
+    max_wal_size: "4GB"
+
+# Bootstrap configuration
+bootstrap:
+  initdb:
+    database: app
+    owner: app
+    postInitApplicationSQL:
+      - "ALTER USER app CREATEDB CREATEROLE"
+
+# Monitoring
+monitoring:
+  enablePodMonitor: true
+
+# Backup configuration (disabled by default)
+backup:
+  enabled: false
+  # When enabled, configure barmanObjectStore here
