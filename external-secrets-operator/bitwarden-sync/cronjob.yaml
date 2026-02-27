@@ -21,7 +21,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: sync
-              image: alpine/k8s:1.28.3
+              image: debian:bookworm-slim
               command: ["/bin/bash"]
               args: ["/scripts/sync.sh"]
               env:
