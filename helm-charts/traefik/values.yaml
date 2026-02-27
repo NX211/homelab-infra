@@ -1,66 +1,37 @@
 # Traefik Helm Chart Values for k3s Homelab
-# Wraps the official traefik chart with custom configuration
+# Minimal working configuration
 
 traefik:
-  # Global configuration
+  # Global arguments
   globalArguments:
     - "--global.checknewversion=false"
     - "--global.sendanonymoususage=false"
 
-  # Deployment configuration
+  # Deployment (using Deployment for ACME support)
   deployment:
-    enabled: true
-    kind: DaemonSet
-    dnsPolicy: ClusterFirstWithHostNet
+    kind: Deployment
+    replicas: 1
 
-  # Node selector - deploy only on nodes with proxy role
+  # Node selector - only yellowtalon has proxy role
   nodeSelector:
     node-role.kubernetes.io/proxy: "true"
 
-  # Tolerations for control plane nodes
-  tolerations:
-    - key: node-role.kubernetes.io/control-plane
-      operator: Exists
-      effect: NoSchedule
-
-  # Service configuration
+  # Service
   service:
-    enabled: true
     type: ClusterIP
-    annotations: {}
 
-  # Ports configuration
+  # Ports
   ports:
     web:
-      port: 8000
-      expose: true
-      exposedPort: 80
-      protocol: TCP
+      port: 80
       redirectTo:
         port: websecure
-        scheme: https
     websecure:
-      port: 8443
-      expose: true
-      exposedPort: 443
-      protocol: TCP
-      http3:
-        enabled: true
+      port: 443
       tls:
         enabled: true
-        certResolver: dnschallenge
-    traefik:
-      port: 9000
-      expose: false
-      exposedPort: 9000
-      protocol: TCP
-    metrics:
-      port: 9100
-      expose: false
-      exposedPort: 9100
-      protocol: TCP
 
-  # Let's Encrypt with Dreamhost DNS Challenge
+  # Environment for Dreamhost DNS
   env:
     - name: DREAMHOST_TOKEN
       valueFrom:
@@ -68,56 +39,33 @@ traefik:
           name: traefik-secrets
           key: dreamhost-token
 
+  # Let's Encrypt ACME
   additionalArguments:
     - "--certificatesresolvers.dnschallenge.acme.email=contact@authoritah.com"
     - "--certificatesresolvers.dnschallenge.acme.storage=/data/acme.json"
     - "--certificatesresolvers.dnschallenge.acme.dnschallenge=true"
     - "--certificatesresolvers.dnschallenge.acme.dnschallenge.provider=dreamhost"
-    - "--certificatesresolvers.dnschallenge.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
-    # Uncomment for staging (testing):
-    # - "--certificatesresolvers.dnschallenge.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
 
-  # Logging
+  # Logs
   logs:
     general:
       level: INFO
-      format: json
     access:
       enabled: true
-      format: json
-      filters:
-        statusCode
-
-: "200-299,400-499,500-599"
-
-  # Metrics
-  metrics:
-    prometheus:
-      enabled: true
-      addEntryPointsLabels: true
-      addRoutersLabels: true
-      addServicesLabels: true
 
   # Providers
   providers:
     kubernetesCRD:
       enabled: true
       allowCrossNamespace: true
-      allowExternalNameServices: true
     kubernetesIngress:
       enabled: true
-      allowExternalNameServices: true
-      publishedService:
-        enabled: true
 
-  # Persistence for ACME certificates
+  # Persistence for ACME
   persistence:
     enabled: true
-    name: acme
     size: 1Gi
     storageClass: "local-path"
-    path: /data
-    accessMode: ReadWriteOnce
 
   # Resources
   resources:
@@ -127,45 +75,3 @@ traefik:
     limits:
       cpu: 500m
       memory: 512Mi
-
-  # Security context
-  securityContext:
-    capabilities:
-      drop: [ALL]
-      add: [NET_BIND_SERVICE]
-    readOnlyRootFilesystem: true
-    runAsGroup: 65532
-    runAsNonRoot: true
-    runAsUser: 65532
-
-  podSecurityContext:
-    fsGroup: 65532
-    fsGroupChangePolicy: "OnRootMismatch"
-
-  # Priority class
-  priorityClassName: "system-cluster-critical"
-
-  # RBAC
-  rbac:
-    enabled: true
-    namespaced: false
-
-  # Service Account
-  serviceAccount:
-    create: true
-    name: traefik
-
-  # Dashboard (accessed via IngressRoute in templates/)
-  ingressRoute:
-    dashboard:
-      enabled: false  # We create our own IngressRoute
-
-  # Additional volumes for config
-  volumes:
-    - name: traefik-config
-      mountPath: /config
-      type: configMap
-
-  # Hub (Traefik Hub) - disabled for homelab
-  hub:
-    enabled: false
