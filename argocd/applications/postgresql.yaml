@@ -27,9 +27,3 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 3m
-  # Sync waves to ensure ExternalSecret creates the secret before Cluster uses it
-  syncWaves:
-    - name: secrets
-      wave: 0
-    - name: cluster
-      wave: 1
