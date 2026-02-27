@@ -9,7 +9,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://authoritah.io/Authoritah/homelab-infra.git
+    repoURL: https://github.com/NX211/homelab-infra.git
     targetRevision: HEAD
     path: helm-charts/traefik
   destination:

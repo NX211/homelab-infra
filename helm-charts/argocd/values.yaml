@@ -9,19 +9,12 @@ argo-cd:
   # Configuration
   configs:
     cm:
-      # Repository timeout (useful for self-hosted Gitea)
+      # Repository timeout
       timeout.reconciliation: 180s
 
     params:
       # Run server without TLS (Traefik handles TLS termination)
       server.insecure: true
-
-    # Repository credentials template (for Gitea)
-    repositories: |
-      - url: https://authoritah.io/Authoritah/homelab-infra.git
-        insecure: "true"
-        type: git
-        name: homelab-gitea
 
   # Application Controller - manages application state
   controller:
