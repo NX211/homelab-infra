@@ -22,11 +22,13 @@ data:
     # Install bws CLI if not present
     if ! command -v bws &> /dev/null; then
       echo "Installing Bitwarden Secrets CLI..."
+      cd /tmp
       curl -LO https://github.com/bitwarden/sdk/releases/download/bws-v0.4.0/bws-x86_64-unknown-linux-gnu-0.4.0.zip
       unzip -o bws-x86_64-unknown-linux-gnu-0.4.0.zip
       chmod +x bws
       mv bws /usr/local/bin/
       rm bws-x86_64-unknown-linux-gnu-0.4.0.zip
+      cd -
       echo "✓ bws CLI installed"
     fi
 
