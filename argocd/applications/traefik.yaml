@@ -47,7 +47,7 @@ spec:
 
         # Environment for Dreamhost DNS
         env:
-          - name: DREAMHOST_TOKEN
+          - name: DREAMHOST_API_KEY
             valueFrom:
               secretKeyRef:
                 name: traefik-secrets
