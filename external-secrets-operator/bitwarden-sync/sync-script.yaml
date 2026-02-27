@@ -1,0 +1,63 @@
+---
+# ConfigMap containing the sync script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bitwarden-sync-script
+  namespace: secrets-vault
+data:
+  sync.sh: |
+    #!/bin/bash
+    set -e
+
+    echo "=== Bitwarden to Kubernetes Secret Sync ==="
+    echo "Starting sync at $(date)"
+
+    # Check if BWS_ACCESS_TOKEN is set
+    if [ -z "$BWS_ACCESS_TOKEN" ]; then
+      echo "ERROR: BWS_ACCESS_TOKEN not set"
+      exit 1
+    fi
+
+    # Install bws CLI if not present
+    if ! command -v bws &> /dev/null; then
+      echo "Installing Bitwarden Secrets CLI..."
+      curl -LO https://github.com/bitwarden/sdk/releases/download/bws-v0.4.0/bws-x86_64-unknown-linux-gnu-0.4.0.zip
+      unzip -o bws-x86_64-unknown-linux-gnu-0.4.0.zip
+      chmod +x bws
+      mv bws /usr/local/bin/
+      rm bws-x86_64-unknown-linux-gnu-0.4.0.zip
+      echo "✓ bws CLI installed"
+    fi
+
+    # List all secrets from Bitwarden
+    echo "Fetching secrets from Bitwarden..."
+    SECRETS=$(bws secret list --output json || echo "[]")
+
+    if [ "$SECRETS" = "[]" ]; then
+      echo "WARNING: No secrets found in Bitwarden"
+      exit 0
+    fi
+
+    # Parse secrets and create/update Kubernetes secrets
+    echo "$SECRETS" | jq -c '.[]' | while read -r secret; do
+      SECRET_KEY=$(echo "$secret" | jq -r '.key')
+      SECRET_VALUE=$(echo "$secret" | jq -r '.value')
+      SECRET_ID=$(echo "$secret" | jq -r '.id')
+
+      # Convert secret key to valid Kubernetes secret name (lowercase, alphanumeric + hyphens)
+      K8S_SECRET_NAME=$(echo "$SECRET_KEY" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+
+      echo "Processing: $SECRET_KEY -> k8s secret: $K8S_SECRET_NAME"
+
+      # Create or update the secret
+      kubectl create secret generic "$K8S_SECRET_NAME" \
+        --from-literal=value="$SECRET_VALUE" \
+        --from-literal=bws-id="$SECRET_ID" \
+        --namespace=secrets-vault \
+        --dry-run=client -o yaml | kubectl apply -f -
+
+      echo "✓ Synced: $K8S_SECRET_NAME"
+    done
+
+    echo "=== Sync completed at $(date) ==="

@@ -1,0 +1,8 @@
+---
+# Central secrets vault namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: secrets-vault
+  labels:
+    name: secrets-vault

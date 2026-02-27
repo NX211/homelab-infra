@@ -1,0 +1,40 @@
+---
+# CronJob to sync Bitwarden secrets to Kubernetes
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bitwarden-sync
+  namespace: secrets-vault
+spec:
+  # Run every 15 minutes
+  schedule: "*/15 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: bitwarden-sync
+        spec:
+          serviceAccountName: bitwarden-sync
+          restartPolicy: OnFailure
+          containers:
+            - name: sync
+              image: bitnami/kubectl:latest
+              command: ["/bin/bash"]
+              args: ["/scripts/sync.sh"]
+              env:
+                - name: BWS_ACCESS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: bitwarden-credentials
+                      key: token
+              volumeMounts:
+                - name: sync-script
+                  mountPath: /scripts
+          volumes:
+            - name: sync-script
+              configMap:
+                name: bitwarden-sync-script
+                defaultMode: 0755
