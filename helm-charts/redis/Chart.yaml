@@ -1,0 +1,6 @@
+apiVersion: v2
+name: redis
+description: Redis cache for Gitea and other services
+type: application
+version: 1.0.0
+appVersion: "latest"

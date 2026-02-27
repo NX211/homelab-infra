@@ -1,0 +1,39 @@
+# Redis Configuration
+
+image:
+  repository: redis
+  tag: "latest"
+  pullPolicy: Always
+
+# Node selector - deploy to greytalon
+nodeSelector:
+  kubernetes.io/hostname: greytalon
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 6379
+
+# Storage
+storage:
+  size: "1Gi"
+  storageClass: "local-path"
+
+# Resources
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Redis configuration
+config:
+  port: 6379
+  maxmemory: "256mb"
+  # Password configuration (set via secret if needed)
+  # requirepass: ""
+
+# Timezone
+timezone: "America/Chicago"
