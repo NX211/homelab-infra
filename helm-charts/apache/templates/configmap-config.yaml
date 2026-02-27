@@ -1,0 +1,123 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "apache.fullname" . }}-config
+  labels:
+    {{- include "apache.labels" . | nindent 4 }}
+data:
+  httpd.conf: |
+    ServerRoot "/var/www"
+
+    Listen 80
+
+    LoadModule mpm_event_module modules/mod_mpm_event.so
+    LoadModule authn_file_module modules/mod_authn_file.so
+    LoadModule authn_core_module modules/mod_authn_core.so
+    LoadModule authz_host_module modules/mod_authz_host.so
+    LoadModule authz_groupfile_module modules/mod_authz_groupfile.so
+    LoadModule authz_user_module modules/mod_authz_user.so
+    LoadModule authz_core_module modules/mod_authz_core.so
+    LoadModule access_compat_module modules/mod_access_compat.so
+    LoadModule auth_basic_module modules/mod_auth_basic.so
+    LoadModule reqtimeout_module modules/mod_reqtimeout.so
+    LoadModule filter_module modules/mod_filter.so
+    LoadModule mime_module modules/mod_mime.so
+    LoadModule log_config_module modules/mod_log_config.so
+    LoadModule env_module modules/mod_env.so
+    LoadModule headers_module modules/mod_headers.so
+    LoadModule setenvif_module modules/mod_setenvif.so
+    LoadModule version_module modules/mod_version.so
+    LoadModule unixd_module modules/mod_unixd.so
+    LoadModule status_module modules/mod_status.so
+    LoadModule autoindex_module modules/mod_autoindex.so
+    LoadModule dir_module modules/mod_dir.so
+    LoadModule alias_module modules/mod_alias.so
+    LoadModule rewrite_module modules/mod_rewrite.so
+    LoadModule php_module modules/libphp.so
+
+    <IfModule unixd_module>
+        User www-data
+        Group www-data
+    </IfModule>
+
+    ServerAdmin support@{{ .Values.domain }}
+    ServerName {{ .Values.domain }}
+    ServerAlias www.{{ .Values.domain }}
+
+    <Directory />
+        AllowOverride none
+        Require all denied
+    </Directory>
+
+    <Directory "/var/www/html/.well-known">
+        Options None
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    DocumentRoot "/var/www/html"
+    <Directory "/var/www/html">
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    <Files ".ht*">
+        Require all denied
+    </Files>
+
+    ErrorLog /proc/self/fd/2
+    LogLevel warn
+
+    <IfModule log_config_module>
+        LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+        LogFormat "%h %l %u %t \"%r\" %>s %b" common
+
+        <IfModule logio_module>
+          LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" %I %O" combinedio
+        </IfModule>
+
+        CustomLog /proc/self/fd/1 common
+    </IfModule>
+
+    <IfModule alias_module>
+        Redirect permanent /support {{ .Values.supportUrl }}
+    </IfModule>
+
+    # Configure PHP
+    <FilesMatch \.php$>
+        SetHandler application/x-httpd-php
+    </FilesMatch>
+
+    # Webhook directory configuration
+    <Directory "/var/www/html/webhook">
+        Options -Indexes
+        AllowOverride None
+        Require all granted
+
+        <FilesMatch "\.php$">
+            SetHandler application/x-httpd-php
+        </FilesMatch>
+
+        Header set X-Content-Type-Options "nosniff"
+        Header set X-Frame-Options "DENY"
+        Header set X-XSS-Protection "1; mode=block"
+        Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+        Header set Pragma "no-cache"
+    </Directory>
+
+    <IfModule headers_module>
+        RequestHeader unset Proxy early
+    </IfModule>
+
+    <IfModule mime_module>
+        TypesConfig /etc/mime.types
+        AddType application/x-compress .Z
+        AddType application/x-gzip .gz .tgz
+    </IfModule>
+
+    ErrorDocument 500 /error500.html
+    ErrorDocument 404 /error404.html
+    ErrorDocument 401 /error401.html
+    ErrorDocument 400 /error400.html

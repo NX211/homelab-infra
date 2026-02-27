@@ -1,0 +1,228 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "apache.fullname" . }}-pages
+  labels:
+    {{- include "apache.labels" . | nindent 4 }}
+data:
+  legal.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>{{ .Values.projectName }}.com | Legal</title>
+      <link rel="icon" href="../favicon.ico" type="image/png" />
+      <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500&display=swap" rel="stylesheet">
+      <link href="https://use.fontawesome.com/releases/v6.7.2/css/all.css" rel="stylesheet">
+      <link rel="stylesheet" href="../css/reset.css">
+      <link rel="stylesheet" href="../css/styles.css">
+      <link rel="stylesheet" href="../css/theme.css">
+    </head>
+    <body>
+      <main>
+        <div class="container">
+          <div class="img-sm">
+            <img src="../logo.png" alt="{{ .Values.projectName }} Logo">
+          </div>
+
+          <h1 class="site-title">Legal Disclosure</h1>
+
+          <div class="icons-apps">
+            <a href="/" class="nav-link">
+              <i class="fas fa-home" aria-hidden="true"></i>
+              <span>Home</span>
+            </a>
+            <a href="/legal" class="nav-link">
+              <i class="fas fa-gavel" aria-hidden="true"></i>
+              <span>Legal</span>
+            </a>
+            <a href="/privacy" class="nav-link">
+              <i class="fas fa-user-shield" aria-hidden="true"></i>
+              <span>Privacy</span>
+            </a>
+            <a href="https://{{ .Values.autheliaDomain }}/" class="nav-link">
+              <i class="fas fa-user" aria-hidden="true"></i>
+              <span>Login</span>
+            </a>
+          </div>
+
+          <div class="content">
+            <h2>General Information</h2>
+            <p>{{ .Values.domain }} is owned and operated by {{ .Values.domain }}. By accessing and using this website, you agree to comply with the terms and conditions outlined in this disclosure.</p>
+
+            <h2>Information Accuracy</h2>
+            <p>We strive to ensure that all information on {{ .Values.domain }} is accurate and up-to-date. However, we do not guarantee the completeness, accuracy, or reliability of any information provided on this site.</p>
+
+            <h2>Third-Party Links</h2>
+            <p>{{ .Values.domain }} may contain links to third-party websites. These links are provided for your convenience and do not signify our endorsement of such websites. We are not responsible for the content or practices of any linked third-party sites.</p>
+
+            <h2>Intellectual Property</h2>
+            <p>All content on {{ .Values.domain }}, including text, graphics, logos, and images, is the property of {{ .Values.domain }} or its content suppliers and is protected by copyright laws. Unauthorized use of any content on this site is prohibited.</p>
+
+            <h2>Limitation of Liability</h2>
+            <p>We are not liable for any direct, indirect, incidental, or consequential damages arising from the use or inability to use {{ .Values.domain }}. This includes, but is not limited to, damages for errors, omissions, interruptions, or delays in operation or transmission.</p>
+
+            <h2>Privacy Policy</h2>
+            <p>Your privacy is important to us. Please refer to our <a href="/privacy" class="content-link">Privacy Policy</a> for information on how we collect, use, and protect your personal data.</p>
+
+            <h2>Changes to This Disclosure</h2>
+            <p>We may update this legal disclosure from time to time. We will notify you of any changes by posting the new disclosure on this page.</p>
+
+            <h2>Contact Us</h2>
+            <p>If you have any questions about this legal disclosure, please contact us at support@{{ .Values.domain }}.</p>
+          </div>
+        </div>
+
+        <footer>
+          &copy; {{ .Values.projectName }} - {{ now | date "2006" }}
+        </footer>
+      </main>
+    </body>
+    </html>
+
+  privacy.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>{{ .Values.projectName }}.com | Privacy</title>
+      <link rel="icon" href="../favicon.ico" type="image/png" />
+      <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500&display=swap" rel="stylesheet">
+      <link href="https://use.fontawesome.com/releases/v6.7.2/css/all.css" rel="stylesheet">
+      <link rel="stylesheet" href="../css/reset.css">
+      <link rel="stylesheet" href="../css/styles.css">
+      <link rel="stylesheet" href="../css/theme.css">
+    </head>
+    <body>
+      <main>
+        <div class="container">
+          <div class="img-sm">
+            <img src="../logo.png" alt="{{ .Values.projectName }} Logo">
+          </div>
+
+          <h1 class="site-title">Privacy Policy</h1>
+
+          <div class="icons-apps">
+            <a href="/" class="nav-link">
+              <i class="fas fa-home" aria-hidden="true"></i>
+              <span>Home</span>
+            </a>
+            <a href="https://{{ .Values.homerDomain }}/" class="nav-link">
+              <i class="fas fa-gauge-high" aria-hidden="true"></i>
+              <span>Dashboard</span>
+            </a>
+            <a href="https://{{ .Values.autheliaDomain }}/" class="nav-link">
+              <i class="fas fa-user" aria-hidden="true"></i>
+              <span>Login</span>
+            </a>
+            <a href="/privacy" class="nav-link">
+              <i class="fas fa-user-shield" aria-hidden="true"></i>
+              <span>Privacy</span>
+            </a>
+            <a href="/terms" class="nav-link">
+              <i class="fas fa-file-contract" aria-hidden="true"></i>
+              <span>Terms</span>
+            </a>
+          </div>
+
+          <div class="content">
+            <h2>Information Collection and Use</h2>
+            <p>We do not store, collect, or sell any user data. Your use of {{ .Values.domain }} is private and confidential.</p>
+
+            <h2>Confidentiality</h2>
+            <p>We ensure that your use of {{ .Values.domain }} remains private and confidential. We do not share your information with any third parties.</p>
+
+            <h2>Changes to This Privacy Policy</h2>
+            <p>We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page.</p>
+
+            <h2>Contact Us</h2>
+            <p>If you have any questions about this Privacy Policy, please contact us at support@{{ .Values.domain }}.</p>
+          </div>
+        </div>
+
+        <footer>
+          &copy; {{ .Values.projectName }} - {{ now | date "2006" }}
+        </footer>
+      </main>
+    </body>
+    </html>
+
+  terms.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>{{ .Values.projectName }}.com | Terms of Service</title>
+      <link rel="icon" href="../favicon.ico" type="image/png" />
+      <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500&display=swap" rel="stylesheet">
+      <link href="https://use.fontawesome.com/releases/v6.7.2/css/all.css" rel="stylesheet">
+      <link rel="stylesheet" href="../css/reset.css">
+      <link rel="stylesheet" href="../css/styles.css">
+      <link rel="stylesheet" href="../css/theme.css">
+    </head>
+    <body>
+      <main>
+        <div class="container">
+          <div class="img-sm">
+            <img src="../logo.png" alt="{{ .Values.projectName }} Logo">
+          </div>
+
+          <h1 class="site-title">Terms of Service</h1>
+
+          <div class="icons-apps">
+            <a href="/" class="nav-link">
+              <i class="fas fa-home" aria-hidden="true"></i>
+              <span>Home</span>
+            </a>
+            <a href="https://{{ .Values.homerDomain }}/" class="nav-link">
+              <i class="fas fa-gauge-high" aria-hidden="true"></i>
+              <span>Dashboard</span>
+            </a>
+            <a href="https://{{ .Values.autheliaDomain }}/" class="nav-link">
+              <i class="fas fa-user" aria-hidden="true"></i>
+              <span>Login</span>
+            </a>
+            <a href="/privacy" class="nav-link">
+              <i class="fas fa-user-shield" aria-hidden="true"></i>
+              <span>Privacy</span>
+            </a>
+            <a href="/terms" class="nav-link">
+              <i class="fas fa-file-contract" aria-hidden="true"></i>
+              <span>Terms</span>
+            </a>
+          </div>
+
+          <div class="content">
+            <h2>Acceptance of Terms</h2>
+            <p>By accessing and using {{ .Values.domain }}, you accept and agree to be bound by the terms and provision of this agreement.</p>
+
+            <h2>Use License</h2>
+            <p>Permission is granted to temporarily access the services on {{ .Values.domain }} for personal, non-commercial use only. This is the grant of a license, not a transfer of title.</p>
+
+            <h2>Disclaimer</h2>
+            <p>The services on {{ .Values.domain }} are provided "as is". {{ .Values.projectName }} makes no warranties, expressed or implied, and hereby disclaims and negates all other warranties including, without limitation, implied warranties or conditions of merchantability, fitness for a particular purpose, or non-infringement of intellectual property or other violation of rights.</p>
+
+            <h2>Limitations</h2>
+            <p>In no event shall {{ .Values.projectName }} or its suppliers be liable for any damages (including, without limitation, damages for loss of data or profit, or due to business interruption) arising out of the use or inability to use the services on {{ .Values.domain }}.</p>
+
+            <h2>Modifications</h2>
+            <p>{{ .Values.projectName }} may revise these terms of service at any time without notice. By using this website you are agreeing to be bound by the then current version of these terms of service.</p>
+
+            <h2>Contact Us</h2>
+            <p>If you have any questions about these Terms of Service, please contact us at support@{{ .Values.domain }}.</p>
+          </div>
+        </div>
+
+        <footer>
+          &copy; {{ .Values.projectName }} - {{ now | date "2006" }}
+        </footer>
+      </main>
+    </body>
+    </html>

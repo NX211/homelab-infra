@@ -1,0 +1,47 @@
+# Apache Configuration
+
+image:
+  repository: php
+  tag: "8.3-apache"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# Node selector - deploy to yellowtalon
+nodeSelector:
+  kubernetes.io/hostname: yellowtalon
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+
+# Resources
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Domain configuration
+domain: authoritah.com
+projectName: "Authoritah"
+supportUrl: "https://dashboard.authoritah.com/"
+
+# Referenced domains
+homerDomain: "dashboard.authoritah.com"
+autheliaDomain: "login.authoritah.com"
+
+# Ingress configuration
+ingress:
+  enabled: true
+  certResolver: dnschallenge
+  middleware: default-headers
+
+# Timezone
+timezone: "America/Chicago"
+
+# External IP for host alias (your external IP address)
+externalIP: "127.0.0.1"
