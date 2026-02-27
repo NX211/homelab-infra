@@ -32,10 +32,10 @@ env:
   port: "8080"
   initAssets: "0"
 
-# Git repository for tools (optional)
+# Git repository for tools/icons
 gitRepo:
-  enabled: false
-  url: ""
+  enabled: true
+  url: "https://github.com/NX211/homer-icons.git"
 
 # Ingress configuration
 ingress:
@@ -48,7 +48,7 @@ ingress:
 config:
   title: "Authoritah Dashboard"
   subtitle: "Homelab Services"
-  logo: "assets/icons/apple-touch-icon.png"
+  logo: "assets/tools/png/badge.png"
   footer: false
   theme: dark
   connectivityCheck: false
