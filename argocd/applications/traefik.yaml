@@ -9,13 +9,84 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/NX211/homelab-infra.git
-    targetRevision: HEAD
-    path: helm-charts/traefik
+    repoURL: https://traefik.github.io/charts
+    chart: traefik
+    targetRevision: 33.2.1
     helm:
-      skipCrds: false
-      # Tell ArgoCD to build Helm dependencies
-      releaseName: traefik
+      valuesObject:
+        # Global arguments
+        globalArguments:
+          - "--global.checknewversion=false"
+          - "--global.sendanonymoususage=false"
+
+        # Deployment (using Deployment for ACME support)
+        deployment:
+          kind: Deployment
+          replicas: 1
+
+        # Node selector - only yellowtalon has proxy role
+        nodeSelector:
+          node-role.kubernetes.io/proxy: "true"
+
+        # Service
+        service:
+          type: ClusterIP
+
+        # Ports
+        ports:
+          web:
+            port: 80
+            redirectTo:
+              port: websecure
+          websecure:
+            port: 443
+            tls:
+              enabled: true
+
+        # Environment for Dreamhost DNS
+        env:
+          - name: DREAMHOST_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: traefik-secrets
+                key: dreamhost-token
+
+        # Let's Encrypt ACME
+        additionalArguments:
+          - "--certificatesresolvers.dnschallenge.acme.email=contact@authoritah.com"
+          - "--certificatesresolvers.dnschallenge.acme.storage=/data/acme.json"
+          - "--certificatesresolvers.dnschallenge.acme.dnschallenge=true"
+          - "--certificatesresolvers.dnschallenge.acme.dnschallenge.provider=dreamhost"
+
+        # Logs
+        logs:
+          general:
+            level: INFO
+          access:
+            enabled: true
+
+        # Providers
+        providers:
+          kubernetesCRD:
+            enabled: true
+            allowCrossNamespace: true
+          kubernetesIngress:
+            enabled: true
+
+        # Persistence for ACME
+        persistence:
+          enabled: true
+          size: 1Gi
+          storageClass: "local-path"
+
+        # Resources
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: default
@@ -23,19 +94,11 @@ spec:
     automated:
       prune: true
       selfHeal: true
-      allowEmpty: false
     syncOptions:
-      - CreateNamespace=false  # Use existing default namespace
-      - ServerSideApply=true
+      - CreateNamespace=true
     retry:
       limit: 5
       backoff:
         duration: 5s
         factor: 2
         maxDuration: 3m
-  ignoreDifferences:
-    # Ignore differences in DaemonSet hash annotations
-    - group: apps
-      kind: DaemonSet
-      jqPathExpressions:
-        - '.spec.template.metadata.annotations."checksum/config"'
