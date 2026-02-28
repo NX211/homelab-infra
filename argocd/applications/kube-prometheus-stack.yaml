@@ -1,0 +1,174 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 67.4.0
+    helm:
+      valuesObject:
+        # Disable components we don't need
+        kubeStateMetrics:
+          enabled: true
+
+        nodeExporter:
+          enabled: true
+
+        grafana:
+          enabled: false  # Using separate Grafana deployment
+
+        # Prometheus configuration
+        prometheus:
+          prometheusSpec:
+            # Node placement
+            nodeSelector:
+              kubernetes.io/hostname: blacktalon
+
+            # Retention
+            retention: 30d
+            retentionSize: "45GB"
+
+            # Storage
+            storageSpec:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: local-path
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 50Gi
+
+            # Resource limits
+            resources:
+              requests:
+                cpu: 200m
+                memory: 512Mi
+              limits:
+                cpu: 2000m
+                memory: 2Gi
+
+            # ServiceMonitor selectors - select all ServiceMonitors
+            serviceMonitorSelectorNilUsesHelmValues: false
+            serviceMonitorSelector: {}
+            serviceMonitorNamespaceSelector: {}
+
+            # PodMonitor selectors - select all PodMonitors
+            podMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelector: {}
+            podMonitorNamespaceSelector: {}
+
+            # Scrape interval
+            scrapeInterval: 15s
+            evaluationInterval: 15s
+
+            # External labels
+            externalLabels:
+              cluster: 'k3s'
+              environment: 'production'
+
+            # Enable admin API for management
+            enableAdminAPI: true
+
+          # Service configuration
+          service:
+            type: ClusterIP
+            port: 9090
+
+        # Alertmanager configuration
+        alertmanager:
+          enabled: true
+
+          alertmanagerSpec:
+            # Node placement
+            nodeSelector:
+              kubernetes.io/hostname: blacktalon
+
+            # Storage
+            storage:
+              volumeClaimTemplate:
+                spec:
+                  storageClassName: local-path
+                  accessModes: ["ReadWriteOnce"]
+                  resources:
+                    requests:
+                      storage: 10Gi
+
+            # Resource limits
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+
+        # Prometheus Operator configuration
+        prometheusOperator:
+          # Node placement for operator itself
+          nodeSelector:
+            kubernetes.io/hostname: blacktalon
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+        # Default rules - keep most of them
+        defaultRules:
+          create: true
+          rules:
+            alertmanager: true
+            etcd: false  # Not using etcd
+            configReloaders: true
+            general: true
+            k8s: true
+            kubeApiserverAvailability: true
+            kubeApiserverBurnrate: true
+            kubeApiserverHistogram: true
+            kubeApiserverSlos: true
+            kubeControllerManager: true
+            kubelet: true
+            kubeProxy: true
+            kubePrometheusGeneral: true
+            kubePrometheusNodeRecording: true
+            kubernetesApps: true
+            kubernetesResources: true
+            kubernetesStorage: true
+            kubernetesSystem: true
+            kubeSchedulerAlerting: true
+            kubeSchedulerRecording: true
+            kubeStateMetrics: true
+            network: true
+            node: true
+            nodeExporterAlerting: true
+            nodeExporterRecording: true
+            prometheus: true
+            prometheusOperator: true
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

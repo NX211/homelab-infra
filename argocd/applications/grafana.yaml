@@ -1,0 +1,119 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: grafana
+    targetRevision: 8.8.2
+    helm:
+      valuesObject:
+        # Node placement
+        nodeSelector:
+          kubernetes.io/hostname: blacktalon
+
+        # Persistence
+        persistence:
+          enabled: true
+          storageClassName: local-path
+          size: 10Gi
+
+        # Resources
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        # Admin credentials from ExternalSecret
+        admin:
+          existingSecret: grafana-admin
+          userKey: admin-user
+          passwordKey: admin-password
+
+        # Datasources - Prometheus, Loki, and Alertmanager
+        datasources:
+          datasources.yaml:
+            apiVersion: 1
+            datasources:
+              - name: Loki
+                type: loki
+                url: http://loki.monitoring.svc:3100
+                access: proxy
+                isDefault: true
+                jsonData:
+                  maxLines: 1000
+              - name: Prometheus
+                type: prometheus
+                url: http://prometheus-operated.monitoring.svc:9090
+                access: proxy
+                isDefault: false
+                jsonData:
+                  timeInterval: 15s
+                  prometheusType: Prometheus
+                  alertmanagerUid: alertmanager
+              - name: Alertmanager
+                type: alertmanager
+                uid: alertmanager
+                url: http://alertmanager-operated.monitoring.svc:9093
+                access: proxy
+                jsonData:
+                  implementation: prometheus
+
+        # Grafana configuration
+        grafana.ini:
+          server:
+            domain: grafana.authoritah.com
+            root_url: https://grafana.authoritah.com
+          auth:
+            disable_login_form: false
+          auth.generic_oauth:
+            enabled: true
+            name: Authelia
+            client_id: $__file{/etc/secrets/oauth/client-id}
+            client_secret: $__file{/etc/secrets/oauth/client-secret}
+            scopes: openid profile email groups
+            auth_url: https://login.authoritah.com/api/oidc/authorization
+            token_url: https://login.authoritah.com/api/oidc/token
+            api_url: https://login.authoritah.com/api/oidc/userinfo
+            use_pkce: true
+            role_attribute_path: contains(groups, 'admin') && 'Admin' || 'Viewer'
+
+        # Extra secret mounts for OAuth credentials
+        extraSecretMounts:
+          - name: oauth-secret
+            secretName: grafana-oauth
+            defaultMode: 0440
+            mountPath: /etc/secrets/oauth
+            readOnly: true
+
+        # Service configuration
+        service:
+          type: ClusterIP
+          port: 80
+          targetPort: 3000
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
