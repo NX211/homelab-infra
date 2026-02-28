@@ -17,7 +17,7 @@ Traefik ingress controller for k3s homelab cluster with Let's Encrypt DNS challe
   - retry
   - internal-only (IP allowlist)
   - auth-rate-limit
-- **Traefik dashboard** at `dashboard.authoritah.com` (internal only)
+- **Traefik dashboard** at `api.authoritah.com` (protected by Authelia 2FA)
 - **Prometheus metrics** enabled
 
 ## Prerequisites
@@ -107,9 +107,9 @@ Changes are automatically synced by ArgoCD.
 
 ## Dashboard Access
 
-Access the Traefik dashboard at: `https://dashboard.authoritah.com`
+Access the Traefik dashboard at: `https://api.authoritah.com`
 
-**Note:** Dashboard is restricted to internal networks only via the `internal-only` middleware.
+**Note:** Dashboard is protected by Authelia two-factor authentication and restricted to users in the `admin` group.
 
 ## Troubleshooting
 

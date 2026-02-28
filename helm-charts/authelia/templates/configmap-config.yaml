@@ -1,0 +1,192 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authelia-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: authelia
+data:
+  configuration.yml: |
+    server:
+      address: tcp://0.0.0.0:{{ .Values.service.httpPort }}/
+      disable_healthcheck: false
+      {{- if .Values.customAssets.enabled }}
+      asset_path: /config/assets/
+      {{- end }}
+      buffers:
+        read: 8192
+        write: 8192
+      timeouts:
+        read: 6s
+        write: 6s
+        idle: 30s
+
+    telemetry:
+      metrics:
+        enabled: true
+        address: tcp://0.0.0.0:{{ .Values.service.metricsPort }}/
+
+    access_control:
+      default_policy: {{ .Values.accessControl.defaultPolicy }}
+      networks:
+      - name: internal
+        networks:
+        {{- range .Values.accessControl.internalNetworks }}
+        - {{ . }}
+        {{- end }}
+      rules:
+      {{- range .Values.accessControl.rules }}
+      - domain: {{ .domain }}
+        policy: {{ .policy }}
+        {{- if .resources }}
+        resources:
+        {{- range .resources }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- end }}
+        {{- if .subject }}
+        subject:
+        {{- range .subject }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+
+    identity_validation:
+      reset_password:
+        jwt_secret_file: /secrets/core/jwt-secret
+
+    authentication_backend:
+      password_reset:
+        disable: false
+      file:
+        path: /config/users.yml
+        password:
+          algorithm: argon2id
+          iterations: 1
+          salt_length: 16
+          parallelism: 8
+          memory: 64
+
+    storage:
+      encryption_key_file: /secrets/core/encryption-key
+      postgres:
+        address: 'tcp://{{ .Values.database.host }}'
+        database_file: /secrets/database/database
+        schema: public
+        username_file: /secrets/database/database-user
+        password_file: /secrets/database/database-password
+
+    session:
+      secret_file: /secrets/core/session-secret
+      cookies:
+        - name_file: /secrets/core/session-project-tld-name
+          domain: '{{ .Values.projectTLD }}'
+          authelia_url: 'https://{{ .Values.domain }}'
+          same_site: 'lax'
+          inactivity: '{{ .Values.session.cookieInactivity }}'
+          expiration: '{{ .Values.session.cookieExpiration }}'
+          remember_me: '{{ .Values.session.cookieRememberMe }}'
+      name_file: /secrets/core/session-default-name
+      same_site: 'lax'
+      inactivity: '{{ .Values.session.inactivity }}'
+      expiration: '{{ .Values.session.expiration }}'
+      remember_me: '{{ .Values.session.rememberMe }}'
+      redis:
+        host: '{{ .Values.redis.host }}'
+        port: {{ .Values.redis.port }}
+        database_index: {{ .Values.redis.databaseIndex }}
+        maximum_active_connections: 8
+        minimum_idle_connections: 0
+
+    notifier:
+      disable_startup_check: {{ .Values.notifier.disableStartupCheck }}
+      {{- if .Values.notifier.filesystem.enabled }}
+      filesystem:
+        filename: {{ .Values.notifier.filesystem.filename }}
+      {{- end }}
+      {{- if .Values.notifier.smtp.enabled }}
+      smtp:
+        address: 'smtp://{{ .Values.notifier.smtp.host }}:465'
+        timeout: 5s
+        username: '{{ .Values.notifier.smtp.username }}'
+        password: '{{ .Values.notifier.smtp.password }}'
+        sender: "{{ .Values.notifier.smtp.sender }}"
+        subject: "{{ .Values.notifier.smtp.subject }}"
+        startup_check_address: '{{ .Values.notifier.smtp.startupCheckAddress }}'
+        disable_require_tls: false
+        disable_html_emails: false
+      {{- end }}
+
+    regulation:
+      max_retries: {{ .Values.regulation.maxRetries }}
+      find_time: {{ .Values.regulation.findTime }}
+      ban_time: {{ .Values.regulation.banTime }}
+
+    ntp:
+      address: "{{ .Values.ntp.address }}"
+      version: 3
+      max_desync: 3s
+      disable_startup_check: false
+      disable_failure: false
+
+    totp:
+      issuer: {{ .Values.totp.issuer }}
+      algorithm: {{ .Values.totp.algorithm }}
+      digits: {{ .Values.totp.digits }}
+      period: {{ .Values.totp.period }}
+      skew: {{ .Values.totp.skew }}
+
+    identity_providers:
+      oidc:
+        hmac_secret_file: /secrets/oidc/oidc-hmac-secret
+        jwks:
+          - key_id: '{{ .Values.projectName }}'
+            algorithm: 'RS256'
+            use: 'sig'
+            key_file: /secrets/oidc-keys/private-key
+        enable_client_debug_messages: false
+        minimum_parameter_entropy: {{ .Values.oidc.minimumParameterEntropy }}
+        enforce_pkce: '{{ .Values.oidc.enforcePKCE }}'
+        enable_pkce_plain_challenge: {{ .Values.oidc.enablePKCEPlainChallenge }}
+        enable_jwt_access_token_stateless_introspection: false
+        discovery_signed_response_alg: 'none'
+        discovery_signed_response_key_id: ''
+        require_pushed_authorization_requests: false
+        authorization_policies:
+          policy_name:
+            default_policy: '{{ .Values.oidc.authorizationPolicy }}'
+            rules:
+              - policy: 'deny'
+                subject: 'group:services'
+        lifespans:
+          access_token: '{{ .Values.oidc.accessTokenLifespan }}'
+          authorize_code: '{{ .Values.oidc.authorizeCodeLifespan }}'
+          id_token: '{{ .Values.oidc.idTokenLifespan }}'
+          refresh_token: '{{ .Values.oidc.refreshTokenLifespan }}'
+        cors:
+          endpoints:
+            - 'authorization'
+            - 'token'
+            - 'revocation'
+            - 'introspection'
+          allowed_origins:
+            - 'https://{{ .Values.projectTLD }}'
+          allowed_origins_from_client_redirect_uris: false
+        clients:
+          - client_id_file: /secrets/oidc/gitea-oidc-client-id
+            client_name: 'Gitea'
+            client_secret_file: /secrets/oidc/oidc-gitea-client-secret
+            public: false
+            authorization_policy: 'two_factor'
+            redirect_uris:
+              - 'https://{{ .Values.oidcClients.gitea.domain }}/user/oauth2/{{ .Values.projectName }}/callback'
+            scopes:
+              - 'openid'
+              - 'email'
+              - 'profile'
+            userinfo_signed_response_alg: 'none'
+            token_endpoint_auth_method: 'client_secret_basic'
+
+    theme: {{ .Values.theme }}

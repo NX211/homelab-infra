@@ -1,0 +1,18 @@
+---
+# ForwardAuth middleware for protecting other services
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: authelia-forwardauth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: authelia
+spec:
+  forwardAuth:
+    address: http://authelia:{{ .Values.service.httpPort }}/api/verify?rd=https://{{ .Values.domain }}
+    trustForwardHeader: true
+    authResponseHeaders:
+      - Remote-User
+      - Remote-Groups
+      - Remote-Name
+      - Remote-Email

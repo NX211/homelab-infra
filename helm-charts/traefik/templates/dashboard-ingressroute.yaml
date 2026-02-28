@@ -18,6 +18,6 @@ spec:
         - name: api@internal
           kind: TraefikService
       middlewares:
-        - name: internal-only
+        - name: authelia-forwardauth
   tls:
     certResolver: dnschallenge

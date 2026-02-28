@@ -1,0 +1,146 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: authelia
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: authelia
+spec:
+  serviceName: authelia
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: authelia
+  template:
+    metadata:
+      labels:
+        app: authelia
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.service.metricsPort }}"
+        prometheus.io/path: /metrics
+    spec:
+      priorityClassName: authelia-priority
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      securityContext:
+        fsGroup: 65534
+        fsGroupChangePolicy: OnRootMismatch
+
+      containers:
+      - name: authelia
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+        securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+
+        env:
+        - name: TZ
+          value: America/Chicago
+
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.httpPort }}
+          protocol: TCP
+        - name: metrics
+          containerPort: {{ .Values.service.metricsPort }}
+          protocol: TCP
+
+        volumeMounts:
+        - name: config
+          mountPath: /config/configuration.yml
+          subPath: configuration.yml
+          readOnly: true
+        - name: users
+          mountPath: /config/users.yml
+          subPath: users.yml
+          readOnly: true
+        {{- if .Values.customAssets.enabled }}
+        - name: assets
+          mountPath: /config/assets
+          readOnly: true
+        {{- end }}
+        - name: oidc-keys
+          mountPath: /secrets/oidc-keys
+          readOnly: true
+        - name: database-secrets
+          mountPath: /secrets/database
+          readOnly: true
+        - name: core-secrets
+          mountPath: /secrets/core
+          readOnly: true
+        - name: oidc-secrets
+          mountPath: /secrets/oidc
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+
+      volumes:
+      - name: config
+        configMap:
+          name: authelia-config
+          defaultMode: 0400
+      - name: users
+        secret:
+          secretName: authelia-users
+          defaultMode: 0400
+      {{- if .Values.customAssets.enabled }}
+      - name: assets
+        configMap:
+          name: authelia-assets
+          defaultMode: 0644
+      {{- end }}
+      - name: oidc-keys
+        secret:
+          secretName: authelia-oidc-keys
+          defaultMode: 0400
+      - name: database-secrets
+        secret:
+          secretName: authelia-database
+          defaultMode: 0400
+      - name: core-secrets
+        secret:
+          secretName: authelia-secrets
+          defaultMode: 0400
+      - name: oidc-secrets
+        secret:
+          secretName: authelia-oidc
+          defaultMode: 0400
+      - name: tmp
+        emptyDir: {}

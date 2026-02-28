@@ -1,0 +1,125 @@
+replicaCount: 1
+
+image:
+  repository: authelia/authelia
+  tag: "latest"
+  pullPolicy: Always
+
+# Domains
+domain: "login.authoritah.com"
+projectTLD: "authoritah.com"
+projectName: "Authoritah"
+
+# Node selector
+nodeSelector:
+  kubernetes.io/hostname: yellowtalon
+
+# Ports
+service:
+  httpPort: 9091
+  metricsPort: 9959
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Database configuration
+database:
+  host: "postgres-rw:5432"
+  name: "authelia"
+  user: "authelia"
+
+# Redis configuration
+redis:
+  host: "redis"
+  port: 6379
+  databaseIndex: 1
+
+# NTP configuration
+ntp:
+  address: "time.cloudflare.com:123"
+
+# Access Control Rules
+accessControl:
+  defaultPolicy: two_factor
+  # Internal network definition
+  internalNetworks:
+    - 10.0.0.0/8
+
+  # Domain-specific rules
+  rules:
+    # API endpoints bypass (for webhooks, automation)
+    - domain: "*.authoritah.com"
+      policy: bypass
+      resources:
+        - "^/api/.*$"
+        - "^/identity/.*$"
+        - "^/triggers/.*$"
+
+    # Traefik dashboard - admin only
+    - domain: "api.authoritah.com"
+      policy: two_factor
+      subject:
+        - "group:admin"
+
+# OIDC Clients (domains for redirect URIs)
+oidcClients:
+  gitea:
+    domain: "authoritah.io"
+
+# Session configuration
+session:
+  inactivity: "5m"
+  expiration: "1h"
+  rememberMe: "1M"
+  cookieInactivity: "5 minutes"
+  cookieExpiration: "1 hour"
+  cookieRememberMe: "1 month"
+
+# Regulation (brute force protection)
+regulation:
+  maxRetries: 3
+  findTime: 2m
+  banTime: 5m
+
+# TOTP configuration
+totp:
+  issuer: "authelia.com"
+  algorithm: sha1
+  digits: 6
+  period: 30
+  skew: 1
+
+# OIDC configuration
+oidc:
+  minimumParameterEntropy: 8
+  enforcePKCE: "public_clients_only"
+  enablePKCEPlainChallenge: false
+  authorizationPolicy: two_factor
+  accessTokenLifespan: "1h"
+  authorizeCodeLifespan: "1m"
+  idTokenLifespan: "1h"
+  refreshTokenLifespan: "90m"
+
+# Notifier configuration
+notifier:
+  disableStartupCheck: true
+  # Using filesystem for now (email disabled until SMTP configured)
+  filesystem:
+    enabled: true
+    filename: "/tmp/notification.txt"
+  # SMTP settings (commented out - enable when ready)
+  smtp:
+    enabled: false
+
+# Theme
+theme: dark
+
+# Custom assets
+customAssets:
+  enabled: false
