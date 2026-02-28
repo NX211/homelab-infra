@@ -55,7 +55,7 @@ data:
 
     identity_validation:
       reset_password:
-        jwt_secret_file: /secrets/core/jwt-secret
+        # jwt_secret provided via AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET env var
 
     authentication_backend:
       password_reset:
@@ -70,25 +70,25 @@ data:
           memory: 64
 
     storage:
-      encryption_key_file: /secrets/core/encryption-key
+      encryption_key: /secrets/core/encryption-key
       postgres:
         address: 'tcp://{{ .Values.database.host }}'
-        database_file: /secrets/database/database
+        database: /secrets/database/database
         schema: public
-        username_file: /secrets/database/database-user
-        password_file: /secrets/database/database-password
+        username: /secrets/database/database-user
+        password: /secrets/database/database-password
 
     session:
-      secret_file: /secrets/core/session-secret
+      secret: /secrets/core/session-secret
       cookies:
-        - name_file: /secrets/core/session-project-tld-name
+        - name: /secrets/core/session-project-tld-name
           domain: '{{ .Values.projectTLD }}'
           authelia_url: 'https://{{ .Values.domain }}'
           same_site: 'lax'
           inactivity: '{{ .Values.session.cookieInactivity }}'
           expiration: '{{ .Values.session.cookieExpiration }}'
           remember_me: '{{ .Values.session.cookieRememberMe }}'
-      name_file: /secrets/core/session-default-name
+      name: /secrets/core/session-default-name
       same_site: 'lax'
       inactivity: '{{ .Values.session.inactivity }}'
       expiration: '{{ .Values.session.expiration }}'
@@ -140,12 +140,12 @@ data:
 
     identity_providers:
       oidc:
-        hmac_secret_file: /secrets/oidc/oidc-hmac-secret
+        hmac_secret: /secrets/oidc/oidc-hmac-secret
         jwks:
           - key_id: '{{ .Values.projectName }}'
             algorithm: 'RS256'
             use: 'sig'
-            key_file: /secrets/oidc-keys/private-key
+            key: /secrets/oidc-keys/private-key
         enable_client_debug_messages: false
         minimum_parameter_entropy: {{ .Values.oidc.minimumParameterEntropy }}
         enforce_pkce: '{{ .Values.oidc.enforcePKCE }}'
@@ -175,9 +175,9 @@ data:
             - 'https://{{ .Values.projectTLD }}'
           allowed_origins_from_client_redirect_uris: false
         clients:
-          - client_id_file: /secrets/oidc/gitea-oidc-client-id
+          - client_id: /secrets/oidc/gitea-oidc-client-id
             client_name: 'Gitea'
-            client_secret_file: /secrets/oidc/oidc-gitea-client-secret
+            client_secret: /secrets/oidc/oidc-gitea-client-secret
             public: false
             authorization_policy: 'two_factor'
             redirect_uris:

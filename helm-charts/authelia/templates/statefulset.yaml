@@ -50,6 +50,42 @@ spec:
         env:
         - name: TZ
           value: America/Chicago
+        # Secret values from ExternalSecrets
+        - name: AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: authelia-secrets
+              key: jwt-secret
+        - name: AUTHELIA_SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: authelia-secrets
+              key: session-secret
+        - name: AUTHELIA_STORAGE_ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: authelia-secrets
+              key: encryption-key
+        - name: AUTHELIA_STORAGE_POSTGRES_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: authelia-database
+              key: database-user
+        - name: AUTHELIA_STORAGE_POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: authelia-database
+              key: database-password
+        - name: AUTHELIA_STORAGE_POSTGRES_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: authelia-database
+              key: database
+        - name: AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: authelia-oidc
+              key: oidc-hmac-secret
 
         ports:
         - name: http
