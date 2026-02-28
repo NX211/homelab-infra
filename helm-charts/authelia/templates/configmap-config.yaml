@@ -37,7 +37,7 @@ data:
         {{- end }}
       rules:
       {{- range .Values.accessControl.rules }}
-      - domain: {{ .domain }}
+      - domain: {{ .domain | quote }}
         policy: {{ .policy }}
         {{- if .resources }}
         resources:
