@@ -1,0 +1,67 @@
+{{- if .Values.customTemplates.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitea-custom-templates
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: gitea
+data:
+  home.tmpl: |
+    {{`{{template "base/head" .}}
+    <div role="main" aria-label="{{if .IsSigned}}{{ctx.Locale.Tr "dashboard"}}{{else}}{{ctx.Locale.Tr "home_title"}}{{end}}" class="page-content home">
+      <div class="tw-mb-8 tw-px-8">
+        <div class="center">
+          <img class="logo" width="220" height="220" src="{{AssetUrlPrefix}}/img/logo.png" alt="{{ctx.Locale.Tr "logo"}}">
+          <div class="hero">
+            <h1 class="ui icon header title tw-text-balance">
+              {{AppName}}
+            </h1>
+          </div>
+        </div>
+      </div>
+    </div>
+    {{template "base/footer" .}}`}}
+
+  header.tmpl: |
+    <!-- Custom CSS to hide footer elements -->
+    <style>
+      /* Hide the Licenses link in footer */
+      .page-footer .right-links a[href$="/licenses.txt"] {
+        display: none !important;
+      }
+    </style>
+
+  signin_navbar.tmpl: |
+    {{`{{if .OAuth2Providers}}
+    <div class="ui attached segment">
+      {{range $provider := .OAuth2Providers}}
+        <div class="oauth2-login-source">
+          <a class="ui button fluid" href="{{AppSubUrl}}/user/oauth2/{{$provider.Name}}">
+            {{if eq $provider.DisplayName "Authoritah"}}
+              <img src="{{AssetUrlPrefix}}/img/auth/authoritah.svg" alt="{{$provider.DisplayName}}" style="width: 20px; height: 20px; margin-right: 8px; vertical-align: middle;">
+            {{else}}
+              <i class="{{$provider.IconHTML}}"></i>
+            {{end}}
+            {{ctx.Locale.Tr "sign_in_with_provider" $provider.DisplayName}}
+          </a>
+        </div>
+      {{end}}
+    </div>
+    {{end}}`}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitea-custom-assets
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: gitea
+binaryData:
+  logo.png: {{ .Files.Get "badge.png.b64" | quote }}
+  logo.svg: {{ .Files.Get "badge.svg.b64" | quote }}
+  favicon.png: {{ .Files.Get "badge.png.b64" | quote }}
+  favicon.svg: {{ .Files.Get "badge.svg.b64" | quote }}
+  authoritah.svg: {{ .Files.Get "authoritah.svg.b64" | quote }}
+{{- end }}

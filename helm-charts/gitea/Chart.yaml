@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gitea
+description: Gitea - Git service with OAuth2, custom templates, and Actions
+type: application
+version: 1.0.0
+appVersion: "latest-rootless"

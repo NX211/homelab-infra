@@ -1,0 +1,19 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: gitea
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: gitea
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`{{ .Values.domain }}`)
+    kind: Rule
+    services:
+    - name: gitea-http
+      port: {{ .Values.service.httpPort }}
+  tls:
+    certResolver: dnschallenge

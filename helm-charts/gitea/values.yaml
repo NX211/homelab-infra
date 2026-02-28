@@ -1,0 +1,139 @@
+# Gitea Configuration
+
+image:
+  repository: gitea/gitea
+  tag: "latest-rootless"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# Node selector - deploy to redtalon
+nodeSelector:
+  kubernetes.io/hostname: redtalon
+
+# Service configuration
+service:
+  type: ClusterIP
+  httpPort: 3000
+  sshPort: 22
+
+# Storage
+storage:
+  data:
+    size: "20Gi"
+    storageClass: "local-path"
+  lfs:
+    size: "50Gi"
+    storageClass: "local-path"
+
+# Resources
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# Domain configuration
+domain: "authoritah.io"
+
+# Database configuration (PostgreSQL)
+database:
+  type: postgres
+  host: "postgres-rw:5432"
+  sslMode: disable
+
+# Redis configuration
+redis:
+  host: "redis:6379"
+
+# Email configuration (from secrets)
+email:
+  enabled: true
+  protocol: smtps
+
+# Gitea configuration
+gitea:
+  runMode: prod
+  appName: "Authoritah"
+
+  # Repository settings
+  repository:
+    defaultPrivate: true
+    enablePushCreateUser: true
+    uploadAllowedTypes: ".zip,text/plain,image/*"
+    releaseAllowedTypes: ".zip,text/plain,image/*"
+    uploadFileMaxSize: 5
+    uploadMaxFiles: 10
+
+  # Server settings
+  server:
+    protocol: http
+    sshPort: 2222
+    lfsStartServer: true
+
+  # Security settings
+  security:
+    reverseProxyTrustedProxies: "*"
+    installLock: true
+    disableGitHooks: false
+    enableLoginStatusCookie: true
+    enableWebauthn: false
+
+  # Session settings (Redis)
+  session:
+    provider: redis
+    cookieSecure: false
+
+  # Cache settings (Redis)
+  cache:
+    enabled: true
+    adapter: redis
+
+  # OAuth2 settings
+  oauth2Client:
+    enableAutoRegistration: true
+    username: preferred_username
+    accountLinking: login
+
+  # Service settings
+  service:
+    disableRegistration: true
+    allowOnlyExternalRegistration: true
+    showRegistrationButton: false
+    requireSigninView: false
+    defaultAllowCreateOrganization: false
+    enableBasicAuthentication: false
+
+  # OpenID settings
+  openid:
+    enableOpenidSignin: false
+    enableOpenidSignup: false
+
+  # LFS settings
+  lfs:
+    storageType: local
+    path: /data/lfs
+
+  # Actions settings
+  actions:
+    enabled: true
+    defaultActionsUrl: github
+
+  # UI settings
+  other:
+    showFooterPoweredBy: false
+
+# Ingress configuration
+ingress:
+  enabled: true
+  certResolver: dnschallenge
+  middleware: default-headers
+
+# Timezone
+timezone: "America/Chicago"
+
+# Custom templates (will be mounted via ConfigMaps)
+customTemplates:
+  enabled: true

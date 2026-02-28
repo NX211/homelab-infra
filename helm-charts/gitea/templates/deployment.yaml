@@ -1,0 +1,336 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitea
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: gitea
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gitea
+  template:
+    metadata:
+      labels:
+        app: gitea
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      initContainers:
+      # Fix permissions on PVCs
+      - name: fix-permissions
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          chown -R 1000:1000 /data
+          chmod -R 755 /data
+          mkdir -p /data/gitea/conf /data/gitea/home /data/gitea/log
+          mkdir -p /data/gitea/templates/custom /data/gitea/templates/user/auth
+          mkdir -p /data/gitea/public/assets/img /data/gitea/public/assets/img/auth
+          chown -R 1000:1000 /data
+          chmod -R 755 /data
+          chown -R 1000:1000 /data-lfs
+          chmod -R 755 /data-lfs
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: lfs
+          mountPath: /data-lfs
+        securityContext:
+          runAsUser: 0
+
+      {{- if .Values.customTemplates.enabled }}
+      # Copy custom templates and assets
+      - name: copy-custom-files
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          # Copy templates
+          cp /custom-templates/home.tmpl /data/gitea/templates/home.tmpl
+          cp /custom-templates/header.tmpl /data/gitea/templates/custom/header.tmpl
+          cp /custom-templates/signin_navbar.tmpl /data/gitea/templates/user/auth/signin_navbar.tmpl
+
+          # Copy logos
+          cp /custom-assets/logo.png /data/gitea/public/assets/img/logo.png
+          cp /custom-assets/logo.svg /data/gitea/public/assets/img/logo.svg
+          cp /custom-assets/favicon.png /data/gitea/public/assets/img/favicon.png
+          cp /custom-assets/favicon.svg /data/gitea/public/assets/img/favicon.svg
+          cp /custom-assets/authoritah.svg /data/gitea/public/assets/img/auth/authoritah.svg
+
+          # Set permissions
+          chown -R 1000:1000 /data/gitea/templates /data/gitea/public
+          chmod -R 644 /data/gitea/templates/* /data/gitea/public/assets/img/*
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: custom-templates
+          mountPath: /custom-templates
+        - name: custom-assets
+          mountPath: /custom-assets
+        securityContext:
+          runAsUser: 0
+      {{- end }}
+
+      containers:
+      - name: gitea
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+
+        env:
+        # Basic configuration
+        - name: GITEA__DEFAULT__RUN_MODE
+          value: {{ .Values.gitea.runMode | quote }}
+        - name: GITEA_CUSTOM
+          value: "/data/gitea"
+        - name: GITEA__server__APP_DATA_PATH
+          value: "/data/gitea"
+
+        # Server settings
+        - name: GITEA__server__PROTOCOL
+          value: {{ .Values.gitea.server.protocol | quote }}
+        - name: GITEA__server__DOMAIN
+          value: {{ .Values.domain | quote }}
+        - name: GITEA__server__ROOT_URL
+          value: "https://{{ .Values.domain }}/"
+        - name: GITEA__server__HTTP_ADDR
+          value: "0.0.0.0"
+        - name: GITEA__server__HTTP_PORT
+          value: {{ .Values.service.httpPort | quote }}
+        - name: GITEA__server__SSH_DOMAIN
+          value: {{ .Values.domain | quote }}
+        - name: GITEA__server__SSH_PORT
+          value: {{ .Values.gitea.server.sshPort | quote }}
+        - name: GITEA__server__LFS_START_SERVER
+          value: {{ .Values.gitea.server.lfsStartServer | quote }}
+
+        # LFS settings
+        - name: GITEA__lfs__STORAGE_TYPE
+          value: {{ .Values.gitea.lfs.storageType | quote }}
+        - name: GITEA__lfs__PATH
+          value: {{ .Values.gitea.lfs.path | quote }}
+        - name: GITEA__server__LFS_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: gitea-security
+              key: value
+
+        # Repository settings
+        - name: GITEA__repository__DEFAULT_PRIVATE
+          value: {{ .Values.gitea.repository.defaultPrivate | quote }}
+        - name: GITEA__repository__ENABLE_PUSH_CREATE_USER
+          value: {{ .Values.gitea.repository.enablePushCreateUser | quote }}
+        - name: GITEA__repository.upload__ALLOWED_TYPES
+          value: {{ .Values.gitea.repository.uploadAllowedTypes | quote }}
+        - name: GITEA__repository.release__ALLOWED_TYPES
+          value: {{ .Values.gitea.repository.releaseAllowedTypes | quote }}
+        - name: GITEA__repository.upload__FILE_MAX_SIZE
+          value: {{ .Values.gitea.repository.uploadFileMaxSize | quote }}
+        - name: GITEA__repository.upload__MAX_FILES
+          value: {{ .Values.gitea.repository.uploadMaxFiles | quote }}
+
+        # Security settings
+        - name: GITEA__security__REVERSE_PROXY_TRUSTED_PROXIES
+          value: {{ .Values.gitea.security.reverseProxyTrustedProxies | quote }}
+        - name: GITEA__security__INSTALL_LOCK
+          value: {{ .Values.gitea.security.installLock | quote }}
+        - name: GITEA__security__DISABLE_GIT_HOOKS
+          value: {{ .Values.gitea.security.disableGitHooks | quote }}
+        - name: GITEA__security__ENABLE_LOGIN_STATUS_COOKIE
+          value: {{ .Values.gitea.security.enableLoginStatusCookie | quote }}
+        - name: GITEA__security__ENABLE_WEBAUTHN
+          value: {{ .Values.gitea.security.enableWebauthn | quote }}
+        - name: GITEA__security__SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gitea-security
+              key: value
+        - name: GITEA__security__INTERNAL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gitea-security
+              key: value
+
+        # Database settings
+        - name: GITEA__database__DB_TYPE
+          value: {{ .Values.database.type | quote }}
+        - name: GITEA__database__HOST
+          value: {{ .Values.database.host | quote }}
+        - name: GITEA__database__SSL_MODE
+          value: {{ .Values.database.sslMode | quote }}
+        - name: GITEA__database__NAME
+          valueFrom:
+            secretKeyRef:
+              name: gitea-database
+              key: value
+        - name: GITEA__database__USER
+          valueFrom:
+            secretKeyRef:
+              name: gitea-database
+              key: value
+        - name: GITEA__database__PASSWD
+          valueFrom:
+            secretKeyRef:
+              name: gitea-database
+              key: value
+
+        # Session settings (Redis)
+        - name: GITEA__session__PROVIDER
+          value: {{ .Values.gitea.session.provider | quote }}
+        - name: GITEA__session__PROVIDER_CONFIG
+          value: "network=tcp,addr={{ .Values.redis.host }},db=0,pool_size=100,idle_timeout=180"
+        - name: GITEA__session__COOKIE_SECURE
+          value: {{ .Values.gitea.session.cookieSecure | quote }}
+        - name: GITEA__session__COOKIE_NAME
+          valueFrom:
+            secretKeyRef:
+              name: gitea-security
+              key: value
+
+        # Cache settings (Redis)
+        - name: GITEA__cache__ENABLED
+          value: {{ .Values.gitea.cache.enabled | quote }}
+        - name: GITEA__cache__ADAPTER
+          value: {{ .Values.gitea.cache.adapter | quote }}
+        - name: GITEA__cache__HOST
+          value: "network=tcp,addr={{ .Values.redis.host }},db=0,pool_size=100,idle_timeout=180"
+
+        # Email settings
+        {{- if .Values.email.enabled }}
+        - name: GITEA__mailer__ENABLED
+          value: "true"
+        - name: GITEA__mailer__PROTOCOL
+          value: {{ .Values.email.protocol | quote }}
+        - name: GITEA__mailer__SMTP_ADDR
+          valueFrom:
+            secretKeyRef:
+              name: gitea-email
+              key: value
+        - name: GITEA__mailer__USER
+          valueFrom:
+            secretKeyRef:
+              name: gitea-email
+              key: value
+        - name: GITEA__mailer__PASSWD
+          valueFrom:
+            secretKeyRef:
+              name: gitea-email
+              key: value
+        - name: GITEA__mailer__FROM
+          valueFrom:
+            secretKeyRef:
+              name: gitea-email
+              key: value
+        {{- end }}
+
+        # OAuth2 settings
+        - name: GITEA__oauth2_client__ENABLE_AUTO_REGISTRATION
+          value: {{ .Values.gitea.oauth2Client.enableAutoRegistration | quote }}
+        - name: GITEA__oauth2_client__USERNAME
+          value: {{ .Values.gitea.oauth2Client.username | quote }}
+        - name: GITEA__oauth2_client__ACCOUNT_LINKING
+          value: {{ .Values.gitea.oauth2Client.accountLinking | quote }}
+
+        # Service settings
+        - name: GITEA__service__DISABLE_REGISTRATION
+          value: {{ .Values.gitea.service.disableRegistration | quote }}
+        - name: GITEA__service__ALLOW_ONLY_EXTERNAL_REGISTRATION
+          value: {{ .Values.gitea.service.allowOnlyExternalRegistration | quote }}
+        - name: GITEA__service__SHOW_REGISTRATION_BUTTON
+          value: {{ .Values.gitea.service.showRegistrationButton | quote }}
+        - name: GITEA__service__REQUIRE_SIGNIN_VIEW
+          value: {{ .Values.gitea.service.requireSigninView | quote }}
+        - name: GITEA__service__DEFAULT_ALLOW_CREATE_ORGANIZATION
+          value: {{ .Values.gitea.service.defaultAllowCreateOrganization | quote }}
+        - name: GITEA__service__ENABLE_BASIC_AUTHENTICATION
+          value: {{ .Values.gitea.service.enableBasicAuthentication | quote }}
+
+        # OpenID settings
+        - name: GITEA__openid__ENABLE_OPENID_SIGNIN
+          value: {{ .Values.gitea.openid.enableOpenidSignin | quote }}
+        - name: GITEA__openid__ENABLE_OPENID_SIGNUP
+          value: {{ .Values.gitea.openid.enableOpenidSignup | quote }}
+
+        # Actions settings
+        - name: GITEA__actions__ENABLED
+          value: {{ .Values.gitea.actions.enabled | quote }}
+        - name: GITEA__actions__DEFAULT_ACTIONS_URL
+          value: {{ .Values.gitea.actions.defaultActionsUrl | quote }}
+
+        # UI settings
+        - name: GITEA__other__SHOW_FOOTER_POWERED_BY
+          value: {{ .Values.gitea.other.showFooterPoweredBy | quote }}
+
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.httpPort }}
+          protocol: TCP
+        - name: ssh
+          containerPort: {{ .Values.service.sshPort }}
+          protocol: TCP
+          hostPort: {{ .Values.gitea.server.sshPort }}
+
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: lfs
+          mountPath: /data/lfs
+        - name: tmp
+          mountPath: /tmp
+
+        livenessProbe:
+          httpGet:
+            path: /api/healthz
+            port: http
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+
+        readinessProbe:
+          httpGet:
+            path: /api/healthz
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: gitea-data
+      - name: lfs
+        persistentVolumeClaim:
+          claimName: gitea-lfs
+      - name: tmp
+        emptyDir: {}
+      {{- if .Values.customTemplates.enabled }}
+      - name: custom-templates
+        configMap:
+          name: gitea-custom-templates
+      - name: custom-assets
+        configMap:
+          name: gitea-custom-assets
+      {{- end }}

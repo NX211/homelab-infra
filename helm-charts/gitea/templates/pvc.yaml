@@ -1,0 +1,30 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitea-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: gitea
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.storage.data.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.data.size }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitea-lfs
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: gitea
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.storage.lfs.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.lfs.size }}

@@ -1,0 +1,34 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea-http
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: gitea
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: {{ .Values.service.httpPort }}
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: gitea
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitea-ssh
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: gitea
+spec:
+  type: ClusterIP
+  ports:
+  - name: ssh
+    port: {{ .Values.service.sshPort }}
+    targetPort: ssh
+    protocol: TCP
+  selector:
+    app: gitea
