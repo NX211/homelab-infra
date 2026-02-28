@@ -10,7 +10,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/NX211/homelab-infra.git
-    targetRevision: HEAD
+    targetRevision: main
     path: helm-charts/postgresql
   destination:
     server: https://kubernetes.default.svc
