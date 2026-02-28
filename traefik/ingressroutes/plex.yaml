@@ -10,7 +10,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-  - match: Host(`plex.authoritah.com`)
+  - match: Host(`authoritah.tv`)
     kind: Rule
     services:
     - name: plex
