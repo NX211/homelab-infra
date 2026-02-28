@@ -11,9 +11,7 @@ spec:
   source:
     repoURL: https://github.com/nx211/homelab-infra.git
     targetRevision: main
-    path: helm-charts/authelia
-    helm:
-      releaseName: authelia
+    path: authelia-manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: default
