@@ -2,7 +2,7 @@
 
 image:
   repository: php
-  tag: "8.3-apache"
+  tag: "8.5-apache"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
