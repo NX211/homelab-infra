@@ -1,0 +1,39 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tailscale-operator
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://pkgs.tailscale.com/helmcharts
+    chart: tailscale-operator
+    targetRevision: 1.80.0
+    helm:
+      valuesObject:
+        operatorConfig:
+          hostname: homelab-operator
+        # OAuth credentials come from the pre-existing operator-oauth secret
+        # created by ESO (see external-secrets-operator/examples/tailscale-operator-secret.yaml)
+        # Leave these empty so the chart does not overwrite the ESO-managed secret
+        oauth:
+          clientId: ""
+          clientSecret: ""
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tailscale
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
