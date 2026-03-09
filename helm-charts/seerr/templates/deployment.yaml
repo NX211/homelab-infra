@@ -1,0 +1,64 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "seerr.fullname" . }}
+  labels:
+    {{- include "seerr.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "seerr.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "seerr.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /config
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      containers:
+      - name: seerr
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: PUID
+          value: {{ .Values.env.PUID | quote }}
+        - name: PGID
+          value: {{ .Values.env.PGID | quote }}
+        {{- if .Values.externalSecrets.enabled }}
+        envFrom:
+        - secretRef:
+            name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "seerr.fullname" .)) }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "seerr.fullname" . }}-config

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: seerr
+description: Seerr - Media discovery and request management
+type: application
+version: 1.0.0
+appVersion: "1.33.2"
+
+keywords:
+  - seerr
+  - media
+  - requests
+
+maintainers:
+  - name: Homelab Admin

@@ -1,0 +1,29 @@
+---
+# Exposes Traefik on the Tailscale tailnet via the Tailscale Kubernetes Operator.
+# The operator provisions a device named "staging-traefik" on the tailnet and
+# assigns it a stable 100.x.x.x IP. Add that IP as an A record in Tailscale admin:
+#   staging.clientapp.com  A  <tailscale-ip>
+#
+# Retrieve the assigned IP after apply:
+#   kubectl get svc traefik-tailscale -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik-tailscale
+  namespace: default
+  annotations:
+    tailscale.com/hostname: "staging-traefik"
+spec:
+  type: LoadBalancer
+  loadBalancerClass: tailscale
+  selector:
+    app.kubernetes.io/name: traefik
+  ports:
+    - name: web
+      port: 80
+      targetPort: web
+      protocol: TCP
+    - name: websecure
+      port: 443
+      targetPort: websecure
+      protocol: TCP

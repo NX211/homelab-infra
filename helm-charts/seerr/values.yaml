@@ -1,0 +1,52 @@
+# Overseerr Helm Chart Values
+
+# Image configuration
+image:
+  repository: lscr.io/linuxserver/overseerr
+  tag: "1.33.2"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 5055
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: request.authoritah.tv
+  certResolver: dnschallenge
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 1Gi
+    storageClass: local-path
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"
+  PGID: "8675309"
+
+# External Secrets (optional - if using ESO)
+externalSecrets:
+  enabled: false
+  # secretName: overseerr-secrets
+  # refreshInterval: 1h
+  # secrets:
+  #   - name: OVERSEERR_API_KEY
+  #     key: overseerr-api-key
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
