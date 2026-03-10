@@ -22,17 +22,6 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      initContainers:
-      - name: fix-permissions
-        image: busybox
-        command:
-        - sh
-        - -c
-        - |
-          chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /app/config
-        volumeMounts:
-        - name: config
-          mountPath: /app/config
       containers:
       - name: seerr
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
