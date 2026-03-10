@@ -108,8 +108,14 @@ spec:
           {{- toYaml .Values.resources | nindent 10 }}
       volumes:
       - name: config
+        {{- if .Values.persistence.config.hostPath }}
+        hostPath:
+          path: {{ .Values.persistence.config.hostPath }}
+          type: DirectoryOrCreate
+        {{- else }}
         persistentVolumeClaim:
           claimName: {{ include "plex.fullname" . }}-config
+        {{- end }}
       {{- if .Values.persistence.media.enabled }}
       - name: movies
         hostPath:
