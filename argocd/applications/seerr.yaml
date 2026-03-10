@@ -5,7 +5,7 @@ metadata:
   name: seerr
   namespace: argocd
   annotations:
-    argocd-image-updater.argoproj.io/image-list: seerr=lscr.io/linuxserver/overseerr
+    argocd-image-updater.argoproj.io/image-list: seerr=ghcr.io/seerr-team/seerr
     argocd-image-updater.argoproj.io/seerr.update-strategy: semver
     argocd-image-updater.argoproj.io/seerr.helm.image-name: image.repository
     argocd-image-updater.argoproj.io/seerr.helm.image-tag: image.tag

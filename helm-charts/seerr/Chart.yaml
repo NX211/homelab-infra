@@ -3,7 +3,7 @@ name: seerr
 description: Seerr - Media discovery and request management
 type: application
 version: 1.0.0
-appVersion: "1.33.2"
+appVersion: "v3.1.0"
 
 keywords:
   - seerr

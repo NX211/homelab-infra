@@ -2,8 +2,8 @@
 
 # Image configuration
 image:
-  repository: lscr.io/linuxserver/overseerr
-  tag: "1.33.2"
+  repository: ghcr.io/seerr-team/seerr
+  tag: "v3.1.0"
   pullPolicy: IfNotPresent
 
 # Service configuration
