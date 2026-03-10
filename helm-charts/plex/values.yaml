@@ -1,0 +1,64 @@
+# Plex Helm Chart Values
+
+# Image configuration
+image:
+  repository: lscr.io/linuxserver/plex
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 32400
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 50Gi
+    storageClass: local-path
+
+  # Media directories (hostPath, read-only)
+  media:
+    enabled: true
+    movies:
+      hostPath: /blacktalon/media/movies
+    moviesUhd:
+      hostPath: /blacktalon/media/movies-uhd
+    tv:
+      hostPath: /blacktalon/media/tv
+    tvUhd:
+      hostPath: /blacktalon/media/tv-uhd
+    kids:
+      hostPath: /blacktalon/media/kids
+    anime:
+      hostPath: /blacktalon/media/anime
+    music:
+      hostPath: /blacktalon/media/music
+    audiobooks:
+      hostPath: /blacktalon/media/audiobooks
+    preroll:
+      hostPath: /blacktalon/media/preroll
+
+# Hardware transcoding
+hwTranscode:
+  enabled: true
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"
+  PGID: "8675309"
+  VERSION: docker
+
+# Resource limits
+resources:
+  requests:
+    cpu: 1000m
+    memory: 2Gi
+  limits:
+    cpu: 4000m
+    memory: 8Gi

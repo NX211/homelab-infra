@@ -1,0 +1,156 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "plex.fullname" . }}
+  labels:
+    {{- include "plex.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "plex.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "plex.selectorLabels" . | nindent 8 }}
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /config
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      containers:
+      - name: plex
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- if .Values.hwTranscode.enabled }}
+        securityContext:
+          privileged: true
+        {{- end }}
+        ports:
+        - name: plex
+          containerPort: 32400
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: PUID
+          value: {{ .Values.env.PUID | quote }}
+        - name: PGID
+          value: {{ .Values.env.PGID | quote }}
+        - name: VERSION
+          value: {{ .Values.env.VERSION | quote }}
+        livenessProbe:
+          httpGet:
+            path: /identity
+            port: 32400
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /identity
+            port: 32400
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        {{- if .Values.persistence.media.enabled }}
+        - name: movies
+          mountPath: /movies
+          readOnly: true
+        - name: movies-uhd
+          mountPath: /movies-uhd
+          readOnly: true
+        - name: tv
+          mountPath: /tv
+          readOnly: true
+        - name: tv-uhd
+          mountPath: /tv-uhd
+          readOnly: true
+        - name: kids
+          mountPath: /kids
+          readOnly: true
+        - name: anime
+          mountPath: /anime
+          readOnly: true
+        - name: music
+          mountPath: /music
+          readOnly: true
+        - name: audiobooks
+          mountPath: /audiobooks
+          readOnly: true
+        - name: preroll
+          mountPath: /pre-roll
+          readOnly: true
+        {{- end }}
+        {{- if .Values.hwTranscode.enabled }}
+        - name: dri
+          mountPath: /dev/dri
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "plex.fullname" . }}-config
+      {{- if .Values.persistence.media.enabled }}
+      - name: movies
+        hostPath:
+          path: {{ .Values.persistence.media.movies.hostPath }}
+          type: Directory
+      - name: movies-uhd
+        hostPath:
+          path: {{ .Values.persistence.media.moviesUhd.hostPath }}
+          type: Directory
+      - name: tv
+        hostPath:
+          path: {{ .Values.persistence.media.tv.hostPath }}
+          type: Directory
+      - name: tv-uhd
+        hostPath:
+          path: {{ .Values.persistence.media.tvUhd.hostPath }}
+          type: Directory
+      - name: kids
+        hostPath:
+          path: {{ .Values.persistence.media.kids.hostPath }}
+          type: Directory
+      - name: anime
+        hostPath:
+          path: {{ .Values.persistence.media.anime.hostPath }}
+          type: Directory
+      - name: music
+        hostPath:
+          path: {{ .Values.persistence.media.music.hostPath }}
+          type: Directory
+      - name: audiobooks
+        hostPath:
+          path: {{ .Values.persistence.media.audiobooks.hostPath }}
+          type: Directory
+      - name: preroll
+        hostPath:
+          path: {{ .Values.persistence.media.preroll.hostPath }}
+          type: Directory
+      {{- end }}
+      {{- if .Values.hwTranscode.enabled }}
+      - name: dri
+        hostPath:
+          path: /dev/dri
+          type: Directory
+      {{- end }}
