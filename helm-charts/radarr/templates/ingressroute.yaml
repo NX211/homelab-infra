@@ -1,0 +1,20 @@
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "radarr.fullname" . }}
+  labels:
+    {{- include "radarr.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`{{ .Values.ingress.host }}`)
+    kind: Rule
+    services:
+    - name: {{ include "radarr.fullname" . }}
+      port: {{ .Values.service.port }}
+  tls:
+    certResolver: {{ .Values.ingress.certResolver }}
+{{- end }}

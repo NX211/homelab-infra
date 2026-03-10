@@ -1,0 +1,60 @@
+# Radarr Helm Chart Values
+
+# Image configuration
+image:
+  repository: lscr.io/linuxserver/radarr
+  tag: "5.16.3"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 7878
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: radarr.authoritah.com
+  certResolver: letsencrypt
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+
+  # Media directories (hostPath for large libraries)
+  media:
+    enabled: true
+    movies:
+      hostPath: /blacktalon/media/movies
+    downloads:
+      hostPath: /blacktalon/media/downloads/movies
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"  # media user
+  PGID: "8675309"  # media group
+
+# External Secrets (optional - if using ESO)
+externalSecrets:
+  enabled: false
+  # secretName: radarr-secrets
+  # refreshInterval: 1h
+  # secrets:
+  #   - name: RADARR_API_KEY
+  #     key: radarr-api-key
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

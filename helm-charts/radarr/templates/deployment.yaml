@@ -1,0 +1,80 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "radarr.fullname" . }}
+  labels:
+    {{- include "radarr.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "radarr.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "radarr.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /config
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      containers:
+      - name: radarr
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: PUID
+          value: {{ .Values.env.PUID | quote }}
+        - name: PGID
+          value: {{ .Values.env.PGID | quote }}
+        {{- if .Values.externalSecrets.enabled }}
+        envFrom:
+        - secretRef:
+            name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "radarr.fullname" .)) }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        {{- if .Values.persistence.media.enabled }}
+        - name: movies
+          mountPath: /movies
+        - name: downloads
+          mountPath: /downloads
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "radarr.fullname" . }}-config
+      {{- if .Values.persistence.media.enabled }}
+      - name: movies
+        hostPath:
+          path: {{ .Values.persistence.media.movies.hostPath }}
+          type: Directory
+      - name: downloads
+        hostPath:
+          path: {{ .Values.persistence.media.downloads.hostPath }}
+          type: Directory
+      {{- end }}
