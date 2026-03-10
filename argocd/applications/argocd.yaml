@@ -16,6 +16,11 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /metadata/labels/argocd.argoproj.io~1instance
   syncPolicy:
     automated:
       prune: true
