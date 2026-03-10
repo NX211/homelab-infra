@@ -22,6 +22,19 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      initContainers:
+      - name: fix-permissions
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        command:
+        - sh
+        - -c
+        - |
+          mkdir -p /app/config/logs && chmod -R 777 /app/config
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
       containers:
       - name: seerr
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
