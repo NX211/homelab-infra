@@ -29,10 +29,10 @@ spec:
         - sh
         - -c
         - |
-          chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /config
+          chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /app/config
         volumeMounts:
         - name: config
-          mountPath: /config
+          mountPath: /app/config
       containers:
       - name: seerr
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -44,10 +44,6 @@ spec:
         env:
         - name: TZ
           value: {{ .Values.env.TZ | quote }}
-        - name: PUID
-          value: {{ .Values.env.PUID | quote }}
-        - name: PGID
-          value: {{ .Values.env.PGID | quote }}
         {{- if .Values.externalSecrets.enabled }}
         envFrom:
         - secretRef:
@@ -55,7 +51,7 @@ spec:
         {{- end }}
         volumeMounts:
         - name: config
-          mountPath: /config
+          mountPath: /app/config
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
       volumes:

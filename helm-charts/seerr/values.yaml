@@ -30,8 +30,6 @@ persistence:
 # Environment variables
 env:
   TZ: America/New_York
-  PUID: "8675309"
-  PGID: "8675309"
 
 # External Secrets (optional - if using ESO)
 externalSecrets:
