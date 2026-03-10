@@ -12,6 +12,11 @@ spec:
   routes:
   - match: Host(`{{ .Values.ingress.host }}`)
     kind: Rule
+    middlewares:
+    - name: authelia-forwardauth
+      namespace: default
+    - name: default-headers
+      namespace: default
     services:
     - name: {{ include "radarr.fullname" . }}
       port: {{ .Values.service.port }}
