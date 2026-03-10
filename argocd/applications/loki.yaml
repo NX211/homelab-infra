@@ -80,6 +80,14 @@ spec:
             grafanaAgent:
               installOperator: false
 
+        # Disable simple scalable components (conflicts with SingleBinary mode)
+        read:
+          replicas: 0
+        write:
+          replicas: 0
+        backend:
+          replicas: 0
+
         # Service configuration
         gateway:
           enabled: false
