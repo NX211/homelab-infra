@@ -14,7 +14,7 @@ service:
 ingress:
   enabled: true
   host: sonarr.authoritah.com
-  certResolver: letsencrypt
+  certResolver: dnschallenge
 
 # Node selection
 nodeSelector:
