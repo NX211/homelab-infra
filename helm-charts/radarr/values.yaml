@@ -32,8 +32,16 @@ persistence:
     enabled: true
     movies:
       hostPath: /blacktalon/media/movies
-    downloads:
+      mountPath: /media/movies
+    kids:
+      hostPath: /blacktalon/media/kids
+      mountPath: /media/kids
+    downloadsMovies:
       hostPath: /blacktalon/media/downloads/movies
+      mountPath: /media/downloads/movies
+    downloadsKids:
+      hostPath: /blacktalon/media/downloads/kids
+      mountPath: /media/downloads/kids
 
 # Environment variables
 env:

@@ -58,9 +58,13 @@ spec:
           mountPath: /config
         {{- if .Values.persistence.media.enabled }}
         - name: movies
-          mountPath: /movies
-        - name: downloads
-          mountPath: /downloads
+          mountPath: {{ .Values.persistence.media.movies.mountPath }}
+        - name: kids
+          mountPath: {{ .Values.persistence.media.kids.mountPath }}
+        - name: downloads-movies
+          mountPath: {{ .Values.persistence.media.downloadsMovies.mountPath }}
+        - name: downloads-kids
+          mountPath: {{ .Values.persistence.media.downloadsKids.mountPath }}
         {{- end }}
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
@@ -73,8 +77,16 @@ spec:
         hostPath:
           path: {{ .Values.persistence.media.movies.hostPath }}
           type: Directory
-      - name: downloads
+      - name: kids
         hostPath:
-          path: {{ .Values.persistence.media.downloads.hostPath }}
+          path: {{ .Values.persistence.media.kids.hostPath }}
+          type: Directory
+      - name: downloads-movies
+        hostPath:
+          path: {{ .Values.persistence.media.downloadsMovies.hostPath }}
+          type: Directory
+      - name: downloads-kids
+        hostPath:
+          path: {{ .Values.persistence.media.downloadsKids.hostPath }}
           type: Directory
       {{- end }}

@@ -59,9 +59,13 @@ spec:
           mountPath: /config
         {{- if .Values.persistence.media.enabled }}
         - name: tv
-          mountPath: /tv
-        - name: downloads
-          mountPath: /downloads
+          mountPath: {{ .Values.persistence.media.tv.mountPath }}
+        - name: kids
+          mountPath: {{ .Values.persistence.media.kids.mountPath }}
+        - name: downloads-tv
+          mountPath: {{ .Values.persistence.media.downloadsTv.mountPath }}
+        - name: downloads-kids
+          mountPath: {{ .Values.persistence.media.downloadsKids.mountPath }}
         {{- end }}
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
@@ -74,8 +78,16 @@ spec:
         hostPath:
           path: {{ .Values.persistence.media.tv.hostPath }}
           type: Directory
-      - name: downloads
+      - name: kids
         hostPath:
-          path: {{ .Values.persistence.media.downloads.hostPath }}
+          path: {{ .Values.persistence.media.kids.hostPath }}
+          type: Directory
+      - name: downloads-tv
+        hostPath:
+          path: {{ .Values.persistence.media.downloadsTv.hostPath }}
+          type: Directory
+      - name: downloads-kids
+        hostPath:
+          path: {{ .Values.persistence.media.downloadsKids.hostPath }}
           type: Directory
       {{- end }}
