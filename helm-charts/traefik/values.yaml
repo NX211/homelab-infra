@@ -38,6 +38,10 @@ traefik:
         secretKeyRef:
           name: traefik-secrets
           key: dreamhost-token
+    - name: DREAMHOST_PROPAGATION_TIMEOUT
+      value: "300"
+    - name: DREAMHOST_POLLING_INTERVAL
+      value: "30"
 
   # Let's Encrypt ACME
   additionalArguments:
@@ -45,6 +49,7 @@ traefik:
     - "--certificatesresolvers.dnschallenge.acme.storage=/data/acme.json"
     - "--certificatesresolvers.dnschallenge.acme.dnschallenge=true"
     - "--certificatesresolvers.dnschallenge.acme.dnschallenge.provider=dreamhost"
+    - "--certificatesresolvers.dnschallenge.acme.dnschallenge.delayBeforeCheck=30"
 
   # Logs
   logs:
