@@ -1,0 +1,74 @@
+# Prowlarr Helm Chart Values
+
+# Image configuration
+image:
+  repository: ghcr.io/linuxserver/prowlarr
+  tag: "develop"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 9696
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: prowlarr.authoritah.com
+  certResolver: dnschallenge
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 2Gi
+    storageClass: local-path
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"  # media user
+  PGID: "8675309"  # media group
+
+# FlareSolverr sidecar
+flaresolverr:
+  enabled: true
+  image:
+    repository: ghcr.io/flaresolverr/flaresolverr
+    tag: "latest"
+    pullPolicy: Always
+  service:
+    port: 8191
+  env:
+    BROWSER_TIMEOUT: "60000"
+    LOG_LEVEL: "info"
+    LOG_HTML: "false"
+    CAPTCHA_SOLVER: "none"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+# External Secrets (optional - if using ESO)
+externalSecrets:
+  enabled: false
+  # secretName: prowlarr-secrets
+  # refreshInterval: 1h
+  # secrets:
+  #   - name: PROWLARR_API_KEY
+  #     key: prowlarr-api-key
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi

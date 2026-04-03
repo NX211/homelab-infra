@@ -1,0 +1,15 @@
+apiVersion: v2
+name: prowlarr
+description: Prowlarr - Indexer Manager/Proxy for PVR apps
+type: application
+version: 1.0.0
+appVersion: "develop"
+
+keywords:
+  - prowlarr
+  - indexer
+  - media
+  - arr
+
+maintainers:
+  - name: Homelab Admin

@@ -1,0 +1,65 @@
+---
+{{- if .Values.flaresolverr.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "prowlarr.fullname" . }}-flaresolverr
+  labels:
+    {{- include "prowlarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: flaresolverr
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "prowlarr.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: flaresolverr
+  template:
+    metadata:
+      labels:
+        {{- include "prowlarr.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: flaresolverr
+    spec:
+      containers:
+      - name: flaresolverr
+        image: "{{ .Values.flaresolverr.image.repository }}:{{ .Values.flaresolverr.image.tag }}"
+        imagePullPolicy: {{ .Values.flaresolverr.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.flaresolverr.service.port }}
+          protocol: TCP
+        env:
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: {{ .Values.flaresolverr.service.port | quote }}
+        - name: BROWSER_TIMEOUT
+          value: {{ .Values.flaresolverr.env.BROWSER_TIMEOUT | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.flaresolverr.env.LOG_LEVEL | quote }}
+        - name: LOG_HTML
+          value: {{ .Values.flaresolverr.env.LOG_HTML | quote }}
+        - name: CAPTCHA_SOLVER
+          value: {{ .Values.flaresolverr.env.CAPTCHA_SOLVER | quote }}
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.flaresolverr.resources | nindent 10 }}
+{{- end }}
