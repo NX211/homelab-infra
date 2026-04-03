@@ -1,0 +1,15 @@
+apiVersion: v2
+name: listenarr
+description: Listenarr - Audiobook Manager for Usenet + BitTorrent
+type: application
+version: 1.0.0
+appVersion: "latest"
+
+keywords:
+  - listenarr
+  - audiobooks
+  - media
+  - arr
+
+maintainers:
+  - name: Homelab Admin

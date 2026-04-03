@@ -1,0 +1,85 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "listenarr.fullname" . }}
+  labels:
+    {{- include "listenarr.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "listenarr.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "listenarr.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: listenarr
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: LISTENARR_PUBLIC_URL
+          value: "https://{{ .Values.ingress.host }}"
+        - name: LISTENARR_LOG_LEVEL
+          value: {{ .Values.env.LISTENARR_LOG_LEVEL | quote }}
+        {{- if .Values.externalSecrets.enabled }}
+        envFrom:
+        - secretRef:
+            name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "listenarr.fullname" .)) }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+        {{- if .Values.persistence.media.enabled }}
+        - name: audiobooks
+          mountPath: {{ .Values.persistence.media.audiobooks.mountPath }}
+        - name: downloads-audiobooks
+          mountPath: {{ .Values.persistence.media.downloadsAudiobooks.mountPath }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "listenarr.fullname" . }}-config
+      {{- if .Values.persistence.media.enabled }}
+      - name: audiobooks
+        hostPath:
+          path: {{ .Values.persistence.media.audiobooks.hostPath }}
+          type: Directory
+      - name: downloads-audiobooks
+        hostPath:
+          path: {{ .Values.persistence.media.downloadsAudiobooks.hostPath }}
+          type: Directory
+      {{- end }}

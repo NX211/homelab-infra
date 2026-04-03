@@ -1,0 +1,61 @@
+# Listenarr Helm Chart Values
+
+# Image configuration
+image:
+  repository: ghcr.io/therobbiedavis/listenarr
+  tag: "latest"
+  pullPolicy: Always
+
+# Service configuration
+service:
+  port: 4545
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: listenarr.authoritah.com
+  certResolver: dnschallenge
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+
+  # Media directories (hostPath for large libraries)
+  media:
+    enabled: true
+    audiobooks:
+      hostPath: /blacktalon/media/audiobooks
+      mountPath: /media/audiobooks
+    downloadsAudiobooks:
+      hostPath: /blacktalon/media/downloads/audiobooks
+      mountPath: /media/downloads/audiobooks
+
+# Environment variables
+env:
+  TZ: America/New_York
+  LISTENARR_LOG_LEVEL: Information
+
+# External Secrets (optional - if using ESO)
+externalSecrets:
+  enabled: false
+  # secretName: listenarr-secrets
+  # refreshInterval: 1h
+  # secrets:
+  #   - name: LISTENARR_API_KEY
+  #     key: listenarr-api-key
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
