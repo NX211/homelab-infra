@@ -1,0 +1,62 @@
+# Sportarr Helm Chart Values
+
+# Image configuration
+image:
+  repository: sportarr/sportarr
+  tag: "latest"
+  pullPolicy: Always
+
+# Service configuration
+service:
+  port: 1867
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: sportarr.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+
+  # Media directories (hostPath for large libraries)
+  media:
+    enabled: true
+    sports:
+      hostPath: /blacktalon/media/sports
+      mountPath: /media/sports
+    downloadsSports:
+      hostPath: /blacktalon/media/downloads/sports
+      mountPath: /media/downloads/sports
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"  # media user
+  PGID: "8675309"  # media group
+
+# External Secrets (optional - if using ESO)
+externalSecrets:
+  enabled: false
+  # secretName: sportarr-secrets
+  # refreshInterval: 1h
+  # secrets:
+  #   - name: SPORTARR_API_KEY
+  #     key: sportarr-api-key
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

@@ -1,0 +1,15 @@
+apiVersion: v2
+name: sportarr
+description: Sportarr - Sports PVR for Usenet + BitTorrent
+type: application
+version: 1.0.0
+appVersion: "latest"
+
+keywords:
+  - sportarr
+  - sports
+  - media
+  - arr
+
+maintainers:
+  - name: Homelab Admin

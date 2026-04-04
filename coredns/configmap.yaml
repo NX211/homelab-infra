@@ -51,6 +51,7 @@ data:
     10.43.5.100 radarr.authoritah.com
     10.43.5.100 prowlarr.authoritah.com
     10.43.5.100 listenarr.authoritah.com
+    10.43.5.100 sportarr.authoritah.com
     10.43.5.100 sabnzbd.authoritah.com
     10.43.5.100 jellyfin.authoritah.com
     10.43.5.100 docs.authoritah.com
