@@ -1,0 +1,134 @@
+name: Staging Promote to Production
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  promote:
+    name: Promote to Production
+    if: >
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'staging')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Extract app info from PR
+        id: app-info
+        env:
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          # Extract app name from PR branch (staging/<app-name>)
+          APP_NAME="${PR_BRANCH#staging/}"
+
+          # Validate app name is safe (alphanumeric, hyphens, underscores only)
+          if ! echo "$APP_NAME" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+            echo "ERROR: Invalid app name extracted from branch: ${APP_NAME}"
+            exit 1
+          fi
+
+          VALUES_FILE="staging-apps/${APP_NAME}/values.yaml"
+          CHART_FILE="staging-apps/${APP_NAME}/Chart.yaml"
+
+          if [ ! -f "$VALUES_FILE" ]; then
+            echo "ERROR: Values file not found: ${VALUES_FILE}"
+            exit 1
+          fi
+
+          DIGEST=$(yq eval '.image.digest' "${VALUES_FILE}")
+          IMAGE=$(yq eval '.image.repository' "${VALUES_FILE}")
+          TAG=$(yq eval '.appVersion' "${CHART_FILE}" 2>/dev/null || echo "")
+
+          echo "app_name=${APP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          echo "App: ${APP_NAME}, Digest: ${DIGEST}, Tag: ${TAG}"
+
+      - name: Wait for ArgoCD sync and health
+        env:
+          ARGOCD_TOKEN: ${{ secrets.ARGOCD_API_TOKEN }}
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER_URL }}
+          APP_NAME: ${{ steps.app-info.outputs.app_name }}
+        run: |
+          ARGO_APP="staging-${APP_NAME}"
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+
+          echo "Waiting for ArgoCD app ${ARGO_APP} to be Healthy and Synced..."
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+
+            RESPONSE=$(curl -s -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
+              "${ARGOCD_SERVER}/api/v1/applications/${ARGO_APP}" 2>/dev/null || echo "{}")
+
+            HEALTH=$(echo "$RESPONSE" | jq -r '.status.health.status // "Unknown"')
+            SYNC=$(echo "$RESPONSE" | jq -r '.status.sync.status // "Unknown"')
+
+            echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: health=${HEALTH} sync=${SYNC}"
+
+            if [ "$HEALTH" = "Healthy" ] && [ "$SYNC" = "Synced" ]; then
+              echo "Staging app is Healthy and Synced!"
+              break
+            fi
+
+            if [ "$HEALTH" = "Degraded" ]; then
+              echo "ERROR: Staging app is Degraded. Aborting promotion."
+              exit 1
+            fi
+
+            sleep 20
+          done
+
+          if [ "$HEALTH" != "Healthy" ] || [ "$SYNC" != "Synced" ]; then
+            echo "ERROR: Timed out waiting for staging app to be Healthy and Synced"
+            exit 1
+          fi
+
+      - name: Generate GitHub App token for production dispatch
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+          owner: Corey-Alan-Consulting
+
+      - name: Promote to production
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_NAME: ${{ steps.app-info.outputs.app_name }}
+          DIGEST: ${{ steps.app-info.outputs.digest }}
+          IMAGE: ${{ steps.app-info.outputs.image }}
+          TAG: ${{ steps.app-info.outputs.tag }}
+        run: |
+          echo "Promoting ${APP_NAME} to production..."
+
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/Corey-Alan-Consulting/platform-infra/dispatches" \
+            -d "{
+              \"event_type\": \"image-push\",
+              \"client_payload\": {
+                \"app_name\": \"${APP_NAME}\",
+                \"image\": \"${IMAGE}\",
+                \"digest\": \"${DIGEST}\",
+                \"tag\": \"${TAG}\"
+              }
+            }")
+
+          if [ "$HTTP_STATUS" = "204" ]; then
+            echo "Production deployment dispatched successfully!"
+          else
+            echo "ERROR: Production dispatch failed with status ${HTTP_STATUS}"
+            exit 1
+          fi

@@ -1,0 +1,85 @@
+# JL Shaw Link - Staging Values
+# Build once, deploy many: same image as prod, different config
+
+replicaCount: 1
+
+image:
+  repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web
+  pullPolicy: IfNotPresent
+  digest: "sha256:e711289cb70dc2f300b32f92cd782685975f59c8bb1cbf995740cc5dcf64e7a9"  # Updated by CI/CD
+
+imagePullSecrets:
+  - name: gcr-pull-secret
+
+# GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
+gcrPullSecret:
+  bitwardenKey: ""  # Set to the Bitwarden secret ID containing the GCP SA JSON key
+
+service:
+  type: ClusterIP
+  port: 3000
+
+ingress:
+  enabled: true
+  host: staging.jlshawconsulting.com
+  clusterIssuer: letsencrypt-prod
+
+env:
+  - name: NODE_ENV
+    value: production
+  - name: NEXT_PUBLIC_APP_URL
+    value: https://staging.jlshawconsulting.com
+
+envFrom:
+  - secretRef:
+      name: jlshaw-staging-secrets
+
+# External Secrets (Bitwarden staging project)
+externalSecrets:
+  enabled: true
+  secretName: jlshaw-staging-secrets
+  refreshInterval: 1h
+  # Bitwarden project: staging-jlshaw (739fe866-2a64-45d5-8e34-b3ea011d2082)
+  secrets:
+    - name: DATABASE_URL
+      key: f4ff2759-26bf-429b-bf7e-b42200fce459
+    - name: NEXTAUTH_SECRET
+      key: 9d40c8bd-79a9-4c23-a005-b42200fda1e6
+    - name: NEXTAUTH_URL
+      key: 25bbb302-f511-448b-8ec9-b42200fdf4e0
+    - name: STRIPE_SECRET_KEY
+      key: e47cc9f5-7a34-4fec-8da0-b42200fe268c
+    - name: STRIPE_WEBHOOK_SECRET
+      key: da8c77a7-3f3d-4f45-9d05-b42200fe4295
+    - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+      key: a78b26a6-be33-40e2-a259-b42200fe5d3d
+    - name: INTERNAL_API_SECRET
+      key: e94a27a0-ae78-4cd6-87b5-b42200fe99f1
+    - name: CRON_SECRET
+      key: 6aa33b1f-6133-42da-aa73-b42200fec4c5
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 768Mi
+
+livenessProbe:
+  enabled: true
+  path: /
+  port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  path: /
+  port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3

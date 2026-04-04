@@ -1,0 +1,97 @@
+name: GitOps Staging Update
+on:
+  repository_dispatch:
+    types: [staging-image-push]
+
+concurrency:
+  group: gitops-staging-${{ github.event.client_payload.app_name }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update Staging Helm Values
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate payload
+        env:
+          APP_NAME: ${{ github.event.client_payload.app_name }}
+          DIGEST: ${{ github.event.client_payload.digest }}
+          IMAGE: ${{ github.event.client_payload.image }}
+        run: |
+          if [ -z "$APP_NAME" ] || [ -z "$DIGEST" ] || [ -z "$IMAGE" ]; then
+            echo "ERROR: Missing required fields in client_payload"
+            echo "  app_name=$APP_NAME"
+            echo "  digest=$DIGEST"
+            echo "  image=$IMAGE"
+            exit 1
+          fi
+
+          VALUES_FILE="staging-apps/${APP_NAME}/values.yaml"
+          if [ ! -f "$VALUES_FILE" ]; then
+            echo "ERROR: Staging chart not found at ${VALUES_FILE}"
+            echo "Known staging apps:"
+            ls staging-apps/
+            exit 1
+          fi
+
+          echo "Updating staging ${APP_NAME} to digest ${DIGEST}"
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Update image digest
+        env:
+          APP_NAME: ${{ github.event.client_payload.app_name }}
+          DIGEST: ${{ github.event.client_payload.digest }}
+          TAG: ${{ github.event.client_payload.tag }}
+        run: |
+          VALUES_FILE="staging-apps/${APP_NAME}/values.yaml"
+
+          yq eval ".image.digest = \"${DIGEST}\"" -i "${VALUES_FILE}"
+
+          if [[ "${TAG}" == v* ]]; then
+            CHART_FILE="staging-apps/${APP_NAME}/Chart.yaml"
+            if [ -f "$CHART_FILE" ]; then
+              yq eval ".appVersion = \"${TAG}\"" -i "${CHART_FILE}"
+              echo "Updated appVersion in ${CHART_FILE} to ${TAG}"
+            fi
+          fi
+
+          echo "Updated ${VALUES_FILE}:"
+          yq eval '.image' "${VALUES_FILE}"
+
+      - name: Helm lint
+        env:
+          APP_NAME: ${{ github.event.client_payload.app_name }}
+        run: |
+          helm lint "staging-apps/${APP_NAME}"
+
+      - name: Create PR
+        id: create-pr
+        env:
+          APP_NAME: ${{ github.event.client_payload.app_name }}
+          TAG: ${{ github.event.client_payload.tag }}
+          DIGEST: ${{ github.event.client_payload.digest }}
+          IMAGE: ${{ github.event.client_payload.image }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: staging/${{ github.event.client_payload.app_name }}
+          title: "staging: update ${{ github.event.client_payload.app_name }} image"
+          body: |
+            Automated staging image update
+
+            Once merged and ArgoCD confirms healthy, this will auto-promote to production.
+          labels: staging,auto-merge
+          delete-branch: true
+
+      - name: Enable auto-merge
+        if: steps.create-pr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
+        run: gh pr merge "$PR_NUMBER" --auto --squash

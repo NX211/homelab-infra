@@ -1,0 +1,58 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "jlshaw-staging.fullname" . }}-db-init
+  namespace: default
+  labels:
+    {{- include "jlshaw-staging.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: {{ include "jlshaw-staging.fullname" . }}-db-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: db-init
+        image: postgres:16-alpine
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "Waiting for PostgreSQL to be ready..."
+          until pg_isready -h postgres-rw -p 5432 -U postgres; do
+            echo "Waiting for postgres..."
+            sleep 2
+          done
+
+          echo "Creating jlshaw_staging database and user..."
+
+          # Create user if it doesn't exist
+          PGPASSWORD="$POSTGRES_PASSWORD" psql -h postgres-rw -U postgres -tc \
+            "SELECT 1 FROM pg_user WHERE usename = 'jlshaw_staging'" | grep -q 1 || \
+          PGPASSWORD="$POSTGRES_PASSWORD" psql -h postgres-rw -U postgres -c \
+            "CREATE USER jlshaw_staging WITH PASSWORD '$POSTGRES_PASSWORD';"
+
+          # Create database if it doesn't exist
+          PGPASSWORD="$POSTGRES_PASSWORD" psql -h postgres-rw -U postgres -tc \
+            "SELECT 1 FROM pg_database WHERE datname = 'jlshaw_staging'" | grep -q 1 || \
+          PGPASSWORD="$POSTGRES_PASSWORD" psql -h postgres-rw -U postgres -c \
+            "CREATE DATABASE jlshaw_staging OWNER jlshaw_staging;"
+
+          # Grant privileges
+          PGPASSWORD="$POSTGRES_PASSWORD" psql -h postgres-rw -U postgres -c \
+            "GRANT ALL PRIVILEGES ON DATABASE jlshaw_staging TO jlshaw_staging;"
+
+          echo "Database initialization complete!"
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-superuser
+              key: password
