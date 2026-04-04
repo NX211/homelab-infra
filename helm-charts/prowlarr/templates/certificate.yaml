@@ -1,0 +1,16 @@
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "prowlarr.fullname" . }}-tls
+  labels:
+    {{- include "prowlarr.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "prowlarr.fullname" . }}-tls
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.ingress.host }}
+{{- end }}

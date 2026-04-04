@@ -128,7 +128,7 @@ gitea:
 # Ingress configuration
 ingress:
   enabled: true
-  certResolver: dnschallenge
+  clusterIssuer: letsencrypt-prod
   middleware: default-headers
 
 # Timezone

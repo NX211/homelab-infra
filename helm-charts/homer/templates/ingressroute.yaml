@@ -18,5 +18,5 @@ spec:
       port: {{ .Values.service.port }}
 
   tls:
-    certResolver: {{ .Values.ingress.certResolver }}
+    secretName: {{ include "homer.fullname" . }}-tls
 {{- end }}

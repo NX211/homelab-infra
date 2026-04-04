@@ -41,7 +41,7 @@ gitRepo:
 ingress:
   enabled: true
   domain: dashboard.authoritah.com
-  certResolver: dnschallenge
+  clusterIssuer: letsencrypt-prod
   middleware: default-headers
 
 # Homer configuration (will be in ConfigMap)

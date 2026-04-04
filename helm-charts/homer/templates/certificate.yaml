@@ -1,0 +1,16 @@
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "homer.fullname" . }}-tls
+  labels:
+    {{- include "homer.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "homer.fullname" . }}-tls
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.ingress.domain }}
+{{- end }}

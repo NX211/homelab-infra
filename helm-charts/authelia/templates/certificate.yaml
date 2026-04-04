@@ -1,0 +1,14 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: authelia-tls
+  labels:
+    {{- include "authelia.labels" . | nindent 4 }}
+spec:
+  secretName: authelia-tls
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer | default "letsencrypt-prod" }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.domain }}

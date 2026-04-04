@@ -16,5 +16,5 @@ spec:
     - name: {{ include "seerr.fullname" . }}
       port: {{ .Values.service.port }}
   tls:
-    certResolver: {{ .Values.ingress.certResolver }}
+    secretName: {{ include "seerr.fullname" . }}-tls
 {{- end }}

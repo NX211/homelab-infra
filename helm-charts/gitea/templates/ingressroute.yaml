@@ -16,4 +16,4 @@ spec:
     - name: gitea-http
       port: {{ .Values.service.httpPort }}
   tls:
-    certResolver: dnschallenge
+    secretName: gitea-tls

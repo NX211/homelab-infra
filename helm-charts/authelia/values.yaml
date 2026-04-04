@@ -10,6 +10,10 @@ domain: "login.authoritah.com"
 projectTLD: "authoritah.com"
 projectName: "Authoritah"
 
+# Ingress
+ingress:
+  clusterIssuer: letsencrypt-prod
+
 # Node selector
 nodeSelector:
   kubernetes.io/hostname: yellowtalon

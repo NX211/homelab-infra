@@ -1,0 +1,14 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gitea-tls
+  labels:
+    {{- include "gitea.labels" . | nindent 4 }}
+spec:
+  secretName: gitea-tls
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer | default "letsencrypt-prod" }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.domain }}

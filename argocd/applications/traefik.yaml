@@ -19,7 +19,7 @@ spec:
           - "--global.checknewversion=false"
           - "--global.sendanonymoususage=false"
 
-        # Deployment (using Deployment for ACME support)
+        # Deployment
         deployment:
           kind: Deployment
           replicas: 1
@@ -45,21 +45,6 @@ spec:
             tls:
               enabled: true
 
-        # Environment for Dreamhost DNS
-        env:
-          - name: DREAMHOST_API_KEY
-            valueFrom:
-              secretKeyRef:
-                name: traefik-secrets
-                key: dreamhost-api-key
-
-        # Let's Encrypt ACME
-        additionalArguments:
-          - "--certificatesresolvers.dnschallenge.acme.email=contact@authoritah.com"
-          - "--certificatesresolvers.dnschallenge.acme.storage=/data/acme.json"
-          - "--certificatesresolvers.dnschallenge.acme.dnschallenge=true"
-          - "--certificatesresolvers.dnschallenge.acme.dnschallenge.provider=dreamhost"
-
         # Logs
         logs:
           general:
@@ -74,12 +59,6 @@ spec:
             allowCrossNamespace: true
           kubernetesIngress:
             enabled: true
-
-        # Persistence for ACME
-        persistence:
-          enabled: true
-          size: 1Gi
-          storageClass: "local-path"
 
         # Resources
         resources:

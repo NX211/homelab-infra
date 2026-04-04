@@ -14,7 +14,7 @@ service:
 ingress:
   enabled: true
   host: radarr.authoritah.com
-  certResolver: dnschallenge
+  clusterIssuer: letsencrypt-prod
 
 # Node selection
 nodeSelector:

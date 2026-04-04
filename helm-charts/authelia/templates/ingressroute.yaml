@@ -16,4 +16,4 @@ spec:
     - name: authelia
       port: {{ .Values.service.httpPort }}
   tls:
-    certResolver: dnschallenge
+    secretName: authelia-tls

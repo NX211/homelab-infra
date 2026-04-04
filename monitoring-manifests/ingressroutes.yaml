@@ -20,7 +20,7 @@ spec:
         - name: authelia-forwardauth
           namespace: default
   tls:
-    certResolver: dnschallenge
+    secretName: prometheus-tls
 ---
 # Alertmanager IngressRoute
 apiVersion: traefik.io/v1alpha1
@@ -43,7 +43,7 @@ spec:
         - name: authelia-forwardauth
           namespace: default
   tls:
-    certResolver: dnschallenge
+    secretName: alertmanager-tls
 ---
 # Grafana IngressRoute
 apiVersion: traefik.io/v1alpha1
@@ -66,4 +66,4 @@ spec:
         - name: authelia-forwardauth
           namespace: default
   tls:
-    certResolver: dnschallenge
+    secretName: grafana-tls

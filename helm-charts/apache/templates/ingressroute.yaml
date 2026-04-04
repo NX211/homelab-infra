@@ -19,7 +19,7 @@ spec:
     middlewares:
     - name: {{ .Values.ingress.middleware }}
   tls:
-    certResolver: {{ .Values.ingress.certResolver }}
+    secretName: {{ include "apache.fullname" . }}-tls
 ---
 # Apache Webfinger IngressRoute (higher priority)
 apiVersion: traefik.io/v1alpha1
@@ -40,5 +40,5 @@ spec:
     - name: {{ include "apache.fullname" . }}
       port: {{ .Values.service.port }}
   tls:
-    certResolver: {{ .Values.ingress.certResolver }}
+    secretName: {{ include "apache.fullname" . }}-tls
 {{- end }}

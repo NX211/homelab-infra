@@ -1,5 +1,4 @@
 # Traefik Helm Chart Values for k3s Homelab
-# Minimal working configuration
 
 traefik:
   # Global arguments
@@ -7,7 +6,7 @@ traefik:
     - "--global.checknewversion=false"
     - "--global.sendanonymoususage=false"
 
-  # Deployment (using Deployment for ACME support)
+  # Deployment
   deployment:
     kind: Deployment
     replicas: 1
@@ -31,26 +30,6 @@ traefik:
       tls:
         enabled: true
 
-  # Environment for Dreamhost DNS
-  env:
-    - name: DREAMHOST_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: traefik-secrets
-          key: dreamhost-token
-    - name: DREAMHOST_PROPAGATION_TIMEOUT
-      value: "300"
-    - name: DREAMHOST_POLLING_INTERVAL
-      value: "30"
-
-  # Let's Encrypt ACME
-  additionalArguments:
-    - "--certificatesresolvers.dnschallenge.acme.email=contact@authoritah.com"
-    - "--certificatesresolvers.dnschallenge.acme.storage=/data/acme.json"
-    - "--certificatesresolvers.dnschallenge.acme.dnschallenge=true"
-    - "--certificatesresolvers.dnschallenge.acme.dnschallenge.provider=dreamhost"
-    - "--certificatesresolvers.dnschallenge.acme.dnschallenge.delayBeforeCheck=30"
-
   # Logs
   logs:
     general:
@@ -65,12 +44,6 @@ traefik:
       allowCrossNamespace: true
     kubernetesIngress:
       enabled: true
-
-  # Persistence for ACME
-  persistence:
-    enabled: true
-    size: 1Gi
-    storageClass: "local-path"
 
   # Resources
   resources:
