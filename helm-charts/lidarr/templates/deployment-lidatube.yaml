@@ -1,0 +1,82 @@
+---
+{{- if .Values.lidatube.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "lidarr.fullname" . }}-lidatube
+  labels:
+    {{- include "lidarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: lidatube
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lidatube
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lidatube
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: lidatube
+        image: "{{ .Values.lidatube.image.repository }}:{{ .Values.lidatube.image.tag }}"
+        imagePullPolicy: {{ .Values.lidatube.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.lidatube.service.port }}
+          protocol: TCP
+        env:
+        - name: lidarr_address
+          value: {{ .Values.lidatube.env.lidarr_address | quote }}
+        - name: preferred_codec
+          value: {{ .Values.lidatube.env.preferred_codec | quote }}
+        - name: thread_limit
+          value: {{ .Values.lidatube.env.thread_limit | quote }}
+        {{- if .Values.externalSecrets.enabled }}
+        - name: lidarr_api_key
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "lidarr.fullname" .)) }}
+              key: LIDARR_API_KEY
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: {{ .Values.lidatube.persistence.config.mountPath }}
+        - name: downloads
+          mountPath: {{ .Values.lidatube.persistence.downloads.mountPath }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.lidatube.resources | nindent 10 }}
+      volumes:
+      - name: config
+        hostPath:
+          path: {{ .Values.lidatube.persistence.config.hostPath }}
+          type: DirectoryOrCreate
+      - name: downloads
+        hostPath:
+          path: {{ .Values.lidatube.persistence.downloads.hostPath }}
+          type: DirectoryOrCreate
+{{- end }}

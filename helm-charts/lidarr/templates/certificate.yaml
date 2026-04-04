@@ -1,0 +1,33 @@
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "lidarr.fullname" . }}-tls
+  labels:
+    {{- include "lidarr.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "lidarr.fullname" . }}-tls
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.ingress.host }}
+{{- end }}
+---
+{{- if and .Values.lidatube.enabled .Values.lidatube.ingress.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "lidarr.fullname" . }}-lidatube-tls
+  labels:
+    {{- include "lidarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: lidatube
+spec:
+  secretName: {{ include "lidarr.fullname" . }}-lidatube-tls
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.lidatube.ingress.host }}
+{{- end }}

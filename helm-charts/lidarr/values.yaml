@@ -1,0 +1,99 @@
+# Lidarr Helm Chart Values
+
+# Image configuration
+image:
+  repository: lscr.io/linuxserver/lidarr
+  tag: "develop"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 8686
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: lidarr.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 3Gi
+    storageClass: local-path
+
+  # Media directories (hostPath for large libraries)
+  media:
+    enabled: true
+    music:
+      hostPath: /blacktalon/media/music
+      mountPath: /media/music
+    musicVideos:
+      hostPath: /blacktalon/media/music-videos
+      mountPath: /media/music-videos
+    downloadsMusic:
+      hostPath: /blacktalon/media/downloads/music
+      mountPath: /media/downloads/music
+    downloadsMusicVideos:
+      hostPath: /blacktalon/media/downloads/music-videos
+      mountPath: /media/downloads/music-videos
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"  # media user
+  PGID: "8675309"  # media group
+
+# LidaTube companion
+lidatube:
+  enabled: true
+  image:
+    repository: thewicklowwolf/lidatube
+    tag: "latest"
+    pullPolicy: Always
+  service:
+    port: 5000
+  ingress:
+    enabled: true
+    host: lidatube.authoritah.com
+  env:
+    lidarr_address: "http://lidarr:8686"
+    preferred_codec: "flac"
+    thread_limit: "6"
+  persistence:
+    config:
+      hostPath: /blacktalon/apps/lidatube
+      mountPath: /lidatube/config
+    downloads:
+      hostPath: /blacktalon/media/downloads/lidatube
+      mountPath: /lidatube/downloads
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 2000m
+      memory: 1Gi
+
+# External Secrets (optional - if using ESO)
+externalSecrets:
+  enabled: false
+  # secretName: lidarr-secrets
+  # refreshInterval: 1h
+  # secrets:
+  #   - name: LIDARR_API_KEY
+  #     key: lidarr-api-key
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

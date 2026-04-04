@@ -1,0 +1,20 @@
+---
+{{- if .Values.lidatube.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "lidarr.fullname" . }}-lidatube
+  labels:
+    {{- include "lidarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: lidatube
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.lidatube.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app.kubernetes.io/name: lidatube
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

@@ -1,0 +1,108 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "lidarr.fullname" . }}
+  labels:
+    {{- include "lidarr.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "lidarr.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "lidarr.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /config
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      containers:
+      - name: lidarr
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: PUID
+          value: {{ .Values.env.PUID | quote }}
+        - name: PGID
+          value: {{ .Values.env.PGID | quote }}
+        {{- if .Values.externalSecrets.enabled }}
+        envFrom:
+        - secretRef:
+            name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "lidarr.fullname" .)) }}
+        {{- end }}
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        {{- if .Values.persistence.media.enabled }}
+        - name: music
+          mountPath: {{ .Values.persistence.media.music.mountPath }}
+        - name: music-videos
+          mountPath: {{ .Values.persistence.media.musicVideos.mountPath }}
+        - name: downloads-music
+          mountPath: {{ .Values.persistence.media.downloadsMusic.mountPath }}
+        - name: downloads-music-videos
+          mountPath: {{ .Values.persistence.media.downloadsMusicVideos.mountPath }}
+        {{- end }}
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "lidarr.fullname" . }}-config
+      {{- if .Values.persistence.media.enabled }}
+      - name: music
+        hostPath:
+          path: {{ .Values.persistence.media.music.hostPath }}
+          type: Directory
+      - name: music-videos
+        hostPath:
+          path: {{ .Values.persistence.media.musicVideos.hostPath }}
+          type: Directory
+      - name: downloads-music
+        hostPath:
+          path: {{ .Values.persistence.media.downloadsMusic.hostPath }}
+          type: Directory
+      - name: downloads-music-videos
+        hostPath:
+          path: {{ .Values.persistence.media.downloadsMusicVideos.hostPath }}
+          type: Directory
+      {{- end }}

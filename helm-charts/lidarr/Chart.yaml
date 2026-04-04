@@ -1,0 +1,15 @@
+apiVersion: v2
+name: lidarr
+description: Lidarr - Music PVR for Usenet + BitTorrent
+type: application
+version: 1.0.0
+appVersion: "develop"
+
+keywords:
+  - lidarr
+  - music
+  - media
+  - arr
+
+maintainers:
+  - name: Homelab Admin

@@ -1,0 +1,26 @@
+---
+{{- if and .Values.lidatube.enabled .Values.lidatube.ingress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "lidarr.fullname" . }}-lidatube
+  labels:
+    {{- include "lidarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: lidatube
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`{{ .Values.lidatube.ingress.host }}`)
+    kind: Rule
+    middlewares:
+    - name: authelia-forwardauth
+      namespace: default
+    - name: default-headers
+      namespace: default
+    services:
+    - name: {{ include "lidarr.fullname" . }}-lidatube
+      port: {{ .Values.lidatube.service.port }}
+  tls:
+    secretName: {{ include "lidarr.fullname" . }}-lidatube-tls
+{{- end }}
