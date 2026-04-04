@@ -13,7 +13,7 @@ imagePullSecrets:
 
 # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
 gcrPullSecret:
-  bitwardenKey: ""  # Set to the Bitwarden secret ID containing the GCP SA JSON key
+  bitwardenKey: b8ac8e29-3460-4194-ac46-b42201589edc
 
 service:
   type: ClusterIP
