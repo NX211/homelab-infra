@@ -11,6 +11,8 @@ argo-cd:
     cm:
       # Repository timeout
       timeout.reconciliation: 180s
+      # Enable API key generation for admin account
+      accounts.admin: apiKey, login
 
     params:
       # Run server without TLS (Traefik handles TLS termination)
