@@ -58,10 +58,20 @@ jobs:
           APP_NAME: ${{ github.event.client_payload.app_name }}
           DIGEST: ${{ github.event.client_payload.digest }}
           TAG: ${{ github.event.client_payload.tag }}
+          MIGRATE_DIGEST: ${{ github.event.client_payload.migrate_digest }}
         run: |
           VALUES_FILE="staging-apps/${APP_NAME}/values.yaml"
 
           yq eval ".image.digest = \"${DIGEST}\"" -i "${VALUES_FILE}"
+
+          # Update migration digest if provided and migration is enabled
+          if [ -n "$MIGRATE_DIGEST" ]; then
+            MIGRATION_ENABLED=$(yq eval '.migration.enabled // false' "${VALUES_FILE}")
+            if [ "$MIGRATION_ENABLED" = "true" ]; then
+              yq eval ".migration.digest = \"${MIGRATE_DIGEST}\"" -i "${VALUES_FILE}"
+              echo "Updated migration digest to ${MIGRATE_DIGEST}"
+            fi
+          fi
 
           if [[ "${TAG}" == v* ]]; then
             CHART_FILE="staging-apps/${APP_NAME}/Chart.yaml"
@@ -73,6 +83,7 @@ jobs:
 
           echo "Updated ${VALUES_FILE}:"
           yq eval '.image' "${VALUES_FILE}"
+          yq eval '.migration' "${VALUES_FILE}"
 
       - name: Helm lint
         env:

@@ -1,0 +1,20 @@
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "dispatchr-staging.fullname" . }}
+  labels:
+    {{- include "dispatchr-staging.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`{{ .Values.ingress.host }}`)
+    kind: Rule
+    services:
+    - name: {{ include "dispatchr-staging.fullname" . }}
+      port: {{ .Values.service.port }}
+  tls:
+    secretName: {{ include "dispatchr-staging.fullname" . }}-tls
+{{- end }}

@@ -1,0 +1,168 @@
+# Dispatchr Social - Staging Values
+# Build once, deploy many: same image as prod, different config
+
+replicaCount: 1
+
+# Per-app Bitwarden secret store (least privilege — each app has its own Bitwarden project)
+bitwarden:
+  projectID: "REPLACE_WITH_DISPATCHR_STAGING_PROJECT_ID"
+  organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+  credentialsSecret: bitwarden-staging-dispatchr-credentials  # K8s secret with machine account token
+
+# Database provisioning (creates database on postgres-1 if not exists)
+# Superuser password is pulled from kubernetes-backend (same as prod postgres-superuser)
+# App credentials below are from Bitwarden staging project
+database:
+  enabled: true
+  userKey: REPLACE_WITH_STAGING_UUID               # dispatchr db username
+  passwordKey: REPLACE_WITH_STAGING_UUID           # dispatchr db password
+  nameKey: REPLACE_WITH_STAGING_UUID               # dispatchr db name
+
+# Migration image (built by CI alongside the app image)
+migration:
+  enabled: true
+  repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web-migrate
+  digest: "sha256:PLACEHOLDER"  # Updated by CI/CD
+
+image:
+  repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
+  pullPolicy: IfNotPresent
+  digest: "sha256:4e0098445171c2035e925d4d5aa0090367e59eab04e96f860ccca19956b8ae0b"  # Updated by CI/CD
+
+imagePullSecrets:
+  - name: gcr-pull-secret-dispatchr
+
+# GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
+# TODO: Create a GCR pull secret in Bitwarden staging project and update this UUID
+gcrPullSecret:
+  bitwardenKey: REPLACE_WITH_BITWARDEN_UUID
+
+service:
+  type: ClusterIP
+  port: 3000
+
+ingress:
+  enabled: true
+  host: staging.dispatchr.social
+  clusterIssuer: letsencrypt-prod
+
+env:
+  - name: NODE_ENV
+    value: production
+  - name: NEXT_PUBLIC_APP_URL
+    value: https://staging.dispatchr.social
+
+envFrom:
+  - secretRef:
+      name: dispatchr-staging-secrets
+
+# External Secrets (Bitwarden staging project)
+# TODO: Create staging-specific secrets in Bitwarden staging project
+# and replace these UUIDs with the staging versions
+externalSecrets:
+  enabled: true
+  secretName: dispatchr-staging-secrets
+  refreshInterval: 1h
+  secrets:
+    - name: NEXTAUTH_SECRET
+      key: REPLACE_WITH_STAGING_UUID
+    - name: NEXTAUTH_URL
+      key: REPLACE_WITH_STAGING_UUID
+    - name: DATABASE_URL
+      key: REPLACE_WITH_STAGING_UUID
+    - name: GOOGLE_CLIENT_ID
+      key: REPLACE_WITH_STAGING_UUID
+    - name: GOOGLE_CLIENT_SECRET
+      key: REPLACE_WITH_STAGING_UUID
+    - name: LINKEDIN_CLIENT_ID
+      key: REPLACE_WITH_STAGING_UUID
+    - name: LINKEDIN_CLIENT_SECRET
+      key: REPLACE_WITH_STAGING_UUID
+    - name: LINKEDIN_PERSONAL_CLIENT_ID
+      key: REPLACE_WITH_STAGING_UUID
+    - name: LINKEDIN_PERSONAL_CLIENT_SECRET
+      key: REPLACE_WITH_STAGING_UUID
+    - name: META_APP_ID
+      key: REPLACE_WITH_STAGING_UUID
+    - name: META_APP_SECRET
+      key: REPLACE_WITH_STAGING_UUID
+    - name: TIKTOK_CLIENT_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: TIKTOK_CLIENT_SECRET
+      key: REPLACE_WITH_STAGING_UUID
+    - name: YOUTUBE_CLIENT_ID
+      key: REPLACE_WITH_STAGING_UUID
+    - name: YOUTUBE_CLIENT_SECRET
+      key: REPLACE_WITH_STAGING_UUID
+    - name: TOKEN_ENCRYPTION_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: ANTHROPIC_API_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: DRIVE_ROOT_FOLDER_ID
+      key: REPLACE_WITH_STAGING_UUID
+    - name: GCS_BUCKET_NAME
+      key: REPLACE_WITH_STAGING_UUID
+    - name: MAILGUN_API_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: MAILGUN_DOMAIN
+      key: REPLACE_WITH_STAGING_UUID
+    - name: MAILGUN_FROM_ADDRESS
+      key: REPLACE_WITH_STAGING_UUID
+    - name: COREYALAN_API_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: COREYALAN_API_URL
+      key: REPLACE_WITH_STAGING_UUID
+    - name: JLSHAW_API_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: JLSHAW_API_URL
+      key: REPLACE_WITH_STAGING_UUID
+    - name: NEXT_PUBLIC_FIREBASE_API_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+      key: REPLACE_WITH_STAGING_UUID
+    - name: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+      key: REPLACE_WITH_STAGING_UUID
+    - name: NEXT_PUBLIC_FIREBASE_APP_ID
+      key: REPLACE_WITH_STAGING_UUID
+    - name: NEXT_PUBLIC_FIREBASE_VAPID_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: PASSWORDLESS_API_SECRET
+      key: REPLACE_WITH_STAGING_UUID
+    - name: NEXT_PUBLIC_PASSWORDLESS_API_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: STRIPE_SECRET_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: STRIPE_WEBHOOK_SECRET
+      key: REPLACE_WITH_STAGING_UUID
+    - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+      key: REPLACE_WITH_STAGING_UUID
+    - name: CHATWOOT_IDENTITY_TOKEN
+      key: REPLACE_WITH_STAGING_UUID
+    - name: REDIS_PASSWORD
+      key: REPLACE_WITH_STAGING_UUID
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+livenessProbe:
+  enabled: true
+  path: /
+  port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  path: /
+  port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3

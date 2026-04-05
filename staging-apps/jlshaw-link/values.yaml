@@ -3,6 +3,27 @@
 
 replicaCount: 1
 
+# Per-app Bitwarden secret store (least privilege — each app has its own Bitwarden project)
+bitwarden:
+  projectID: "739fe866-2a64-45d5-8e34-b3ea011d2082"
+  organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+  credentialsSecret: bitwarden-staging-jlshaw-credentials  # K8s secret with machine account token
+
+# Database provisioning (creates database on postgres-1 if not exists)
+# Superuser password is pulled from kubernetes-backend (same as prod postgres-superuser)
+# App credentials below are from Bitwarden staging project
+database:
+  enabled: true
+  userKey: REPLACE_WITH_STAGING_UUID               # jlshaw db username
+  passwordKey: REPLACE_WITH_STAGING_UUID           # jlshaw db password
+  nameKey: REPLACE_WITH_STAGING_UUID               # jlshaw db name
+
+# Migration image (built by CI alongside the app image)
+migration:
+  enabled: true
+  repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web-migrate
+  digest: "sha256:PLACEHOLDER"  # Updated by CI/CD
+
 image:
   repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web
   pullPolicy: IfNotPresent
