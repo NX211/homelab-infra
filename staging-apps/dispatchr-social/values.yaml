@@ -14,9 +14,9 @@ bitwarden:
 # App credentials below are from Bitwarden staging project
 database:
   enabled: true
-  userKey: REPLACE_WITH_STAGING_UUID               # dispatchr db username
-  passwordKey: REPLACE_WITH_STAGING_UUID           # dispatchr db password
-  nameKey: REPLACE_WITH_STAGING_UUID               # dispatchr db name
+  userKey: 9d9fc2c3-5028-43ee-898a-b4230160c8dd   # DISPATCHR_STAGING_DB_USER
+  passwordKey: 55d4ef11-9439-436e-9335-b42301613350 # DISPATCHR_STAGING_DB_PASSWORD
+  nameKey: aa6e43f9-115a-402e-b527-b423016103b2    # DISPATCHR_STAGING_DB_NAME
 
 # Migration image (built by CI alongside the app image)
 migration:
@@ -65,25 +65,25 @@ externalSecrets:
   refreshInterval: 1h
   secrets:
     - name: NEXTAUTH_SECRET
-      key: REPLACE_WITH_STAGING_UUID
+      key: 60f9375f-eaaa-4915-86d7-b423015fb1d2
     - name: NEXTAUTH_URL
-      key: REPLACE_WITH_STAGING_UUID
+      key: 1f868236-2c5d-4861-82a5-b423016022fa
     - name: DATABASE_URL
-      key: REPLACE_WITH_STAGING_UUID
+      key: 888d36e1-8f15-45c0-8b76-b423016055bf
     - name: GOOGLE_CLIENT_ID
-      key: REPLACE_WITH_STAGING_UUID
+      key: 626d1723-4757-4141-b053-b4230161696e
     - name: GOOGLE_CLIENT_SECRET
-      key: REPLACE_WITH_STAGING_UUID
+      key: 4707ce14-457d-4bff-8a87-b4230161cbab
     - name: LINKEDIN_CLIENT_ID
-      key: REPLACE_WITH_STAGING_UUID
+      key: 81d137b0-a135-4434-8f13-b423016246c7
     - name: LINKEDIN_CLIENT_SECRET
-      key: REPLACE_WITH_STAGING_UUID
+      key: a4edddf5-876a-42cf-9037-b42301627039
     - name: LINKEDIN_PERSONAL_CLIENT_ID
-      key: REPLACE_WITH_STAGING_UUID
+      key: 90f5e557-4efc-4e8b-9fc2-b423016298ec
     - name: LINKEDIN_PERSONAL_CLIENT_SECRET
-      key: REPLACE_WITH_STAGING_UUID
+      key: 0da05b6e-be15-4ad1-b502-b4230162c139
     - name: META_APP_ID
-      key: REPLACE_WITH_STAGING_UUID
+      key: 151bea25-7717-4818-8819-b4230162eb39
     - name: META_APP_SECRET
       key: REPLACE_WITH_STAGING_UUID
     - name: TIKTOK_CLIENT_KEY
