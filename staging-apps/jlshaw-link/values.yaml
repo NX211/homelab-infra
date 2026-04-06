@@ -20,7 +20,7 @@ database:
 
 # Migration image (built by CI alongside the app image)
 migration:
-  enabled: true
+  enabled: false
   repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web-migrate
   digest: "sha256:PLACEHOLDER"  # Updated by CI/CD
 
