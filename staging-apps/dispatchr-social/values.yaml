@@ -33,9 +33,8 @@ imagePullSecrets:
   - name: gcr-pull-secret-dispatchr
 
 # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
-# TODO: Create a GCR pull secret in Bitwarden staging project and update this UUID
 gcrPullSecret:
-  bitwardenKey: REPLACE_WITH_BITWARDEN_UUID
+  bitwardenKey: 55ca8398-e8f1-442c-a64d-b42400fc91fa
 
 service:
   type: ClusterIP
