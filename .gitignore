@@ -3,6 +3,11 @@
 charts/
 Chart.lock
 
+# Allow staging app subchart dependencies (required for ArgoCD)
+!staging-apps/*/charts/
+!staging-apps/*/charts/*.tgz
+!staging-apps/*/Chart.lock
+
 # Secrets (never commit!)
 *.secret.yaml
 *-secret.yaml
