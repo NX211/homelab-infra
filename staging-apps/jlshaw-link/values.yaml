@@ -23,7 +23,7 @@ migration:
 image:
   repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web
   pullPolicy: IfNotPresent
-  digest: "sha256:3d07fba1e802b7aa35987cfe2450266443569d9c544c1b8465fa2eda426ae218" # Updated by CI/CD
+  digest: "sha256:76af09115cc64379b4cb7ac9e8d7a45b0c12120b7e274ff485b470e99d17eeab" # Updated by CI/CD
 imagePullSecrets:
   - name: gcr-pull-secret
 # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
