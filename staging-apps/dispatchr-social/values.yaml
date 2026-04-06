@@ -5,7 +5,7 @@ replicaCount: 1
 
 # Per-app Bitwarden secret store (least privilege — each app has its own Bitwarden project)
 bitwarden:
-  projectID: "REPLACE_WITH_DISPATCHR_STAGING_PROJECT_ID"
+  projectID: "43127155-7737-4dd3-a964-b42300e8c787"
   organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
   credentialsSecret: bitwarden-staging-dispatchr-credentials  # K8s secret with machine account token
 
@@ -85,61 +85,61 @@ externalSecrets:
     - name: META_APP_ID
       key: 151bea25-7717-4818-8819-b4230162eb39
     - name: META_APP_SECRET
-      key: REPLACE_WITH_STAGING_UUID
+      key: 129f8cf1-9d80-46fc-bd16-b423018454fc
     - name: TIKTOK_CLIENT_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: 17cea904-3f04-4268-b342-b42301850ba7
     - name: TIKTOK_CLIENT_SECRET
-      key: REPLACE_WITH_STAGING_UUID
+      key: a335602b-78fc-4c33-9dac-b42301855dd4
     - name: YOUTUBE_CLIENT_ID
-      key: REPLACE_WITH_STAGING_UUID
+      key: 972ee4d8-705c-467c-8961-b42301858588
     - name: YOUTUBE_CLIENT_SECRET
-      key: REPLACE_WITH_STAGING_UUID
+      key: 5c55f0d8-c53b-4dbf-b36e-b4230185c084
     - name: TOKEN_ENCRYPTION_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: a5d571f2-12da-4c0a-bac6-b42301862067
     - name: ANTHROPIC_API_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: ea46c2f8-ac18-4326-b8f4-b42301867373
     - name: DRIVE_ROOT_FOLDER_ID
-      key: REPLACE_WITH_STAGING_UUID
+      key: a3c3c076-949b-41eb-91cb-b4230186a7b3
     - name: GCS_BUCKET_NAME
-      key: REPLACE_WITH_STAGING_UUID
+      key: cefed49f-c1d9-41da-bb80-b4230186ed50
     - name: MAILGUN_API_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: 1bb4f30a-1539-4f9c-98f9-b42301872cca
     - name: MAILGUN_DOMAIN
-      key: REPLACE_WITH_STAGING_UUID
+      key: 778548e2-7d93-46f3-8b05-b4230187882e
     - name: MAILGUN_FROM_ADDRESS
-      key: REPLACE_WITH_STAGING_UUID
+      key: a9313a3d-8f30-4bfc-bd5d-b4230187d146
     - name: COREYALAN_API_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: 77c09efa-15eb-4601-9b7e-b42301880c66
     - name: COREYALAN_API_URL
-      key: REPLACE_WITH_STAGING_UUID
+      key: d576c7e6-b19b-4cb6-a56a-b42301884089
     - name: JLSHAW_API_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: 7c1a2b08-7baa-48ee-9959-b423018874bf
     - name: JLSHAW_API_URL
-      key: REPLACE_WITH_STAGING_UUID
+      key: 03e19040-391b-4d68-878c-b4230188acbd
     - name: NEXT_PUBLIC_FIREBASE_API_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: 14c9ed22-921b-4660-acfd-b4230188fc9b
     - name: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-      key: REPLACE_WITH_STAGING_UUID
+      key: a275a1fc-d6c8-43c7-a3ce-b42301893c73
     - name: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-      key: REPLACE_WITH_STAGING_UUID
+      key: 04abefd2-3df4-49ca-9ef9-b42301897d87
     - name: NEXT_PUBLIC_FIREBASE_APP_ID
-      key: REPLACE_WITH_STAGING_UUID
+      key: b510d592-4d08-4212-9b91-b4230189b070
     - name: NEXT_PUBLIC_FIREBASE_VAPID_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: 63faee36-631c-4bc2-9b04-b4230189dee8
     - name: PASSWORDLESS_API_SECRET
-      key: REPLACE_WITH_STAGING_UUID
+      key: 6323cc14-6317-4036-81b5-b423018a2603
     - name: NEXT_PUBLIC_PASSWORDLESS_API_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: 69051f41-c4e6-43ec-8e10-b423018a5743
     - name: STRIPE_SECRET_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: 396b03bf-8eb4-42bb-95ee-b423018a8d86
     - name: STRIPE_WEBHOOK_SECRET
-      key: REPLACE_WITH_STAGING_UUID
+      key: b67c88e5-27cc-454a-8b33-b423018abbda
     - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-      key: REPLACE_WITH_STAGING_UUID
+      key: c0a65c7c-7c69-4375-8f74-b423018ae494
     - name: CHATWOOT_IDENTITY_TOKEN
-      key: REPLACE_WITH_STAGING_UUID
+      key: 9bd3d8b7-c9b0-4be2-b3f1-b423018b1362
     - name: REDIS_PASSWORD
-      key: REPLACE_WITH_STAGING_UUID
+      key: 6a68a51f-4939-42f1-a5b1-b423018b377f
 
 resources:
   requests:

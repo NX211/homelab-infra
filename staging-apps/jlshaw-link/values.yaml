@@ -5,7 +5,7 @@ replicaCount: 1
 
 # Per-app Bitwarden secret store (least privilege — each app has its own Bitwarden project)
 bitwarden:
-  projectID: "739fe866-2a64-45d5-8e34-b3ea011d2082"
+  projectID: "2339785b-1aff-45ca-bd1e-b42200fc7070"
   organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
   credentialsSecret: bitwarden-staging-jlshaw-credentials  # K8s secret with machine account token
 
@@ -60,7 +60,7 @@ externalSecrets:
   enabled: true
   secretName: jlshaw-staging-secrets
   refreshInterval: 1h
-  # Bitwarden project: staging-jlshaw (739fe866-2a64-45d5-8e34-b3ea011d2082)
+  # Bitwarden project: staging-jlshaw (2339785b-1aff-45ca-bd1e-b42200fc7070)
   secrets:
     - name: DATABASE_URL
       key: f4ff2759-26bf-429b-bf7e-b42200fce459
