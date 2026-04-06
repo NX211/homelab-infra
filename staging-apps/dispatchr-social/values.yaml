@@ -23,7 +23,7 @@ migration:
 image:
   repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
   pullPolicy: IfNotPresent
-  digest: "sha256:e9d20216d6725a11d744a33d74c2027a929a7cd8c9e14becfb43d4c235502631" # Updated by CI/CD
+  digest: "sha256:db8d72189935f0bced776afa54cef2edb3e6d6b49e032e617df367cf081c2c3e" # Updated by CI/CD
 imagePullSecrets:
   - name: gcr-pull-secret-dispatchr
 # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
