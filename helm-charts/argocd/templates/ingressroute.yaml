@@ -1,19 +1,21 @@
 ---
-# ArgoCD Dashboard IngressRoute
+{{- if .Values.ingress.enabled }}
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: argocd-server
-  namespace: argocd
+  labels:
+    {{- include "argocd-wrapper.labels" . | nindent 4 }}
 spec:
   entryPoints:
     - websecure
   routes:
     - kind: Rule
-      match: Host(`cd.authoritah.com`)
+      match: Host(`{{ .Values.ingress.host }}`)
       priority: 10
       services:
         - name: argocd-server
           port: 80
   tls:
     secretName: argocd-server-tls
+{{- end }}

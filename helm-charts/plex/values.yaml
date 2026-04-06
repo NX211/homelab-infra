@@ -10,6 +10,12 @@ image:
 service:
   port: 32400
 
+# Ingress configuration
+ingress:
+  enabled: true
+  host: authoritah.tv
+  clusterIssuer: letsencrypt-prod
+
 # Node selection
 nodeSelector:
   kubernetes.io/hostname: blacktalon

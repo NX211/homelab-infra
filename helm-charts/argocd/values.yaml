@@ -1,6 +1,12 @@
 # ArgoCD Helm Chart Configuration
 # Wraps the official argo-cd chart for homelab k3s cluster
 
+# Ingress configuration (managed by this wrapper chart)
+ingress:
+  enabled: true
+  host: cd.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
 argo-cd:
   # Global settings
   global:
@@ -44,7 +50,7 @@ argo-cd:
     extraArgs:
       - --insecure
 
-    # Ingress is handled separately via Traefik IngressRoute
+    # Ingress handled by wrapper chart templates (certificate.yaml + ingressroute.yaml)
     ingress:
       enabled: false
 
