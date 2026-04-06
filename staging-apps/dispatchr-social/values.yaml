@@ -2,59 +2,48 @@
 # Build once, deploy many: same image as prod, different config
 
 replicaCount: 1
-
 # Per-app Bitwarden secret store (least privilege — each app has its own Bitwarden project)
 bitwarden:
   projectID: "43127155-7737-4dd3-a964-b42300e8c787"
   organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
-  credentialsSecret: bitwarden-staging-dispatchr-credentials  # K8s secret with machine account token
-
+  credentialsSecret: bitwarden-staging-dispatchr-credentials # K8s secret with machine account token
 # Database provisioning (creates database on postgres-1 if not exists)
 # Superuser password is pulled from kubernetes-backend (same as prod postgres-superuser)
 # App credentials below are from Bitwarden staging project
 database:
   enabled: true
-  userKey: 9d9fc2c3-5028-43ee-898a-b4230160c8dd   # DISPATCHR_STAGING_DB_USER
+  userKey: 9d9fc2c3-5028-43ee-898a-b4230160c8dd # DISPATCHR_STAGING_DB_USER
   passwordKey: 55d4ef11-9439-436e-9335-b42301613350 # DISPATCHR_STAGING_DB_PASSWORD
-  nameKey: aa6e43f9-115a-402e-b527-b423016103b2    # DISPATCHR_STAGING_DB_NAME
-
+  nameKey: aa6e43f9-115a-402e-b527-b423016103b2 # DISPATCHR_STAGING_DB_NAME
 # Migration image (built by CI alongside the app image)
 migration:
   enabled: false
   repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web-migrate
-  digest: "sha256:PLACEHOLDER"  # Updated by CI/CD
-
+  digest: "sha256:PLACEHOLDER" # Updated by CI/CD
 image:
   repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
   pullPolicy: IfNotPresent
-  digest: "sha256:4e0098445171c2035e925d4d5aa0090367e59eab04e96f860ccca19956b8ae0b"  # Updated by CI/CD
-
+  digest: "sha256:e9d20216d6725a11d744a33d74c2027a929a7cd8c9e14becfb43d4c235502631" # Updated by CI/CD
 imagePullSecrets:
   - name: gcr-pull-secret-dispatchr
-
 # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
 gcrPullSecret:
   bitwardenKey: 55ca8398-e8f1-442c-a64d-b42400fc91fa
-
 service:
   type: ClusterIP
   port: 3000
-
 ingress:
   enabled: true
   host: staging.dispatchr.social
   clusterIssuer: letsencrypt-prod
-
 env:
   - name: NODE_ENV
     value: production
   - name: NEXT_PUBLIC_APP_URL
     value: https://staging.dispatchr.social
-
 envFrom:
   - secretRef:
       name: dispatchr-staging-secrets
-
 # External Secrets (Bitwarden staging project)
 # TODO: Create staging-specific secrets in Bitwarden staging project
 # and replace these UUIDs with the staging versions
@@ -139,7 +128,6 @@ externalSecrets:
       key: 9bd3d8b7-c9b0-4be2-b3f1-b423018b1362
     - name: REDIS_PASSWORD
       key: 6a68a51f-4939-42f1-a5b1-b423018b377f
-
 resources:
   requests:
     cpu: 250m
@@ -147,7 +135,6 @@ resources:
   limits:
     cpu: 1000m
     memory: 512Mi
-
 livenessProbe:
   enabled: true
   path: /
@@ -156,7 +143,6 @@ livenessProbe:
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
-
 readinessProbe:
   enabled: true
   path: /
