@@ -41,10 +41,10 @@ jobs:
             exit 1
           fi
 
-          DIGEST=$(yq eval '.image.digest' "${VALUES_FILE}")
-          IMAGE=$(yq eval '.image.repository' "${VALUES_FILE}")
+          DIGEST=$(yq eval '.["staging-app"].image.digest' "${VALUES_FILE}")
+          IMAGE=$(yq eval '.["staging-app"].image.repository' "${VALUES_FILE}")
           TAG=$(yq eval '.appVersion' "${CHART_FILE}" 2>/dev/null || echo "")
-          MIGRATE_DIGEST=$(yq eval '.migration.digest // ""' "${VALUES_FILE}")
+          MIGRATE_DIGEST=$(yq eval '.["staging-app"].migration.digest // ""' "${VALUES_FILE}")
 
           echo "app_name=${APP_NAME}" >> "$GITHUB_OUTPUT"
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"

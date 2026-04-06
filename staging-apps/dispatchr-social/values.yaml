@@ -1,153 +1,171 @@
 # Dispatchr Social - Staging Values
 # Build once, deploy many: same image as prod, different config
 
-replicaCount: 1
-# Per-app Bitwarden secret store (least privilege — each app has its own Bitwarden project)
-bitwarden:
-  projectID: "43127155-7737-4dd3-a964-b42300e8c787"
-  organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
-  credentialsSecret: bitwarden-staging-dispatchr-credentials # K8s secret with machine account token
-# Database provisioning (creates database on postgres-1 if not exists)
-# Superuser password is pulled from kubernetes-backend (same as prod postgres-superuser)
-# App credentials below are from Bitwarden staging project
-database:
-  enabled: true
-  userKey: 9d9fc2c3-5028-43ee-898a-b4230160c8dd # DISPATCHR_STAGING_DB_USER
-  passwordKey: 55d4ef11-9439-436e-9335-b42301613350 # DISPATCHR_STAGING_DB_PASSWORD
-  nameKey: aa6e43f9-115a-402e-b527-b423016103b2 # DISPATCHR_STAGING_DB_NAME
-# Migration image (built by CI alongside the app image)
-migration:
-  enabled: false
-  repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web-migrate
-  digest: "sha256:PLACEHOLDER" # Updated by CI/CD
-image:
-  repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
-  pullPolicy: IfNotPresent
-  digest: "sha256:db8d72189935f0bced776afa54cef2edb3e6d6b49e032e617df367cf081c2c3e" # Updated by CI/CD
-imagePullSecrets:
-  - name: gcr-pull-secret-dispatchr
-# GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
-gcrPullSecret:
-  bitwardenKey: 55ca8398-e8f1-442c-a64d-b42400fc91fa
-service:
-  type: ClusterIP
-  port: 3000
-ingress:
-  enabled: true
-  host: staging.dispatchr.social
-  clusterIssuer: letsencrypt-prod
-env:
-  - name: NODE_ENV
-    value: production
-  - name: NEXT_PUBLIC_APP_URL
-    value: https://staging.dispatchr.social
-envFrom:
-  - secretRef:
-      name: dispatchr-staging-secrets
-# External Secrets (Bitwarden staging project)
-# TODO: Create staging-specific secrets in Bitwarden staging project
-# and replace these UUIDs with the staging versions
-externalSecrets:
-  enabled: true
-  secretName: dispatchr-staging-secrets
-  refreshInterval: 1h
-  secrets:
-    - name: NEXTAUTH_SECRET
-      key: 60f9375f-eaaa-4915-86d7-b423015fb1d2
-    - name: NEXTAUTH_URL
-      key: 1f868236-2c5d-4861-82a5-b423016022fa
-    - name: DATABASE_URL
-      key: 888d36e1-8f15-45c0-8b76-b423016055bf
-    - name: GOOGLE_CLIENT_ID
-      key: 626d1723-4757-4141-b053-b4230161696e
-    - name: GOOGLE_CLIENT_SECRET
-      key: 4707ce14-457d-4bff-8a87-b4230161cbab
-    - name: LINKEDIN_CLIENT_ID
-      key: 81d137b0-a135-4434-8f13-b423016246c7
-    - name: LINKEDIN_CLIENT_SECRET
-      key: a4edddf5-876a-42cf-9037-b42301627039
-    - name: LINKEDIN_PERSONAL_CLIENT_ID
-      key: 90f5e557-4efc-4e8b-9fc2-b423016298ec
-    - name: LINKEDIN_PERSONAL_CLIENT_SECRET
-      key: 0da05b6e-be15-4ad1-b502-b4230162c139
-    - name: META_APP_ID
-      key: 151bea25-7717-4818-8819-b4230162eb39
-    - name: META_APP_SECRET
-      key: 129f8cf1-9d80-46fc-bd16-b423018454fc
-    - name: TIKTOK_CLIENT_KEY
-      key: 17cea904-3f04-4268-b342-b42301850ba7
-    - name: TIKTOK_CLIENT_SECRET
-      key: a335602b-78fc-4c33-9dac-b42301855dd4
-    - name: YOUTUBE_CLIENT_ID
-      key: 972ee4d8-705c-467c-8961-b42301858588
-    - name: YOUTUBE_CLIENT_SECRET
-      key: 5c55f0d8-c53b-4dbf-b36e-b4230185c084
-    - name: TOKEN_ENCRYPTION_KEY
-      key: a5d571f2-12da-4c0a-bac6-b42301862067
-    - name: ANTHROPIC_API_KEY
-      key: ea46c2f8-ac18-4326-b8f4-b42301867373
-    - name: DRIVE_ROOT_FOLDER_ID
-      key: a3c3c076-949b-41eb-91cb-b4230186a7b3
-    - name: GCS_BUCKET_NAME
-      key: cefed49f-c1d9-41da-bb80-b4230186ed50
-    - name: MAILGUN_API_KEY
-      key: 1bb4f30a-1539-4f9c-98f9-b42301872cca
-    - name: MAILGUN_DOMAIN
-      key: 778548e2-7d93-46f3-8b05-b4230187882e
-    - name: MAILGUN_FROM_ADDRESS
-      key: a9313a3d-8f30-4bfc-bd5d-b4230187d146
-    - name: COREYALAN_API_KEY
-      key: 77c09efa-15eb-4601-9b7e-b42301880c66
-    - name: COREYALAN_API_URL
-      key: d576c7e6-b19b-4cb6-a56a-b42301884089
-    - name: JLSHAW_API_KEY
-      key: 7c1a2b08-7baa-48ee-9959-b423018874bf
-    - name: JLSHAW_API_URL
-      key: 03e19040-391b-4d68-878c-b4230188acbd
-    - name: NEXT_PUBLIC_FIREBASE_API_KEY
-      key: 14c9ed22-921b-4660-acfd-b4230188fc9b
-    - name: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-      key: a275a1fc-d6c8-43c7-a3ce-b42301893c73
-    - name: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-      key: 04abefd2-3df4-49ca-9ef9-b42301897d87
-    - name: NEXT_PUBLIC_FIREBASE_APP_ID
-      key: b510d592-4d08-4212-9b91-b4230189b070
-    - name: NEXT_PUBLIC_FIREBASE_VAPID_KEY
-      key: 63faee36-631c-4bc2-9b04-b4230189dee8
-    - name: PASSWORDLESS_API_SECRET
-      key: 6323cc14-6317-4036-81b5-b423018a2603
-    - name: NEXT_PUBLIC_PASSWORDLESS_API_KEY
-      key: 69051f41-c4e6-43ec-8e10-b423018a5743
-    - name: STRIPE_SECRET_KEY
-      key: 396b03bf-8eb4-42bb-95ee-b423018a8d86
-    - name: STRIPE_WEBHOOK_SECRET
-      key: b67c88e5-27cc-454a-8b33-b423018abbda
-    - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-      key: c0a65c7c-7c69-4375-8f74-b423018ae494
-    - name: CHATWOOT_IDENTITY_TOKEN
-      key: 9bd3d8b7-c9b0-4be2-b3f1-b423018b1362
-    - name: REDIS_PASSWORD
-      key: 6a68a51f-4939-42f1-a5b1-b423018b377f
-resources:
-  requests:
-    cpu: 250m
-    memory: 256Mi
-  limits:
-    cpu: 1000m
-    memory: 512Mi
-livenessProbe:
-  enabled: true
-  path: /
-  port: 3000
-  initialDelaySeconds: 30
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
-readinessProbe:
-  enabled: true
-  path: /
-  port: 3000
-  initialDelaySeconds: 10
-  periodSeconds: 5
-  timeoutSeconds: 3
-  failureThreshold: 3
+staging-app:
+  appName: dispatchr
+  appLabel: Dispatchr
+  fullnameOverride: dispatchr-social-staging
+
+  replicaCount: 1
+
+  # Per-app Bitwarden secret store (least privilege)
+  bitwarden:
+    projectID: "43127155-7737-4dd3-a964-b42300e8c787"
+    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+    credentialsSecret: bitwarden-staging-dispatchr-credentials
+
+  # Database provisioning
+  database:
+    enabled: true
+    superuser:
+      create: false  # jlshaw owns the shared postgres-superuser-staging secret
+    userKey: 9d9fc2c3-5028-43ee-898a-b4230160c8dd     # DISPATCHR_STAGING_DB_USER
+    passwordKey: 55d4ef11-9439-436e-9335-b42301613350  # DISPATCHR_STAGING_DB_PASSWORD
+    nameKey: aa6e43f9-115a-402e-b527-b423016103b2      # DISPATCHR_STAGING_DB_NAME
+
+  # Migration image (built by CI alongside the app image)
+  migration:
+    enabled: false
+    repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web-migrate
+    digest: "sha256:PLACEHOLDER"  # Updated by CI/CD
+
+  image:
+    repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
+    pullPolicy: IfNotPresent
+    digest: "sha256:e9d20216d6725a11d744a33d74c2027a929a7cd8c9e14becfb43d4c235502631"  # Updated by CI/CD
+
+  imagePullSecrets:
+    - name: gcr-pull-secret-dispatchr
+
+  # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
+  gcrPullSecret:
+    bitwardenKey: 55ca8398-e8f1-442c-a64d-b42400fc91fa
+    secretName: gcr-pull-secret-dispatchr
+
+  service:
+    type: ClusterIP
+    port: 3000
+
+  ingress:
+    enabled: true
+    host: staging.dispatchr.social
+    clusterIssuer: letsencrypt-prod
+
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: NEXT_PUBLIC_APP_URL
+      value: https://staging.dispatchr.social
+
+  envFrom:
+    - secretRef:
+        name: dispatchr-staging-secrets
+
+  # External Secrets (Bitwarden staging project)
+  externalSecrets:
+    enabled: true
+    secretName: dispatchr-staging-secrets
+    refreshInterval: 1h
+    secrets:
+      - name: NEXTAUTH_SECRET
+        key: 60f9375f-eaaa-4915-86d7-b423015fb1d2
+      - name: NEXTAUTH_URL
+        key: 1f868236-2c5d-4861-82a5-b423016022fa
+      - name: DATABASE_URL
+        key: 888d36e1-8f15-45c0-8b76-b423016055bf
+      - name: GOOGLE_CLIENT_ID
+        key: 626d1723-4757-4141-b053-b4230161696e
+      - name: GOOGLE_CLIENT_SECRET
+        key: 4707ce14-457d-4bff-8a87-b4230161cbab
+      - name: LINKEDIN_CLIENT_ID
+        key: 81d137b0-a135-4434-8f13-b423016246c7
+      - name: LINKEDIN_CLIENT_SECRET
+        key: a4edddf5-876a-42cf-9037-b42301627039
+      - name: LINKEDIN_PERSONAL_CLIENT_ID
+        key: 90f5e557-4efc-4e8b-9fc2-b423016298ec
+      - name: LINKEDIN_PERSONAL_CLIENT_SECRET
+        key: 0da05b6e-be15-4ad1-b502-b4230162c139
+      - name: META_APP_ID
+        key: 151bea25-7717-4818-8819-b4230162eb39
+      - name: META_APP_SECRET
+        key: 129f8cf1-9d80-46fc-bd16-b423018454fc
+      - name: TIKTOK_CLIENT_KEY
+        key: 17cea904-3f04-4268-b342-b42301850ba7
+      - name: TIKTOK_CLIENT_SECRET
+        key: a335602b-78fc-4c33-9dac-b42301855dd4
+      - name: YOUTUBE_CLIENT_ID
+        key: 972ee4d8-705c-467c-8961-b42301858588
+      - name: YOUTUBE_CLIENT_SECRET
+        key: 5c55f0d8-c53b-4dbf-b36e-b4230185c084
+      - name: TOKEN_ENCRYPTION_KEY
+        key: a5d571f2-12da-4c0a-bac6-b42301862067
+      - name: ANTHROPIC_API_KEY
+        key: ea46c2f8-ac18-4326-b8f4-b42301867373
+      - name: DRIVE_ROOT_FOLDER_ID
+        key: a3c3c076-949b-41eb-91cb-b4230186a7b3
+      - name: GCS_BUCKET_NAME
+        key: cefed49f-c1d9-41da-bb80-b4230186ed50
+      - name: MAILGUN_API_KEY
+        key: 1bb4f30a-1539-4f9c-98f9-b42301872cca
+      - name: MAILGUN_DOMAIN
+        key: 778548e2-7d93-46f3-8b05-b4230187882e
+      - name: MAILGUN_FROM_ADDRESS
+        key: a9313a3d-8f30-4bfc-bd5d-b4230187d146
+      - name: COREYALAN_API_KEY
+        key: 77c09efa-15eb-4601-9b7e-b42301880c66
+      - name: COREYALAN_API_URL
+        key: d576c7e6-b19b-4cb6-a56a-b42301884089
+      - name: JLSHAW_API_KEY
+        key: 7c1a2b08-7baa-48ee-9959-b423018874bf
+      - name: JLSHAW_API_URL
+        key: 03e19040-391b-4d68-878c-b4230188acbd
+      - name: NEXT_PUBLIC_FIREBASE_API_KEY
+        key: 14c9ed22-921b-4660-acfd-b4230188fc9b
+      - name: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        key: a275a1fc-d6c8-43c7-a3ce-b42301893c73
+      - name: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        key: 04abefd2-3df4-49ca-9ef9-b42301897d87
+      - name: NEXT_PUBLIC_FIREBASE_APP_ID
+        key: b510d592-4d08-4212-9b91-b4230189b070
+      - name: NEXT_PUBLIC_FIREBASE_VAPID_KEY
+        key: 63faee36-631c-4bc2-9b04-b4230189dee8
+      - name: PASSWORDLESS_API_SECRET
+        key: 6323cc14-6317-4036-81b5-b423018a2603
+      - name: NEXT_PUBLIC_PASSWORDLESS_API_KEY
+        key: 69051f41-c4e6-43ec-8e10-b423018a5743
+      - name: STRIPE_SECRET_KEY
+        key: 396b03bf-8eb4-42bb-95ee-b423018a8d86
+      - name: STRIPE_WEBHOOK_SECRET
+        key: b67c88e5-27cc-454a-8b33-b423018abbda
+      - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+        key: c0a65c7c-7c69-4375-8f74-b423018ae494
+      - name: CHATWOOT_IDENTITY_TOKEN
+        key: 9bd3d8b7-c9b0-4be2-b3f1-b423018b1362
+      - name: REDIS_PASSWORD
+        key: 6a68a51f-4939-42f1-a5b1-b423018b377f
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+  livenessProbe:
+    enabled: true
+    path: /
+    port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    enabled: true
+    path: /
+    port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3

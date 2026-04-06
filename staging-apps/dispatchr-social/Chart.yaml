@@ -10,3 +10,7 @@ keywords:
   - staging
 maintainers:
   - name: Homelab Admin
+dependencies:
+  - name: staging-app
+    version: "0.1.0"
+    repository: "file://../../charts/staging-app"

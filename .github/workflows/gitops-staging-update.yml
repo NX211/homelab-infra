@@ -62,13 +62,14 @@ jobs:
         run: |
           VALUES_FILE="staging-apps/${APP_NAME}/values.yaml"
 
-          yq eval ".image.digest = \"${DIGEST}\"" -i "${VALUES_FILE}"
+          # Values are nested under the staging-app subchart key
+          yq eval ".\"staging-app\".image.digest = \"${DIGEST}\"" -i "${VALUES_FILE}"
 
           # Update migration digest if provided and migration is enabled
           if [ -n "$MIGRATE_DIGEST" ]; then
-            MIGRATION_ENABLED=$(yq eval '.migration.enabled // false' "${VALUES_FILE}")
+            MIGRATION_ENABLED=$(yq eval '.["staging-app"].migration.enabled // false' "${VALUES_FILE}")
             if [ "$MIGRATION_ENABLED" = "true" ]; then
-              yq eval ".migration.digest = \"${MIGRATE_DIGEST}\"" -i "${VALUES_FILE}"
+              yq eval ".\"staging-app\".migration.digest = \"${MIGRATE_DIGEST}\"" -i "${VALUES_FILE}"
               echo "Updated migration digest to ${MIGRATE_DIGEST}"
             fi
           fi
@@ -82,7 +83,7 @@ jobs:
           fi
 
           echo "Updated ${VALUES_FILE}:"
-          yq eval '.image' "${VALUES_FILE}"
+          yq eval '.["staging-app"].image' "${VALUES_FILE}"
           yq eval '.migration' "${VALUES_FILE}"
 
       - name: Helm lint
