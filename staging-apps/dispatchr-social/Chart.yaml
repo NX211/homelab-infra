@@ -3,12 +3,10 @@ name: dispatchr-social-staging
 description: Dispatchr Social - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "0.1.15"
-
+appVersion: "v0.1.16"
 keywords:
   - dispatchr
   - nextjs
   - staging
-
 maintainers:
   - name: Homelab Admin
