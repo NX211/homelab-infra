@@ -11,16 +11,13 @@ metadata:
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
-  annotations:
-    # Subscribe this app to the staging→prod promotion webhook. When the
-    # app transitions to Healthy+Synced, ArgoCD notifications will POST
-    # the currently-running image list to gitops-trigger /promote which
-    # dispatches the corresponding prod image-push event.
-    notifications.argoproj.io/subscribe.on-staging-deployed.gitops-trigger-promote: ""
-    # Name of the prod-side Application/appMap entry this staging app
-    # promotes to. gitops-trigger keys its pendingPromotion ledger by the
-    # prod app name, so the notification template has to forward it.
-    promotion.gitops-trigger/prod-app-name: "dispatchr-social"
+  # Note: the previous `notifications.argoproj.io/subscribe.*` and
+  # `promotion.gitops-trigger/prod-app-name` annotations have been
+  # removed. They subscribed this app to the now-deleted
+  # gitops-trigger /promote webhook, which was the second of two
+  # parallel staging→prod promotion paths. Promotion is now handled
+  # exclusively by the PR-closed `staging-promote.yml` workflow,
+  # which polls ArgoCD directly and dispatches to platform-infra.
 spec:
   project: default
   source:
