@@ -27,6 +27,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Validate payload
+        id: validate
         env:
           APP_NAME: ${{ github.event.client_payload.app_name }}
           DIGEST: ${{ github.event.client_payload.digest }}
@@ -40,6 +41,15 @@ jobs:
             exit 1
           fi
 
+          # Reject app_name and image values containing path traversal
+          # or shell metacharacters. Everything that flows through this
+          # workflow originates from a trusted Cloud Run dispatch, but
+          # defense in depth is cheap.
+          if ! printf '%s' "$APP_NAME" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+            echo "ERROR: Invalid app_name: $APP_NAME"
+            exit 1
+          fi
+
           VALUES_FILE="staging-apps/${APP_NAME}/values.yaml"
           if [ ! -f "$VALUES_FILE" ]; then
             echo "ERROR: Staging chart not found at ${VALUES_FILE}"
@@ -48,7 +58,20 @@ jobs:
             exit 1
           fi
 
-          echo "Updating staging ${APP_NAME} to digest ${DIGEST}"
+          # Extract the short image name (last path segment, e.g.
+          # "dispatchr-web" or "dispatchr-worker") from the full AR
+          # reference. Used as a per-image PR branch suffix so concurrent
+          # web/worker pushes don't overwrite each other's changes on a
+          # shared branch — the previous fixed `staging/<app>` branch
+          # was silently force-pushed by each subsequent dispatch.
+          IMAGE_SHORT="${IMAGE##*/}"
+          if ! printf '%s' "$IMAGE_SHORT" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+            echo "ERROR: Failed to extract valid short image name from IMAGE=$IMAGE"
+            exit 1
+          fi
+
+          echo "image_short=${IMAGE_SHORT}" >> "$GITHUB_OUTPUT"
+          echo "Updating staging ${APP_NAME} (${IMAGE_SHORT}) to digest ${DIGEST}"
 
       - name: Install yq
         uses: mikefarah/yq@v4
@@ -97,18 +120,38 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ steps.app-token.outputs.token }}
-          branch: staging/${{ github.event.client_payload.app_name }}
-          title: "staging: update ${{ github.event.client_payload.app_name }} image"
+          # Per-image branch (staging/<app>/<image-short>) so concurrent
+          # dispatches for different images in the same app don't race
+          # on a shared branch and force-push each other's changes away.
+          branch: staging/${{ github.event.client_payload.app_name }}/${{ steps.validate.outputs.image_short }}
+          title: "staging: update ${{ github.event.client_payload.app_name }} (${{ steps.validate.outputs.image_short }}) image"
           body: |
             Automated staging image update
 
-            Once merged and ArgoCD confirms healthy, this will auto-promote to production.
+            - **App:** `${{ github.event.client_payload.app_name }}`
+            - **Image:** `${{ steps.validate.outputs.image_short }}`
+            - **Digest:** `${{ github.event.client_payload.digest }}`
+            - **Tag:** `${{ github.event.client_payload.tag || 'N/A' }}`
+
+            Once merged and ArgoCD confirms healthy, this will auto-promote
+            to production via `staging-promote.yml`.
           labels: staging,auto-merge
           delete-branch: true
 
-      - name: Enable auto-merge
+      - name: Merge PR
         if: steps.create-pr.outputs.pull-request-number
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
-        run: gh pr merge "$PR_NUMBER" --auto --squash
+        run: |
+          # Try auto-merge first so the PR merges after required checks
+          # pass. Fall back to a direct merge when GitHub rejects --auto
+          # because the PR is already in CLEAN status — which is the
+          # default on homelab-infra since no required checks are
+          # configured on main. Without the fallback, every staging
+          # update PR gets stuck in MERGEABLE+CLEAN indefinitely and
+          # the staging→prod gate never fires.
+          if ! gh pr merge "$PR_NUMBER" --auto --squash 2>&1; then
+            echo "Auto-merge rejected (likely CLEAN status) — merging directly"
+            gh pr merge "$PR_NUMBER" --squash
+          fi

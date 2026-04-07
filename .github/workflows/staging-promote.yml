@@ -24,12 +24,28 @@ jobs:
         env:
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          # Extract app name from PR branch (staging/<app-name>)
-          APP_NAME="${PR_BRANCH#staging/}"
+          # PR branch format is `staging/<app-name>/<image-short>`, e.g.
+          # `staging/dispatchr-social/dispatchr-web`. Split on the first
+          # `/` after the `staging/` prefix so app-names containing dashes
+          # (dispatchr-social, jlshaw-link) parse unambiguously.
+          BRANCH_PATH="${PR_BRANCH#staging/}"
+          APP_NAME="${BRANCH_PATH%%/*}"
+          IMAGE_SHORT="${BRANCH_PATH#*/}"
 
-          # Validate app name is safe (alphanumeric, hyphens, underscores only)
-          if ! echo "$APP_NAME" | grep -qE '^[a-zA-Z0-9_-]+$'; then
-            echo "ERROR: Invalid app name extracted from branch: ${APP_NAME}"
+          # Validate both components are safe before using in file paths
+          # or shell expansions. PR_BRANCH is attacker-controllable in
+          # theory (anyone who can open a PR) so we do not trust it —
+          # only exact-match whitelists pass.
+          if ! printf '%s' "$APP_NAME" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+            echo "ERROR: Invalid app name extracted from branch: $APP_NAME"
+            exit 1
+          fi
+          if [ -z "$IMAGE_SHORT" ] || [ "$IMAGE_SHORT" = "$BRANCH_PATH" ]; then
+            echo "ERROR: Branch is missing the image-short segment (expected staging/<app>/<image>)"
+            exit 1
+          fi
+          if ! printf '%s' "$IMAGE_SHORT" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+            echo "ERROR: Invalid image-short extracted from branch: $IMAGE_SHORT"
             exit 1
           fi
 
@@ -41,18 +57,23 @@ jobs:
             exit 1
           fi
 
+          # The staging chart currently only exposes the web image under
+          # .staging-app.image.*. When worker staging support is added,
+          # this step will need to select the correct values path based
+          # on IMAGE_SHORT (e.g. worker → .worker.image.*).
           DIGEST=$(yq eval '.["staging-app"].image.digest' "${VALUES_FILE}")
           IMAGE=$(yq eval '.["staging-app"].image.repository' "${VALUES_FILE}")
           TAG=$(yq eval '.appVersion' "${CHART_FILE}" 2>/dev/null || echo "")
           MIGRATE_DIGEST=$(yq eval '.["staging-app"].migration.digest // ""' "${VALUES_FILE}")
 
           echo "app_name=${APP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "image_short=${IMAGE_SHORT}" >> "$GITHUB_OUTPUT"
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "migrate_digest=${MIGRATE_DIGEST}" >> "$GITHUB_OUTPUT"
 
-          echo "App: ${APP_NAME}, Digest: ${DIGEST}, Tag: ${TAG}, Migrate: ${MIGRATE_DIGEST}"
+          echo "App: ${APP_NAME}, Image: ${IMAGE_SHORT}, Digest: ${DIGEST}, Tag: ${TAG}, Migrate: ${MIGRATE_DIGEST}"
 
       - name: Wait for ArgoCD sync and health
         env:
@@ -63,14 +84,38 @@ jobs:
           ARGO_APP="staging-${APP_NAME}"
           MAX_ATTEMPTS=30
           ATTEMPT=0
+          HEALTH=""
+          SYNC=""
 
           echo "Waiting for ArgoCD app ${ARGO_APP} to be Healthy and Synced..."
+
+          # Pre-flight: verify the Application actually exists before
+          # burning the full polling budget. A mismatched app name (e.g.
+          # renamed in homelab-infra but not reflected in the workflow
+          # convention) previously caused the old loop to tick through
+          # 30 "Unknown/Unknown" attempts and fail after 10 minutes, with
+          # no signal that the real cause was a 404. Fail loud, fail fast.
+          PREFLIGHT_STATUS=$(curl -sS -o /tmp/argo-preflight.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
+            "${ARGOCD_SERVER}/api/v1/applications/${ARGO_APP}" || echo "000")
+          if [ "$PREFLIGHT_STATUS" = "404" ]; then
+            echo "ERROR: ArgoCD Application '${ARGO_APP}' not found (404)."
+            echo "Expected naming convention: staging-<app-name> matching staging-apps/<app-name>/."
+            echo "Check that argocd/applications/${ARGO_APP}.yaml exists with metadata.name: ${ARGO_APP}"
+            exit 1
+          fi
+          if [ "$PREFLIGHT_STATUS" != "200" ]; then
+            echo "ERROR: ArgoCD preflight failed with HTTP ${PREFLIGHT_STATUS}"
+            echo "Response body:"
+            cat /tmp/argo-preflight.json || true
+            exit 1
+          fi
 
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
 
-            RESPONSE=$(curl -s -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
-              "${ARGOCD_SERVER}/api/v1/applications/${ARGO_APP}" 2>/dev/null || echo "{}")
+            RESPONSE=$(curl -sS -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
+              "${ARGOCD_SERVER}/api/v1/applications/${ARGO_APP}" || echo "{}")
 
             HEALTH=$(echo "$RESPONSE" | jq -r '.status.health.status // "Unknown"')
             SYNC=$(echo "$RESPONSE" | jq -r '.status.sync.status // "Unknown"')
@@ -91,7 +136,7 @@ jobs:
           done
 
           if [ "$HEALTH" != "Healthy" ] || [ "$SYNC" != "Synced" ]; then
-            echo "ERROR: Timed out waiting for staging app to be Healthy and Synced"
+            echo "ERROR: Timed out waiting for staging app to be Healthy and Synced (last: health=${HEALTH}, sync=${SYNC})"
             exit 1
           fi
 

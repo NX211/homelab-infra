@@ -2,7 +2,12 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: staging-dispatchr
+  # Name follows the `staging-<prod-app-name>` convention so the
+  # staging-promote.yml workflow (`ARGO_APP="staging-${APP_NAME}"`),
+  # the gitops-trigger STAGING_APP_MAP, and the PR branch naming all
+  # line up without per-app special cases. Mismatched naming previously
+  # caused staging-promote.yml to poll a non-existent Application forever.
+  name: staging-dispatchr-social
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io

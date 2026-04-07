@@ -2,7 +2,11 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: staging-jlshaw
+  # Name follows the `staging-<prod-app-name>` convention so the
+  # staging-promote.yml workflow (`ARGO_APP="staging-${APP_NAME}"`),
+  # the gitops-trigger STAGING_APP_MAP, and the PR branch naming all
+  # line up without per-app special cases.
+  name: staging-jlshaw-link
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
