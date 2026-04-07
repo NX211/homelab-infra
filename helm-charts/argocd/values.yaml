@@ -87,6 +87,60 @@ argo-cd:
         cpu: 100m
         memory: 128Mi
 
+    # The argocd-notifications-secret is populated by ExternalSecret (see
+    # templates/externalsecret-notifications.yaml), not by the Helm chart.
+    secret:
+      create: false
+
+    # Webhook service definition — called by the gitops-trigger-promote
+    # notifier below. Bearer token is read from the notifications secret
+    # at template evaluation time via `.secret.promote-token`.
+    notifiers:
+      service.webhook.gitops-trigger-promote: |
+        url: https://gitops-trigger.coreyalan.com/promote
+        headers:
+          - name: Content-Type
+            value: application/json
+          - name: Authorization
+            value: "Bearer $promote-token"
+
+    # Message templates
+    templates:
+      # Posts the currently-rolled-out image refs to gitops-trigger
+      # /promote so it can dispatch the deferred prod image-push event
+      # for any matching pending promotion. The prod app name comes from
+      # the staging Application's promotion.gitops-trigger/prod-app-name
+      # annotation so staging and prod app names don't have to match.
+      template.app-promote: |
+        webhook:
+          gitops-trigger-promote:
+            method: POST
+            body: |
+              {
+                "appName": "{{ index .app.metadata.annotations "promotion.gitops-trigger/prod-app-name" }}",
+                "images": {{ .app.status.summary.images | toJson }}
+              }
+
+    # Trigger conditions — fire the promotion webhook once per Git
+    # revision whenever a staging-* app reaches Healthy + Synced and has
+    # the prod-app-name annotation set. `oncePer` keyed on the sync
+    # revision prevents us from re-promoting on every reconcile.
+    triggers:
+      trigger.on-staging-deployed: |
+        - when: >-
+            app.metadata.name matches '^staging-.*'
+            and app.status.health.status == 'Healthy'
+            and app.status.sync.status == 'Synced'
+            and app.metadata.annotations != nil
+            and app.metadata.annotations["promotion.gitops-trigger/prod-app-name"] != ""
+          send: [app-promote]
+          oncePer: app.status.sync.revision
+
+    # Intentionally no default subscriptions — apps opt in via annotation:
+    #   notifications.argoproj.io/subscribe.on-staging-deployed.gitops-trigger-promote: ""
+    # See argocd/applications/staging-dispatchr.yaml for the pattern.
+    subscriptions: []
+
   # Dex - OAuth/SSO (disabled, using Authelia instead)
   dex:
     enabled: false
