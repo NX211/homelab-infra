@@ -64,7 +64,16 @@ jobs:
           # web/worker pushes don't overwrite each other's changes on a
           # shared branch — the previous fixed `staging/<app>` branch
           # was silently force-pushed by each subsequent dispatch.
+          #
+          # gitops-trigger dispatches the IMAGE field with whichever ref
+          # form the AR pubsub event carried: a bare repo path, a
+          # `:tag` suffix, or (most common) an `@sha256:...` digest
+          # suffix. Strip the suffix before validating so the regex
+          # only sees the repo-short name. The order is @ first then
+          # :tag to handle both cleanly.
           IMAGE_SHORT="${IMAGE##*/}"
+          IMAGE_SHORT="${IMAGE_SHORT%@*}"
+          IMAGE_SHORT="${IMAGE_SHORT%%:*}"
           if ! printf '%s' "$IMAGE_SHORT" | grep -qE '^[a-zA-Z0-9_-]+$'; then
             echo "ERROR: Failed to extract valid short image name from IMAGE=$IMAGE"
             exit 1
