@@ -27,7 +27,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
     pullPolicy: IfNotPresent
-    digest: "sha256:afebee787f67d11f8ffb6cff5d04c7e632b034839bff40ff4d84d78d9a58249e" # Updated by CI/CD
+    digest: "sha256:46aac5e34b749f9593831c4312d80ef15cd8c9d11d23268039a9058915ce7643" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-dispatchr
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
