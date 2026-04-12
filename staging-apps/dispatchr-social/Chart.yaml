@@ -3,7 +3,7 @@ name: dispatchr-social-staging
 description: Dispatchr Social - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "v0.1.32"
+appVersion: "v0.1.33"
 keywords:
   - dispatchr
   - nextjs
