@@ -126,7 +126,7 @@ jobs:
 
       - name: Create PR
         id: create-pr
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ steps.app-token.outputs.token }}
           # Per-image branch (staging/<app>/<image-short>) so concurrent
