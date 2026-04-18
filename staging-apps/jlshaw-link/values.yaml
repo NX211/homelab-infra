@@ -71,6 +71,8 @@ staging-app:
         key: e94a27a0-ae78-4cd6-87b5-b42200fe99f1
       - name: CRON_SECRET
         key: 6aa33b1f-6133-42da-aa73-b42200fec4c5
+      - name: API_KEY_HASH_SECRET
+        key: 5aa854b6-bcd6-41bb-8f89-b43000efdc6b
   resources:
     requests:
       cpu: 100m
