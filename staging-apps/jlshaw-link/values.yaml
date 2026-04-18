@@ -5,62 +5,50 @@ staging-app:
   appName: jlshaw
   appLabel: JLShaw
   fullnameOverride: jlshaw-link-staging
-
   replicaCount: 1
-
   # Per-app Bitwarden secret store (least privilege)
   bitwarden:
     projectID: "2339785b-1aff-45ca-bd1e-b42200fc7070"
     organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
     credentialsSecret: bitwarden-staging-jlshaw-credentials
-
   # Database provisioning
   database:
     enabled: true
     superuser:
-      create: true  # jlshaw owns the shared postgres-superuser-staging secret
-    userKey: 5a530cc9-c13a-4f00-8551-b423015eb89f   # jlshaw db username
+      create: true # jlshaw owns the shared postgres-superuser-staging secret
+    userKey: 5a530cc9-c13a-4f00-8551-b423015eb89f # jlshaw db username
     passwordKey: 2327039d-c642-4f08-969a-b423015f0f23 # jlshaw db password
-    nameKey: 6dc3af9c-d88e-42b6-85b6-b423015f56ee   # jlshaw db name
-
+    nameKey: 6dc3af9c-d88e-42b6-85b6-b423015f56ee # jlshaw db name
   # Migration image (built by CI alongside the app image)
   migration:
     enabled: false
     repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web-migrate
-    digest: "sha256:PLACEHOLDER"  # Updated by CI/CD
-
+    digest: "sha256:PLACEHOLDER" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web
     pullPolicy: IfNotPresent
-    digest: "sha256:3d07fba1e802b7aa35987cfe2450266443569d9c544c1b8465fa2eda426ae218"  # Updated by CI/CD
-
+    digest: "sha256:057b9b97300a330e745eaeeaa30   bf70d389dcb07206a81b1c954249ce79c9359" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-jlshaw
-
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
   gcrPullSecret:
     bitwardenKey: b8ac8e29-3460-4194-ac46-b42201589edc
     secretName: gcr-pull-secret-jlshaw
-
   service:
     type: ClusterIP
     port: 3000
-
   ingress:
     enabled: true
     host: staging.jlshawconsulting.com
     clusterIssuer: letsencrypt-prod
-
   env:
     - name: NODE_ENV
       value: production
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.jlshawconsulting.com
-
   envFrom:
     - secretRef:
         name: jlshaw-staging-secrets
-
   # External Secrets (Bitwarden staging project)
   externalSecrets:
     enabled: true
@@ -83,7 +71,6 @@ staging-app:
         key: e94a27a0-ae78-4cd6-87b5-b42200fe99f1
       - name: CRON_SECRET
         key: 6aa33b1f-6133-42da-aa73-b42200fec4c5
-
   resources:
     requests:
       cpu: 100m
@@ -91,7 +78,6 @@ staging-app:
     limits:
       cpu: 500m
       memory: 768Mi
-
   livenessProbe:
     enabled: true
     path: /
@@ -100,7 +86,6 @@ staging-app:
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
-
   readinessProbe:
     enabled: true
     path: /
