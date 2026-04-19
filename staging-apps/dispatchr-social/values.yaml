@@ -46,6 +46,8 @@ staging-app:
       value: production
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.dispatchr.social
+    - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
+      value: staging
   envFrom:
     - secretRef:
         name: dispatchr-staging-secrets
@@ -140,7 +142,7 @@ staging-app:
       memory: 512Mi
   livenessProbe:
     enabled: true
-    path: /
+    path: /api/health
     port: 3000
     initialDelaySeconds: 30
     periodSeconds: 10
@@ -148,7 +150,7 @@ staging-app:
     failureThreshold: 3
   readinessProbe:
     enabled: true
-    path: /
+    path: /api/health
     port: 3000
     initialDelaySeconds: 10
     periodSeconds: 5
