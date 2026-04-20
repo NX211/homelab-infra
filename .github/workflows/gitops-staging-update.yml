@@ -25,6 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
 
       - name: Validate payload
         id: validate
@@ -84,6 +85,14 @@ jobs:
 
       - name: Install yq
         uses: mikefarah/yq@v4
+
+      # Re-fetch latest main right before making changes. Other queued
+      # runs in the same concurrency group may have merged PRs between
+      # the initial checkout and now, so the working tree could be stale.
+      - name: Refresh to latest main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
 
       - name: Update image digest
         env:
@@ -153,14 +162,16 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ steps.create-pr.outputs.pull-request-number }}
         run: |
-          # Try auto-merge first so the PR merges after required checks
-          # pass. Fall back to a direct merge when GitHub rejects --auto
-          # because the PR is already in CLEAN status — which is the
-          # default on homelab-infra since no required checks are
-          # configured on main. Without the fallback, every staging
-          # update PR gets stuck in MERGEABLE+CLEAN indefinitely and
-          # the staging→prod gate never fires.
-          if ! gh pr merge "$PR_NUMBER" --auto --squash 2>&1; then
-            echo "Auto-merge rejected (likely CLEAN status) — merging directly"
+          # Merge directly instead of using --auto. Auto-merge enables
+          # the merge but doesn't wait — the job finishes, the
+          # concurrency lock releases, and other queued runs can merge
+          # PRs that make this one conflict before auto-merge fires.
+          # Direct merge holds the concurrency lock until the PR is
+          # actually merged, preventing the race condition.
+          #
+          # If required checks exist, wait for them first (up to 10 min).
+          if ! gh pr merge "$PR_NUMBER" --squash 2>&1; then
+            echo "Direct merge failed — waiting for status checks"
+            gh pr checks "$PR_NUMBER" --watch --fail-fast || true
             gh pr merge "$PR_NUMBER" --squash
           fi
