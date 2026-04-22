@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: ghcr.io/wasi-master/13ft
-  tag: "0.1.0"
+  tag: "0.3.4"
   pullPolicy: IfNotPresent
 
 # Service configuration
