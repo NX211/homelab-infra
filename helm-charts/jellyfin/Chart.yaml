@@ -1,0 +1,14 @@
+apiVersion: v2
+name: jellyfin
+description: Jellyfin - The Free Software Media System
+type: application
+version: 1.0.0
+appVersion: "10.10.6"
+
+keywords:
+  - jellyfin
+  - media
+  - streaming
+
+maintainers:
+  - name: Homelab Admin

@@ -1,0 +1,16 @@
+---
+{{- if and .Values.watchstate.enabled .Values.watchstate.ingress.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "jellyfin.fullname" . }}-watchstate-tls
+  labels:
+    {{- include "jellyfin.watchstate.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "jellyfin.fullname" . }}-watchstate-tls
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.watchstate.ingress.host }}
+{{- end }}

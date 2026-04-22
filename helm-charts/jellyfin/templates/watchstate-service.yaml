@@ -1,0 +1,18 @@
+---
+{{- if .Values.watchstate.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "jellyfin.fullname" . }}-watchstate
+  labels:
+    {{- include "jellyfin.watchstate.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.watchstate.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "jellyfin.watchstate.selectorLabels" . | nindent 4 }}
+{{- end }}

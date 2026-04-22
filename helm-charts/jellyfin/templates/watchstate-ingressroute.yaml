@@ -1,0 +1,25 @@
+---
+{{- if and .Values.watchstate.enabled .Values.watchstate.ingress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "jellyfin.fullname" . }}-watchstate
+  labels:
+    {{- include "jellyfin.watchstate.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`{{ .Values.watchstate.ingress.host }}`)
+    kind: Rule
+    middlewares:
+    - name: authelia-forwardauth
+      namespace: default
+    - name: default-headers
+      namespace: default
+    services:
+    - name: {{ include "jellyfin.fullname" . }}-watchstate
+      port: {{ .Values.watchstate.service.port }}
+  tls:
+    secretName: {{ include "jellyfin.fullname" . }}-watchstate-tls
+{{- end }}

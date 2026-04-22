@@ -1,0 +1,18 @@
+---
+{{- if and .Values.watchstate.enabled .Values.watchstate.persistence.config.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "jellyfin.fullname" . }}-watchstate-config
+  labels:
+    {{- include "jellyfin.watchstate.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.watchstate.persistence.config.storageClass }}
+  storageClassName: {{ .Values.watchstate.persistence.config.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.watchstate.persistence.config.size }}
+{{- end }}

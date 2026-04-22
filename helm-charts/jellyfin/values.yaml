@@ -1,0 +1,79 @@
+# Jellyfin Helm Chart Values
+
+# Image configuration
+image:
+  repository: jellyfin/jellyfin
+  tag: "10.10.6"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 8096
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: jellyfin.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 10Gi
+    storageClass: local-path
+
+  # Media directory (hostPath, read-only)
+  media:
+    enabled: true
+    hostPath: /blacktalon/media
+
+# Environment variables
+env:
+  TZ: America/New_York
+  JELLYFIN_PublishedServerUrl: "https://jellyfin.authoritah.com"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 4000m
+    memory: 4Gi
+
+# Watchstate sidecar service
+watchstate:
+  enabled: true
+  image:
+    repository: ghcr.io/arabcoders/watchstate
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  ingress:
+    enabled: true
+    host: watchstate.authoritah.com
+  nodeSelector:
+    kubernetes.io/hostname: yellowtalon
+  env:
+    WS_TZ: America/New_York
+    WS_CRON_IMPORT: "true"
+    WS_CRON_EXPORT: "true"
+    WS_API_AUTO: "true"
+  persistence:
+    config:
+      enabled: true
+      size: 2Gi
+      storageClass: local-path
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

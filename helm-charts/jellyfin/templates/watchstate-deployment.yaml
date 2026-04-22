@@ -1,0 +1,63 @@
+---
+{{- if .Values.watchstate.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "jellyfin.fullname" . }}-watchstate
+  labels:
+    {{- include "jellyfin.watchstate.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "jellyfin.watchstate.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "jellyfin.watchstate.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.watchstate.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          chown -R 1000:1000 /config
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      containers:
+      - name: watchstate
+        image: "{{ .Values.watchstate.image.repository }}:{{ .Values.watchstate.image.tag }}"
+        imagePullPolicy: {{ .Values.watchstate.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.watchstate.service.port }}
+          protocol: TCP
+        env:
+        - name: WS_TZ
+          value: {{ .Values.watchstate.env.WS_TZ | quote }}
+        - name: WS_CRON_IMPORT
+          value: {{ .Values.watchstate.env.WS_CRON_IMPORT | quote }}
+        - name: WS_CRON_EXPORT
+          value: {{ .Values.watchstate.env.WS_CRON_EXPORT | quote }}
+        - name: WS_API_AUTO
+          value: {{ .Values.watchstate.env.WS_API_AUTO | quote }}
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        resources:
+          {{- toYaml .Values.watchstate.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "jellyfin.fullname" . }}-watchstate-config
+{{- end }}
