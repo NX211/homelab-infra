@@ -3,7 +3,7 @@ name: sonarr-uhd
 description: Sonarr - Smart PVR for UHD TV shows
 type: application
 version: 1.0.0
-appVersion: "4.0.11"
+appVersion: "4.0.17"
 
 keywords:
   - sonarr
