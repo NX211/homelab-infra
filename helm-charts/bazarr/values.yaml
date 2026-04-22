@@ -1,0 +1,59 @@
+# Bazarr Helm Chart Values
+
+# Image configuration
+image:
+  repository: ghcr.io/linuxserver/bazarr
+  tag: "1.5.1"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 6767
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: bazarr.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 2Gi
+    storageClass: local-path
+
+  # Media directories (hostPath - read-write for subtitle writing)
+  media:
+    enabled: true
+    movies:
+      hostPath: /blacktalon/media/movies
+      mountPath: /media/movies
+    tv:
+      hostPath: /blacktalon/media/tv
+      mountPath: /media/tv
+    kids:
+      hostPath: /blacktalon/media/kids
+      mountPath: /media/kids
+    anime:
+      hostPath: /blacktalon/media/anime
+      mountPath: /media/anime
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"
+  PGID: "8675309"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi

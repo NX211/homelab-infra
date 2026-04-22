@@ -1,0 +1,103 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bazarr.fullname" . }}
+  labels:
+    {{- include "bazarr.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "bazarr.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bazarr.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /config
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      containers:
+      - name: bazarr
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: PUID
+          value: {{ .Values.env.PUID | quote }}
+        - name: PGID
+          value: {{ .Values.env.PGID | quote }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        {{- if .Values.persistence.media.enabled }}
+        - name: movies
+          mountPath: {{ .Values.persistence.media.movies.mountPath }}
+        - name: tv
+          mountPath: {{ .Values.persistence.media.tv.mountPath }}
+        - name: kids
+          mountPath: {{ .Values.persistence.media.kids.mountPath }}
+        - name: anime
+          mountPath: {{ .Values.persistence.media.anime.mountPath }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "bazarr.fullname" . }}-config
+      {{- if .Values.persistence.media.enabled }}
+      - name: movies
+        hostPath:
+          path: {{ .Values.persistence.media.movies.hostPath }}
+          type: Directory
+      - name: tv
+        hostPath:
+          path: {{ .Values.persistence.media.tv.hostPath }}
+          type: Directory
+      - name: kids
+        hostPath:
+          path: {{ .Values.persistence.media.kids.hostPath }}
+          type: Directory
+      - name: anime
+        hostPath:
+          path: {{ .Values.persistence.media.anime.hostPath }}
+          type: Directory
+      {{- end }}

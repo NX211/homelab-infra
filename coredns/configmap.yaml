@@ -67,6 +67,7 @@ data:
     10.43.5.100 authoritah.photo
     10.43.5.100 kavita.authoritah.com
     10.43.5.100 watchstate.authoritah.com
+    10.43.5.100 bazarr.authoritah.com
   NodeHosts: |
     10.20.0.210 greytalon
     10.20.0.250 blacktalon

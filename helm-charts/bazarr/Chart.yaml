@@ -1,0 +1,15 @@
+apiVersion: v2
+name: bazarr
+description: Bazarr - Automatic subtitle download manager
+type: application
+version: 1.0.0
+appVersion: "1.5.1"
+
+keywords:
+  - bazarr
+  - subtitles
+  - media
+  - arr
+
+maintainers:
+  - name: Homelab Admin
