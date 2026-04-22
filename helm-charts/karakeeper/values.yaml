@@ -50,7 +50,7 @@ meilisearch:
   enabled: true
   image:
     repository: getmeili/meilisearch
-    tag: "v1.13.3"
+    tag: "v1.42.1"
     pullPolicy: IfNotPresent
   service:
     port: 7700
