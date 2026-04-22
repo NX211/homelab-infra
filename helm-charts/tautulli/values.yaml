@@ -1,0 +1,43 @@
+# Tautulli Helm Chart Values
+
+# Image configuration
+image:
+  repository: lscr.io/linuxserver/tautulli
+  tag: "2.15.1"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 8181
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: stats.authoritah.tv
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: greytalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 2Gi
+    storageClass: local-path
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "1000"
+  PGID: "1000"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

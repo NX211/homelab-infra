@@ -1,0 +1,15 @@
+apiVersion: v2
+name: tautulli
+description: Tautulli - Plex Media Server monitoring and tracking tool
+type: application
+version: 1.0.0
+appVersion: "2.15.1"
+
+keywords:
+  - tautulli
+  - plex
+  - monitoring
+  - media
+
+maintainers:
+  - name: Homelab Admin
