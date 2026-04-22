@@ -1,0 +1,75 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sonarr-uhd.fullname" . }}
+  labels:
+    {{- include "sonarr-uhd.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sonarr-uhd.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sonarr-uhd.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /config
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      containers:
+      - name: sonarr
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: PUID
+          value: {{ .Values.env.PUID | quote }}
+        - name: PGID
+          value: {{ .Values.env.PGID | quote }}
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        {{- if .Values.persistence.media.enabled }}
+        - name: tv-uhd
+          mountPath: {{ .Values.persistence.media.tvUhd.mountPath }}
+        - name: downloads-tv-uhd
+          mountPath: {{ .Values.persistence.media.downloadsTvUhd.mountPath }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "sonarr-uhd.fullname" . }}-config
+      {{- if .Values.persistence.media.enabled }}
+      - name: tv-uhd
+        hostPath:
+          path: {{ .Values.persistence.media.tvUhd.hostPath }}
+          type: Directory
+      - name: downloads-tv-uhd
+        hostPath:
+          path: {{ .Values.persistence.media.downloadsTvUhd.hostPath }}
+          type: Directory
+      {{- end }}

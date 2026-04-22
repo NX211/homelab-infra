@@ -1,0 +1,53 @@
+# Sonarr UHD Helm Chart Values
+
+# Image configuration
+image:
+  repository: lscr.io/linuxserver/sonarr
+  tag: "4.0.11"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 8989
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: sonarr3.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+
+  # Media directories (hostPath for large libraries)
+  media:
+    enabled: true
+    tvUhd:
+      hostPath: /blacktalon/media/tv-uhd
+      mountPath: /media/tv-uhd
+    downloadsTvUhd:
+      hostPath: /blacktalon/media/downloads/tv-uhd
+      mountPath: /media/downloads/tv-uhd
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"
+  PGID: "8675309"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

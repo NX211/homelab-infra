@@ -1,0 +1,15 @@
+apiVersion: v2
+name: sonarr-uhd
+description: Sonarr - Smart PVR for UHD TV shows
+type: application
+version: 1.0.0
+appVersion: "4.0.11"
+
+keywords:
+  - sonarr
+  - pvr
+  - uhd
+  - arr
+
+maintainers:
+  - name: Homelab Admin
