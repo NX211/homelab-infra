@@ -1,0 +1,80 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kavita.fullname" . }}
+  labels:
+    {{- include "kavita.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "kavita.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kavita.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: kavita
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 3
+        volumeMounts:
+        - name: config
+          mountPath: /kavita/config
+        {{- if .Values.persistence.media.enabled }}
+        - name: manga
+          mountPath: {{ .Values.persistence.media.manga.mountPath }}
+        - name: books
+          mountPath: {{ .Values.persistence.media.books.mountPath }}
+        - name: comics
+          mountPath: {{ .Values.persistence.media.comics.mountPath }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "kavita.fullname" . }}-config
+      {{- if .Values.persistence.media.enabled }}
+      - name: manga
+        hostPath:
+          path: {{ .Values.persistence.media.manga.hostPath }}
+          type: Directory
+      - name: books
+        hostPath:
+          path: {{ .Values.persistence.media.books.hostPath }}
+          type: Directory
+      - name: comics
+        hostPath:
+          path: {{ .Values.persistence.media.comics.hostPath }}
+          type: Directory
+      {{- end }}

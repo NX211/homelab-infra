@@ -1,0 +1,23 @@
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "kavita.fullname" . }}
+  labels:
+    {{- include "kavita.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`{{ .Values.ingress.host }}`)
+    kind: Rule
+    middlewares:
+    - name: default-headers
+      namespace: default
+    services:
+    - name: {{ include "kavita.fullname" . }}
+      port: {{ .Values.service.port }}
+  tls:
+    secretName: {{ include "kavita.fullname" . }}-tls
+{{- end }}

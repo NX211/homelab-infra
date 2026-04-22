@@ -1,0 +1,54 @@
+# Kavita Helm Chart Values
+
+# Image configuration
+image:
+  repository: jvmilazz0/kavita
+  tag: "0.8.4"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 5000
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: kavita.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+
+  # Media directories (hostPath for large libraries)
+  media:
+    enabled: true
+    manga:
+      hostPath: /blacktalon/media/manga
+      mountPath: /media/manga
+    books:
+      hostPath: /blacktalon/media/books
+      mountPath: /media/books
+    comics:
+      hostPath: /blacktalon/media/comics
+      mountPath: /media/comics
+
+# Environment variables
+env:
+  TZ: America/New_York
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi

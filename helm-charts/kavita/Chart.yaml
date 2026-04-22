@@ -1,0 +1,16 @@
+apiVersion: v2
+name: kavita
+description: Kavita - Fast, feature rich, cross platform reading server
+type: application
+version: 1.0.0
+appVersion: "0.8.4"
+
+keywords:
+  - kavita
+  - reading
+  - manga
+  - comics
+  - books
+
+maintainers:
+  - name: Homelab Admin
