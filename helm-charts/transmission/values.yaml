@@ -1,0 +1,53 @@
+# Transmission Helm Chart Values
+
+# Image configuration
+image:
+  repository: lscr.io/linuxserver/transmission
+  tag: "4.1.1"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 9091
+  peerPort: 51413
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: transmission.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 2Gi
+    storageClass: local-path
+
+  # Downloads and watch directories (hostPath)
+  downloads:
+    hostPath: /blacktalon/media/downloads
+    mountPath: /downloads
+  watch:
+    hostPath: /blacktalon/media/downloads/torrentfiles
+    mountPath: /watch
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"
+  PGID: "8675309"
+  PEER_PORT: "51413"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 2000m
+    memory: 1Gi
