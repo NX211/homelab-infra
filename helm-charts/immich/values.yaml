@@ -1,0 +1,117 @@
+# Immich Helm Chart Values
+
+# Main server image
+image:
+  repository: ghcr.io/immich-app/immich-server
+  tag: "v2.7.5"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 2283
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: authoritah.photo
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: greytalon
+
+# Persistence
+persistence:
+  upload:
+    enabled: true
+    size: 50Gi
+    storageClass: local-path
+  config:
+    enabled: true
+    size: 1Gi
+    storageClass: local-path
+
+# Environment variables
+env:
+  TZ: America/New_York
+  IMMICH_VERSION: "v2.7.5"
+  DB_HOSTNAME: "immich-postgres"
+  DB_PORT: "5432"
+  DB_DATABASE_NAME: "immich"
+  DB_USERNAME: "immich"
+  DB_PASSWORD: "immich"
+  REDIS_HOSTNAME: "immich-redis"
+  IMMICH_MACHINE_LEARNING_URL: "http://immich-machine-learning:3003"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+# PostgreSQL with vector extensions
+postgres:
+  enabled: true
+  image:
+    repository: ghcr.io/immich-app/postgres
+    tag: "14-vectorchord0.4.3-pgvectors0.2.0"
+    pullPolicy: IfNotPresent
+  service:
+    port: 5432
+  env:
+    POSTGRES_USER: "immich"
+    POSTGRES_PASSWORD: "immich"
+    POSTGRES_DB: "immich"
+    POSTGRES_INITDB_ARGS: "--data-checksums"
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: local-path
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# Redis
+redis:
+  enabled: true
+  image:
+    repository: docker.io/redis
+    tag: "6.2-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    port: 6379
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# Machine Learning
+machineLearning:
+  enabled: true
+  image:
+    repository: ghcr.io/immich-app/immich-machine-learning
+    tag: "v2.7.5"
+    pullPolicy: IfNotPresent
+  service:
+    port: 3003
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 4Gi

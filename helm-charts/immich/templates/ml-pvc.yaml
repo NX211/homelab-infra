@@ -1,0 +1,19 @@
+---
+{{- if and .Values.machineLearning.enabled .Values.machineLearning.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "immich.fullname" . }}-model-cache
+  labels:
+    {{- include "immich.labels" . | nindent 4 }}
+    app.kubernetes.io/component: machine-learning
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.machineLearning.persistence.storageClass }}
+  storageClassName: {{ .Values.machineLearning.persistence.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.machineLearning.persistence.size }}
+{{- end }}

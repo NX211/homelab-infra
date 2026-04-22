@@ -1,0 +1,14 @@
+apiVersion: v2
+name: immich
+description: Immich - High performance self-hosted photo and video management
+type: application
+version: 1.0.0
+appVersion: "2.7.5"
+
+keywords:
+  - immich
+  - photos
+  - media
+
+maintainers:
+  - name: Homelab Admin
