@@ -1,0 +1,16 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "thirteen-ft-ladder.fullname" . }}
+  labels:
+    {{- include "thirteen-ft-ladder.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "thirteen-ft-ladder.selectorLabels" . | nindent 4 }}

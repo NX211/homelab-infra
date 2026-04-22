@@ -1,0 +1,30 @@
+# 13ft Ladder Helm Chart Values
+
+# Image configuration
+image:
+  repository: ghcr.io/wasi-master/13ft
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 5000
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: 13ft.authoritah.link
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: redtalon
+
+# Resource limits
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

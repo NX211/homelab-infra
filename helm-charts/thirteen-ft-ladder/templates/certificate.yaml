@@ -1,0 +1,16 @@
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "thirteen-ft-ladder.fullname" . }}-tls
+  labels:
+    {{- include "thirteen-ft-ladder.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "thirteen-ft-ladder.fullname" . }}-tls
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.ingress.host }}
+{{- end }}

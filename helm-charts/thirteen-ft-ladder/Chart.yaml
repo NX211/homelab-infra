@@ -1,0 +1,14 @@
+apiVersion: v2
+name: thirteen-ft-ladder
+description: 13ft Ladder - Paywall bypass proxy
+type: application
+version: 1.0.0
+appVersion: "0.1.0"
+
+keywords:
+  - 13ft
+  - paywall
+  - proxy
+
+maintainers:
+  - name: Homelab Admin

@@ -1,0 +1,23 @@
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "thirteen-ft-ladder.fullname" . }}
+  labels:
+    {{- include "thirteen-ft-ladder.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`{{ .Values.ingress.host }}`)
+    kind: Rule
+    middlewares:
+    - name: default-headers
+      namespace: default
+    services:
+    - name: {{ include "thirteen-ft-ladder.fullname" . }}
+      port: {{ .Values.service.port }}
+  tls:
+    secretName: {{ include "thirteen-ft-ladder.fullname" . }}-tls
+{{- end }}
