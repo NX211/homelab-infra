@@ -49,20 +49,16 @@ spec:
         - name: PGID
           value: {{ .Values.env.PGID | quote }}
         livenessProbe:
-          httpGet:
-            path: /
+          tcpSocket:
             port: http
           initialDelaySeconds: 60
           periodSeconds: 30
-          timeoutSeconds: 10
           failureThreshold: 5
         readinessProbe:
-          httpGet:
-            path: /
+          tcpSocket:
             port: http
           initialDelaySeconds: 30
           periodSeconds: 10
-          timeoutSeconds: 5
           failureThreshold: 3
         volumeMounts:
         - name: config
