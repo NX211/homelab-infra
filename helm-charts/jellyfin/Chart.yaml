@@ -3,7 +3,7 @@ name: jellyfin
 description: Jellyfin - The Free Software Media System
 type: application
 version: 1.0.0
-appVersion: "10.10.6"
+appVersion: "10.9.11"
 
 keywords:
   - jellyfin
