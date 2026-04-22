@@ -1,0 +1,25 @@
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "sabnzbd.fullname" . }}
+  labels:
+    {{- include "sabnzbd.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`{{ .Values.ingress.host }}`)
+    kind: Rule
+    middlewares:
+    - name: authelia-forwardauth
+      namespace: default
+    - name: default-headers
+      namespace: default
+    services:
+    - name: {{ include "sabnzbd.fullname" . }}
+      port: {{ .Values.service.port }}
+  tls:
+    secretName: {{ include "sabnzbd.fullname" . }}-tls
+{{- end }}
