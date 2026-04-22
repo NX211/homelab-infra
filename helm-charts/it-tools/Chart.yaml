@@ -1,0 +1,14 @@
+apiVersion: v2
+name: it-tools
+description: IT-Tools - Handy online tools for developers
+type: application
+version: 1.0.0
+appVersion: "2024.10.22-7ca5933"
+
+keywords:
+  - it-tools
+  - developer
+  - utilities
+
+maintainers:
+  - name: Homelab Admin
