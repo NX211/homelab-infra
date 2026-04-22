@@ -1,0 +1,15 @@
+apiVersion: v2
+name: radarr-uhd
+description: Radarr - Smart PVR for UHD movies
+type: application
+version: 1.0.0
+appVersion: "5.16.3"
+
+keywords:
+  - radarr
+  - pvr
+  - uhd
+  - arr
+
+maintainers:
+  - name: Homelab Admin

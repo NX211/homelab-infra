@@ -1,0 +1,53 @@
+# Radarr UHD Helm Chart Values
+
+# Image configuration
+image:
+  repository: lscr.io/linuxserver/radarr
+  tag: "5.16.3"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 7878
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: radarr2.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+
+  # Media directories (hostPath for large libraries)
+  media:
+    enabled: true
+    moviesUhd:
+      hostPath: /blacktalon/media/movies-uhd
+      mountPath: /media/movies-uhd
+    downloadsMoviesUhd:
+      hostPath: /blacktalon/media/downloads/movies-uhd
+      mountPath: /media/downloads/movies-uhd
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "8675309"
+  PGID: "8675309"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1
+    memory: 1Gi
