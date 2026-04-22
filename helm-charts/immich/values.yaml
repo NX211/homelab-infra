@@ -13,7 +13,7 @@ service:
 # Ingress configuration
 ingress:
   enabled: true
-  host: authoritah.photos
+  host: authoritah.photo
   clusterIssuer: letsencrypt-prod
 
 # Node selection
