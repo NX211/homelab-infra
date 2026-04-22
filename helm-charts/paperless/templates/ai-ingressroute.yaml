@@ -1,0 +1,24 @@
+---
+{{- if and .Values.ai.enabled .Values.ai.ingress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "paperless.fullname" . }}-ai
+  labels:
+    {{- include "paperless.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  - match: Host(`{{ .Values.ai.ingress.host }}`)
+    kind: Rule
+    middlewares:
+    - name: default-headers
+      namespace: default
+    services:
+    - name: {{ include "paperless.fullname" . }}-ai
+      port: {{ .Values.ai.service.port }}
+  tls:
+    secretName: {{ include "paperless.fullname" . }}-ai-tls
+{{- end }}

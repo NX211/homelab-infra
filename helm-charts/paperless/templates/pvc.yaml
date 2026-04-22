@@ -1,0 +1,64 @@
+---
+{{- if .Values.persistence.data.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "paperless.fullname" . }}-data
+  labels:
+    {{- include "paperless.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.persistence.data.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.data.size }}
+{{- end }}
+---
+{{- if .Values.persistence.media.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "paperless.fullname" . }}-media
+  labels:
+    {{- include "paperless.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.persistence.media.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.media.size }}
+{{- end }}
+---
+{{- if .Values.persistence.export.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "paperless.fullname" . }}-export
+  labels:
+    {{- include "paperless.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.persistence.export.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.export.size }}
+{{- end }}
+---
+{{- if .Values.persistence.consume.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "paperless.fullname" . }}-consume
+  labels:
+    {{- include "paperless.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.persistence.consume.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.consume.size }}
+{{- end }}

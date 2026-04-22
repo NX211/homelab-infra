@@ -1,0 +1,128 @@
+# Paperless-ngx Helm Chart Values
+
+# Main app image
+image:
+  repository: ghcr.io/paperless-ngx/paperless-ngx
+  tag: "2.20.14"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 8000
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: docs.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: greytalon
+
+# Persistence
+persistence:
+  data:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+  media:
+    enabled: true
+    size: 10Gi
+    storageClass: local-path
+  export:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+  consume:
+    enabled: true
+    size: 2Gi
+    storageClass: local-path
+
+# Environment variables
+env:
+  PAPERLESS_REDIS: "redis://paperless-redis:6379"
+  PAPERLESS_DBHOST: "paperlessdb"
+  PAPERLESS_DBPORT: "5432"
+  PAPERLESS_DBNAME: "paperless"
+  PAPERLESS_DBUSER: "paperless"
+  PAPERLESS_DBPASS: "paperless"
+  PAPERLESS_URL: "https://docs.authoritah.com"
+  PAPERLESS_APPS: "allauth.socialaccount.providers.openid_connect"
+  PAPERLESS_TIKA_ENABLED: "false"
+  PAPERLESS_OCR_LANGUAGE: "eng"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+# PostgreSQL database
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "17"
+    pullPolicy: IfNotPresent
+  service:
+    port: 5432
+  env:
+    POSTGRES_USER: "paperless"
+    POSTGRES_PASSWORD: "paperless"
+    POSTGRES_DB: "paperless"
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# Redis
+redis:
+  enabled: true
+  image:
+    repository: docker.io/redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    port: 6379
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# Paperless AI
+ai:
+  enabled: true
+  image:
+    repository: clusterzx/paperless-ai
+    tag: "3.0.9"
+    pullPolicy: IfNotPresent
+  service:
+    port: 3000
+  ingress:
+    enabled: true
+    host: ai.authoritah.com
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: local-path
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

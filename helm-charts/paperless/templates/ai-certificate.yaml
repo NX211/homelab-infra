@@ -1,0 +1,17 @@
+---
+{{- if and .Values.ai.enabled .Values.ai.ingress.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "paperless.fullname" . }}-ai-tls
+  labels:
+    {{- include "paperless.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai
+spec:
+  secretName: {{ include "paperless.fullname" . }}-ai-tls
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.ai.ingress.host }}
+{{- end }}

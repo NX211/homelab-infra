@@ -1,0 +1,77 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "paperless.fullname" . }}
+  labels:
+    {{- include "paperless.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "paperless.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "paperless.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: paperless
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: PAPERLESS_REDIS
+          value: {{ .Values.env.PAPERLESS_REDIS | quote }}
+        - name: PAPERLESS_DBHOST
+          value: {{ .Values.env.PAPERLESS_DBHOST | quote }}
+        - name: PAPERLESS_DBPORT
+          value: {{ .Values.env.PAPERLESS_DBPORT | quote }}
+        - name: PAPERLESS_DBNAME
+          value: {{ .Values.env.PAPERLESS_DBNAME | quote }}
+        - name: PAPERLESS_DBUSER
+          value: {{ .Values.env.PAPERLESS_DBUSER | quote }}
+        - name: PAPERLESS_DBPASS
+          value: {{ .Values.env.PAPERLESS_DBPASS | quote }}
+        - name: PAPERLESS_URL
+          value: {{ .Values.env.PAPERLESS_URL | quote }}
+        - name: PAPERLESS_APPS
+          value: {{ .Values.env.PAPERLESS_APPS | quote }}
+        - name: PAPERLESS_TIKA_ENABLED
+          value: {{ .Values.env.PAPERLESS_TIKA_ENABLED | quote }}
+        - name: PAPERLESS_OCR_LANGUAGE
+          value: {{ .Values.env.PAPERLESS_OCR_LANGUAGE | quote }}
+        volumeMounts:
+        - name: data
+          mountPath: /usr/src/paperless/data
+        - name: media
+          mountPath: /usr/src/paperless/media
+        - name: export
+          mountPath: /usr/src/paperless/export
+        - name: consume
+          mountPath: /usr/src/paperless/consume
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "paperless.fullname" . }}-data
+      - name: media
+        persistentVolumeClaim:
+          claimName: {{ include "paperless.fullname" . }}-media
+      - name: export
+        persistentVolumeClaim:
+          claimName: {{ include "paperless.fullname" . }}-export
+      - name: consume
+        persistentVolumeClaim:
+          claimName: {{ include "paperless.fullname" . }}-consume

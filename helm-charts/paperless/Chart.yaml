@@ -1,0 +1,14 @@
+apiVersion: v2
+name: paperless
+description: Paperless-ngx - Document management system with AI classification
+type: application
+version: 1.0.0
+appVersion: "2.20.14"
+
+keywords:
+  - paperless
+  - documents
+  - ocr
+
+maintainers:
+  - name: Homelab Admin

@@ -1,0 +1,51 @@
+---
+{{- if .Values.ai.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "paperless.fullname" . }}-ai
+  labels:
+    {{- include "paperless.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "paperless.name" . }}-ai
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "paperless.name" . }}-ai
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: paperless-ai
+        image: "{{ .Values.ai.image.repository }}:{{ .Values.ai.image.tag }}"
+        imagePullPolicy: {{ .Values.ai.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.ai.service.port }}
+          protocol: TCP
+        env:
+        - name: PAPERLESS_API_URL
+          value: "http://{{ include "paperless.fullname" . }}:{{ .Values.service.port }}/api"
+        - name: PAPERLESS_URL
+          value: "http://{{ include "paperless.fullname" . }}:{{ .Values.service.port }}"
+        volumeMounts:
+        - name: data
+          mountPath: /app/data
+        resources:
+          {{- toYaml .Values.ai.resources | nindent 10 }}
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "paperless.fullname" . }}-ai-data
+{{- end }}
