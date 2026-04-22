@@ -71,7 +71,8 @@ spec:
 
           # Set permissions
           chown -R 1000:1000 /data/gitea/templates /data/gitea/public
-          chmod -R 644 /data/gitea/templates/* /data/gitea/public/assets/img/*
+          find /data/gitea/templates /data/gitea/public -type d -exec chmod 755 {} \;
+          find /data/gitea/templates /data/gitea/public -type f -exec chmod 644 {} \;
         volumeMounts:
         - name: data
           mountPath: /data
