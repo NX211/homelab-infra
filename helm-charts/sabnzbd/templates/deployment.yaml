@@ -69,8 +69,6 @@ spec:
           mountPath: /config
         - name: downloads
           mountPath: {{ .Values.persistence.downloads.mountPath }}
-        - name: incomplete
-          mountPath: {{ .Values.persistence.incomplete.mountPath }}
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
       volumes:
@@ -81,7 +79,3 @@ spec:
         hostPath:
           path: {{ .Values.persistence.downloads.hostPath }}
           type: Directory
-      - name: incomplete
-        hostPath:
-          path: {{ .Values.persistence.incomplete.hostPath }}
-          type: DirectoryOrCreate
