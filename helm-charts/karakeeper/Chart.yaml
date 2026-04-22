@@ -1,0 +1,14 @@
+apiVersion: v2
+name: karakeeper
+description: Karakeeper - Bookmark and read-later manager with full-text search
+type: application
+version: 1.0.0
+appVersion: "0.31.0"
+
+keywords:
+  - karakeeper
+  - bookmarks
+  - read-later
+
+maintainers:
+  - name: Homelab Admin

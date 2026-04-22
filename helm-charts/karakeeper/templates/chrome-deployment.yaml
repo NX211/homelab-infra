@@ -1,0 +1,44 @@
+---
+{{- if .Values.chrome.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "karakeeper.fullname" . }}-chrome
+  labels:
+    {{- include "karakeeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chrome
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "karakeeper.name" . }}-chrome
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "karakeeper.name" . }}-chrome
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: chrome
+        image: "{{ .Values.chrome.image.repository }}:{{ .Values.chrome.image.tag }}"
+        imagePullPolicy: {{ .Values.chrome.image.pullPolicy }}
+        ports:
+        - name: debug
+          containerPort: {{ .Values.chrome.service.port }}
+          protocol: TCP
+        args:
+        - --no-sandbox
+        - --disable-gpu
+        - --disable-dev-shm-usage
+        - --remote-debugging-address=0.0.0.0
+        - --remote-debugging-port=9222
+        - --hide-scrollbars
+        resources:
+          {{- toYaml .Values.chrome.resources | nindent 10 }}
+{{- end }}

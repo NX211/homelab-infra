@@ -1,0 +1,86 @@
+# Karakeeper Helm Chart Values
+
+# Main app image
+image:
+  repository: ghcr.io/karakeep-app/karakeep
+  tag: "0.31.0"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 3000
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: authoritah.click
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: greytalon
+
+# Persistence
+persistence:
+  data:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+
+# Environment variables
+env:
+  NEXTAUTH_URL: "https://authoritah.click"
+  MEILI_ADDR: "http://karakeeper-meilisearch:7700"
+  BROWSER_WEB_URL: "http://karakeeper-chrome:9222"
+  OAUTH_WELLKNOWN_URL: "https://login.authoritah.com/.well-known/openid-configuration"
+  OCR_CONFIDENCE_THRESHOLD: "60"
+  OCR_LANGS: "eng"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+# Meilisearch
+meilisearch:
+  enabled: true
+  image:
+    repository: getmeili/meilisearch
+    tag: "v1.13.3"
+    pullPolicy: IfNotPresent
+  service:
+    port: 7700
+  env:
+    MEILI_NO_ANALYTICS: "true"
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: local-path
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# Chrome (headless browser for scraping)
+chrome:
+  enabled: true
+  image:
+    repository: gcr.io/zenika-hub/alpine-chrome
+    tag: "124"
+    pullPolicy: IfNotPresent
+  service:
+    port: 9222
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi

@@ -1,0 +1,58 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "karakeeper.fullname" . }}
+  labels:
+    {{- include "karakeeper.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "karakeeper.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "karakeeper.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: karakeeper
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: NEXTAUTH_URL
+          value: {{ .Values.env.NEXTAUTH_URL | quote }}
+        - name: MEILI_ADDR
+          value: {{ .Values.env.MEILI_ADDR | quote }}
+        - name: BROWSER_WEB_URL
+          value: {{ .Values.env.BROWSER_WEB_URL | quote }}
+        - name: OAUTH_WELLKNOWN_URL
+          value: {{ .Values.env.OAUTH_WELLKNOWN_URL | quote }}
+        - name: OCR_CONFIDENCE_THRESHOLD
+          value: {{ .Values.env.OCR_CONFIDENCE_THRESHOLD | quote }}
+        - name: OCR_LANGS
+          value: {{ .Values.env.OCR_LANGS | quote }}
+        {{- if .Values.persistence.data.enabled }}
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      {{- if .Values.persistence.data.enabled }}
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "karakeeper.fullname" . }}-data
+      {{- end }}

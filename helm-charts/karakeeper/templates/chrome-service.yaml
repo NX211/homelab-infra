@@ -1,0 +1,20 @@
+---
+{{- if .Values.chrome.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "karakeeper.fullname" . }}-chrome
+  labels:
+    {{- include "karakeeper.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chrome
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.chrome.service.port }}
+    targetPort: debug
+    protocol: TCP
+    name: debug
+  selector:
+    app.kubernetes.io/name: {{ include "karakeeper.name" . }}-chrome
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
