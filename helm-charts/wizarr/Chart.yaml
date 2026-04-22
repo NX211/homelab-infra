@@ -3,7 +3,7 @@ name: wizarr
 description: Wizarr - Automated Plex invitation and onboarding tool
 type: application
 version: 1.0.0
-appVersion: "2026.4.0"
+appVersion: "v2026.4.0"
 
 keywords:
   - wizarr

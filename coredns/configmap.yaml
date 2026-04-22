@@ -70,6 +70,7 @@ data:
     10.43.5.100 bazarr.authoritah.com
     10.43.5.100 stats.authoritah.tv
     10.43.5.100 join.authoritah.tv
+    10.43.5.100 suggestarr.authoritah.com
   NodeHosts: |
     10.20.0.210 greytalon
     10.20.0.250 blacktalon

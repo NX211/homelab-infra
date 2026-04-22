@@ -1,0 +1,14 @@
+apiVersion: v2
+name: suggestarr
+description: Suggestarr - Media suggestion and recommendation tool
+type: application
+version: 1.0.0
+appVersion: "2.4.3"
+
+keywords:
+  - suggestarr
+  - media
+  - recommendations
+
+maintainers:
+  - name: Homelab Admin

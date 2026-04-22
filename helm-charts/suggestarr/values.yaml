@@ -1,19 +1,19 @@
-# Wizarr Helm Chart Values
+# Suggestarr Helm Chart Values
 
 # Image configuration
 image:
-  repository: ghcr.io/wizarrrr/wizarr
-  tag: "v2026.4.0"
+  repository: ciuse99/suggestarr
+  tag: "v2.4.3"
   pullPolicy: IfNotPresent
 
 # Service configuration
 service:
-  port: 5690
+  port: 5000
 
 # Ingress configuration
 ingress:
   enabled: true
-  host: join.authoritah.tv
+  host: suggestarr.authoritah.com
   clusterIssuer: letsencrypt-prod
 
 # Node selection
