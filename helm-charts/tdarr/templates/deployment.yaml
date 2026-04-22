@@ -1,0 +1,86 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tdarr.fullname" . }}
+  labels:
+    {{- include "tdarr.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "tdarr.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tdarr.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: tdarr
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.webPort }}
+          protocol: TCP
+        - name: server
+          containerPort: {{ .Values.service.serverPort }}
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: PUID
+          value: {{ .Values.env.PUID | quote }}
+        - name: PGID
+          value: {{ .Values.env.PGID | quote }}
+        - name: serverIP
+          value: {{ .Values.env.serverIP | quote }}
+        - name: serverPort
+          value: {{ .Values.env.serverPort | quote }}
+        - name: webUIPort
+          value: {{ .Values.env.webUIPort | quote }}
+        - name: inContainer
+          value: {{ .Values.env.inContainer | quote }}
+        - name: internalNode
+          value: {{ .Values.env.internalNode | quote }}
+        - name: nodeName
+          value: {{ .Values.env.nodeName | quote }}
+        - name: ffmpegVersion
+          value: {{ .Values.env.ffmpegVersion | quote }}
+        volumeMounts:
+        - name: config
+          mountPath: /app/configs
+          subPath: configs
+        - name: config
+          mountPath: /app/logs
+          subPath: logs
+        - name: config
+          mountPath: /app/server
+          subPath: server
+        {{- if .Values.persistence.media.enabled }}
+        - name: media
+          mountPath: /media
+        {{- end }}
+        - name: temp
+          mountPath: /temp
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "tdarr.fullname" . }}-config
+      {{- if .Values.persistence.media.enabled }}
+      - name: media
+        hostPath:
+          path: {{ .Values.persistence.media.hostPath }}
+          type: Directory
+      {{- end }}
+      - name: temp
+        emptyDir: {}

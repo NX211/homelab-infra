@@ -1,0 +1,20 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "tdarr.fullname" . }}
+  labels:
+    {{- include "tdarr.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.service.webPort }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: {{ .Values.service.serverPort }}
+    targetPort: server
+    protocol: TCP
+    name: server
+  selector:
+    {{- include "tdarr.selectorLabels" . | nindent 4 }}

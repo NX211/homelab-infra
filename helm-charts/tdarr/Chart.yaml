@@ -1,0 +1,14 @@
+apiVersion: v2
+name: tdarr
+description: Tdarr - Distributed transcoding system
+type: application
+version: 1.0.0
+appVersion: "2.70.01"
+
+keywords:
+  - tdarr
+  - transcoding
+  - media
+
+maintainers:
+  - name: Homelab Admin

@@ -1,0 +1,56 @@
+# Tdarr Helm Chart Values
+
+# Image configuration
+image:
+  repository: ghcr.io/haveagitgat/tdarr
+  tag: "2.70.01"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  webPort: 8265
+  serverPort: 8266
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: tdarr.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path
+
+  # Media directory (read-write for transcoding)
+  media:
+    enabled: true
+    hostPath: /blacktalon/media
+
+# Environment variables
+env:
+  TZ: America/New_York
+  PUID: "1000"
+  PGID: "1000"
+  serverIP: "0.0.0.0"
+  serverPort: "8266"
+  webUIPort: "8265"
+  inContainer: "true"
+  internalNode: "true"
+  nodeName: "blacktalon"
+  ffmpegVersion: "7"
+
+# Resource limits
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 4000m
+    memory: 4Gi
