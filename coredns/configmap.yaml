@@ -75,6 +75,7 @@ data:
     10.43.5.100 sonarr2.authoritah.com
     10.43.5.100 sonarr3.authoritah.com
     10.43.5.100 radarr2.authoritah.com
+    10.43.5.100 autobrr.authoritah.com
   NodeHosts: |
     10.20.0.210 greytalon
     10.20.0.250 blacktalon

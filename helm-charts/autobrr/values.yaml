@@ -1,0 +1,41 @@
+# Autobrr Helm Chart Values
+
+# Image configuration
+image:
+  repository: ghcr.io/autobrr/autobrr
+  tag: "v1.76.0"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 7474
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: autobrr.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Node selection
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  config:
+    enabled: true
+    size: 2Gi
+    storageClass: local-path
+
+# Environment variables
+env:
+  TZ: America/New_York
+
+# Resource limits
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
