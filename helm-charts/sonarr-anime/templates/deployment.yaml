@@ -1,0 +1,75 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sonarr-anime.fullname" . }}
+  labels:
+    {{- include "sonarr-anime.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sonarr-anime.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sonarr-anime.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /config
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      containers:
+      - name: sonarr
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: PUID
+          value: {{ .Values.env.PUID | quote }}
+        - name: PGID
+          value: {{ .Values.env.PGID | quote }}
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        {{- if .Values.persistence.media.enabled }}
+        - name: anime
+          mountPath: {{ .Values.persistence.media.anime.mountPath }}
+        - name: downloads-anime
+          mountPath: {{ .Values.persistence.media.downloadsAnime.mountPath }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: {{ include "sonarr-anime.fullname" . }}-config
+      {{- if .Values.persistence.media.enabled }}
+      - name: anime
+        hostPath:
+          path: {{ .Values.persistence.media.anime.hostPath }}
+          type: Directory
+      - name: downloads-anime
+        hostPath:
+          path: {{ .Values.persistence.media.downloadsAnime.hostPath }}
+          type: Directory
+      {{- end }}
