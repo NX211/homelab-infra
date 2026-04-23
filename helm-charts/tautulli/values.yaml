@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: lscr.io/linuxserver/tautulli
-  tag: "2.15.1"
+  tag: "2.17.0"
   pullPolicy: IfNotPresent
 
 # Service configuration
