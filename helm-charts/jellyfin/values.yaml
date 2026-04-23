@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: jellyfin/jellyfin
-  tag: "10.10.6"
+  tag: "10.11.8"
   pullPolicy: IfNotPresent
 
 # Service configuration
