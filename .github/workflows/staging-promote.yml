@@ -148,6 +148,58 @@ jobs:
           private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
           owner: Corey-Alan-Consulting
 
+      - name: Run staging smoke tests
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_NAME: ${{ steps.app-info.outputs.app_name }}
+        run: |
+          # Map app names to repos that have smoke tests
+          declare -A SMOKE_REPOS=(
+            ["coreyalan-com"]="Corey-Alan-Consulting/coreyalan.com"
+          )
+
+          REPO="${SMOKE_REPOS[$APP_NAME]:-}"
+          if [ -z "$REPO" ]; then
+            echo "No smoke test configured for ${APP_NAME}, skipping"
+            exit 0
+          fi
+
+          echo "Dispatching smoke tests to ${REPO}..."
+          gh api "repos/${REPO}/dispatches" \
+            -f event_type=staging-smoke-test \
+            -f "client_payload[staging_url]=https://staging.coreyalan.com"
+
+          # Wait for workflow run to appear
+          sleep 15
+
+          MAX_ATTEMPTS=30
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            RUN_JSON=$(gh run list --repo "$REPO" --event repository_dispatch \
+              --workflow "staging-smoke.yml" --limit 1 \
+              --json status,conclusion 2>/dev/null || echo "[]")
+
+            STATUS=$(echo "$RUN_JSON" | jq -r '.[0].status // "unknown"')
+            CONCLUSION=$(echo "$RUN_JSON" | jq -r '.[0].conclusion // ""')
+
+            if [ "$STATUS" = "completed" ]; then
+              if [ "$CONCLUSION" = "success" ]; then
+                echo "Smoke tests passed!"
+                break
+              else
+                echo "ERROR: Smoke tests failed (conclusion: ${CONCLUSION})"
+                exit 1
+              fi
+            fi
+
+            echo "Attempt ${i}/${MAX_ATTEMPTS}: smoke tests ${STATUS}..."
+            sleep 10
+          done
+
+          if [ "$STATUS" != "completed" ]; then
+            echo "ERROR: Smoke tests timed out after ${MAX_ATTEMPTS} attempts"
+            exit 1
+          fi
+
       - name: Promote to production
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

@@ -1,0 +1,16 @@
+apiVersion: v2
+name: coreyalan-com-staging
+description: CoreyAlan.com - Staging Environment
+type: application
+version: 1.0.0
+appVersion: "v0.1.0"
+keywords:
+  - coreyalan
+  - nextjs
+  - staging
+maintainers:
+  - name: Homelab Admin
+dependencies:
+  - name: staging-app
+    version: "0.1.0"
+    repository: "file://../../charts/staging-app"

@@ -1,0 +1,262 @@
+# CoreyAlan.com - Staging Values
+# Build once, deploy many: same image as prod, different config
+
+staging-app:
+  appName: coreyalan
+  appLabel: CoreyAlan
+  fullnameOverride: coreyalan-com-staging
+  replicaCount: 1
+  # Per-app Bitwarden secret store (least privilege)
+  bitwarden:
+    projectID: "14f07d19-a565-4e54-aa9c-b435015f87ce"
+    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+    credentialsSecret: bitwarden-staging-coreyalan-credentials
+  # Database provisioning
+  database:
+    enabled: true
+    superuser:
+      create: false # jlshaw owns the shared postgres-superuser-staging secret
+    userKey: 35793628-5218-41c5-9a05-b43501619084 # DB_USER
+    passwordKey: ef080550-a690-4222-983d-b435016190c6 # DB_PASSWORD
+    nameKey: 67004fdc-2164-4a0b-b578-b4350161912b # DB_NAME
+  # Migration image (built by CI alongside the app image)
+  migration:
+    enabled: true
+    repository: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/coreyalan-web-migrate
+    digest: "sha256:PLACEHOLDER" # Updated by CI/CD
+  image:
+    repository: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/coreyalan-web
+    pullPolicy: IfNotPresent
+    digest: "sha256:PLACEHOLDER" # Updated by CI/CD
+  imagePullSecrets:
+    - name: gcr-pull-secret-coreyalan
+  # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
+  gcrPullSecret:
+    bitwardenKey: 21c119f6-2790-43b0-bcbb-b43501628908 # GCR_SERVICE_ACCOUNT_KEY
+    secretName: gcr-pull-secret-coreyalan
+  service:
+    type: ClusterIP
+    port: 3000
+  ingress:
+    enabled: true
+    host: staging.coreyalan.com
+    clusterIssuer: letsencrypt-prod
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: NEXT_PUBLIC_APP_URL
+      value: https://staging.coreyalan.com
+    - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
+      value: staging
+  envFrom:
+    - secretRef:
+        name: coreyalan-staging-secrets
+  # External Secrets (Bitwarden staging project)
+  externalSecrets:
+    enabled: true
+    secretName: coreyalan-staging-secrets
+    refreshInterval: 1h
+    secrets:
+      # Auth & Core
+      - name: DATABASE_URL
+        key: 5f7c5763-e471-403f-9364-b43501619045
+      - name: NEXTAUTH_SECRET
+        key: 06df3710-671c-4e36-8324-b4350161916f
+      - name: NEXTAUTH_URL
+        key: fd328474-cb51-49c8-b6c2-b435016191ae
+      - name: ADMIN_API_KEY
+        key: 850d2879-7e46-453c-b21c-b435016191ed
+      - name: INTERNAL_API_SECRET
+        key: b8f7e211-09dc-4c4a-b1ad-b435016192aa
+      - name: FORM_WEBHOOK_SECRET
+        key: 34014874-fc8d-4f3a-8b89-b43501619314
+      - name: MEETING_RECORDINGS_SCHEDULER_SECRET
+        key: 2f65cdbf-c20a-45e4-8a4c-b43501619355
+      # Google OAuth & Services
+      - name: GOOGLE_CLIENT_ID
+        key: 08650b9d-56bb-4bef-85fa-b435016193cd
+      - name: GOOGLE_CLIENT_SECRET
+        key: f96efd1d-e99e-4d10-a4fc-b43501619422
+      - name: GOOGLE_DRIVE_CLIENTS_FOLDER_ID
+        key: d465999a-6cb9-4217-98fe-b43501619468
+      - name: GOOGLE_DRIVE_MEET_RECORDINGS_FOLDER_ID
+        key: f8237cfe-738f-4d00-a6d8-b4350161c098
+      - name: GOOGLE_WORKSPACE_ADMIN_EMAIL
+        key: 99bf02ee-6bb1-432d-b8ce-b4350161c168
+      - name: GOOGLE_CALENDAR_ADMIN_EMAIL
+        key: bb77077b-15d7-49ec-9937-b4350161c233
+      - name: GCS_MEETING_RECORDINGS_BUCKET
+        key: 2d3ab873-1066-4a81-888f-b4350161c2fb
+      # Stripe
+      - name: STRIPE_SECRET_KEY
+        key: 5c87f541-560e-4e92-b402-b4350161c3c4
+      - name: STRIPE_WEBHOOK_SECRET
+        key: 2129dbee-25bf-4a74-b71e-b4350161d3ae
+      - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+        key: a37aef0d-10b6-427c-a228-b4350161d5bf
+      - name: STRIPE_BYT_SECRET_KEY
+        key: 6c04e3af-e822-448e-bd00-b4350161d7c0
+      - name: STRIPE_BYT_WEBHOOK_SECRET
+        key: 3f26023c-86f6-4ab6-9d2a-b4350161d9cc
+      - name: NEXT_PUBLIC_STRIPE_BYT_PUBLISHABLE_KEY
+        key: 1801a09a-fb28-4d66-8f89-b4350161dbd6
+      - name: STRIPE_BYT_PRICE_ID
+        key: aba40da6-fcf3-49ee-9e2f-b4350161dde1
+      - name: STRIPE_ECOMMERCE_SETUP_PRICE_ID
+        key: 1555f63a-5459-4516-a13a-b4350161dff4
+      - name: STRIPE_SECURITY_ASSESSMENT_PRICE_ID
+        key: 401a4091-aa29-4f31-a15c-b4350161e204
+      - name: STRIPE_WEBSITE_DESIGN_PRICE_ID
+        key: 25195076-893e-4e84-880a-b4350161e417
+      - name: STRIPE_WORKFLOW_AUTOMATION_PRICE_ID
+        key: 2e1ffdae-2655-414b-9544-b4350161e621
+      # Email / Mailgun
+      - name: MAILGUN_API_KEY
+        key: ab89e494-6f0a-41c0-a111-b4350161e829
+      - name: MAILGUN_DOMAIN
+        key: 965dec0f-a1a5-4765-8dde-b4350161ea2d
+      - name: MAILGUN_WEBHOOK_SIGNING_KEY
+        key: a4bbad45-c503-4ebb-aee0-b4350161ec39
+      - name: MAILGUN_US_DOMAINS
+        key: ad240461-c2da-4eac-be93-b4350161ee45
+      - name: MAILGUN_EU_API_KEY
+        key: abd365b5-2146-414b-a542-b4350161f057
+      - name: MAILGUN_EU_DOMAINS
+        key: 13e0ab68-d014-458e-832b-b4350161f27b
+      - name: EMAIL_FROM
+        key: 77d5670d-23b1-4bdc-bb2c-b4350161f485
+      - name: EMAIL_TO
+        key: 602c7d3c-9f0d-4428-ad2f-b4350161f68d
+      - name: CONTACT_EMAIL
+        key: 890abb9d-886a-4b82-8d47-b4350161f88e
+      # Invoice Ninja
+      - name: INVOICE_NINJA_API_KEY
+        key: bcc38805-7094-4575-9c5f-b4350161fa97
+      - name: INVOICE_NINJA_URL
+        key: b9c0f3b1-2677-4cd4-9305-b4350161fca6
+      # SignWell
+      - name: SIGNWELL_API_KEY
+        key: 61d75837-9084-4597-a77f-b4350161feaa
+      - name: SIGNWELL_NDA_TEMPLATE_ID
+        key: a714482f-8160-41a2-bd77-b43501621470
+      - name: SIGNWELL_MSA_TEMPLATE_ID
+        key: acc1f475-6b04-4d62-b848-b43501621709
+      # Twilio
+      - name: TWILIO_ACCOUNT_SID
+        key: f1e13087-a61c-4f34-aefc-b435016219ab
+      - name: TWILIO_AUTH_TOKEN
+        key: 81dbd513-8c4f-46d3-908e-b43501621c4c
+      - name: TWILIO_PHONE_NUMBER
+        key: f58cec2c-0683-4977-ac15-b43501621eeb
+      # Chatwoot
+      - name: CHATWOOT_API_ACCESS_TOKEN
+        key: 7f0a2a92-34bb-4cde-8249-b43501622189
+      - name: CHATWOOT_ACCOUNT_ID
+        key: 498c4d4c-a81d-45f1-a497-b43501622421
+      - name: CHATWOOT_SMS_OPTIN_INBOX_ID
+        key: e45037a7-c57c-4592-bdcf-b43501622724
+      - name: CHATWOOT_WEBHOOK_SECRET
+        key: 4a101daa-2e33-4368-8a74-b435016229f2
+      - name: CHATWOOT_DASHBOARD_APP_TOKEN
+        key: 9c04aa2a-e74a-459c-9bf9-b43501622c8b
+      - name: CHATWOOT_DASHBOARD_ALLOWED_ORIGINS
+        key: 8dd18c23-7f22-456a-8f2f-b43501622f36
+      - name: NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN
+        key: d65aab6f-5154-46bd-be2d-b435016231ce
+      # Firebase
+      - name: NEXT_PUBLIC_FIREBASE_API_KEY
+        key: 4c1dba3c-77de-4f4d-bcb7-b43501623465
+      - name: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+        key: fe0ba5ec-0327-4183-a66c-b43501623705
+      - name: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+        key: 8cdd7cb3-06a4-4012-a7d4-b435016239a0
+      - name: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+        key: a0bcc8d4-2a02-4165-bc71-b43501623c3f
+      - name: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+        key: a71b4940-4e1b-4432-a74c-b43501623ee4
+      - name: NEXT_PUBLIC_FIREBASE_APP_ID
+        key: 12010ba1-f519-46c4-8319-b4350162417f
+      - name: NEXT_PUBLIC_FIREBASE_VAPID_KEY
+        key: ec50d74d-b0f0-4db7-95d0-b4350162442e
+      # Passwordless
+      - name: NEXT_PUBLIC_PASSWORDLESS_API_URL
+        key: 83156522-f92d-4647-bed2-b435016246de
+      - name: NEXT_PUBLIC_PASSWORDLESS_API_KEY
+        key: 167303a5-e337-4243-b3c6-b4350162498c
+      - name: PASSWORDLESS_API_SECRET
+        key: 2f21399a-c1ad-4018-a0c0-b43501624c26
+      # JustCall
+      - name: JUSTCALL_API_KEY
+        key: 59facbee-8c14-4156-96bd-b43501624ebf
+      - name: JUSTCALL_API_SECRET
+        key: 0ed1999f-97ad-4fec-ba2f-b4350162515b
+      # Pushover
+      - name: PUSHOVER_USER_KEY
+        key: c630516b-9db5-4b4d-b8b8-b435016253fc
+      - name: PUSHOVER_API_TOKEN
+        key: 3cd6fc64-53cd-4a8e-88be-b4350162569c
+      - name: PUSHOVER_WEBHOOK_SECRET
+        key: 31dc254d-ef34-4dc3-9e8e-b43501619392
+      # Name.com
+      - name: NAMECOM_USERNAME
+        key: b66cec64-d1d0-4e43-8558-b4350162594c
+      - name: NAMECOM_API_TOKEN
+        key: a9045407-09a2-46ba-8c3e-b43501625bfa
+      - name: NAMECOM_WEBHOOK_SECRET
+        key: 217a2a7b-6dc0-4b69-9417-b43501625eb9
+      # Platform & Admin
+      - name: GITHUB_TOKEN
+        key: e21c6d90-eaec-4970-acb7-b43501626151
+      - name: ARGOCD_SERVER_URL
+        key: e138031d-643d-48a4-9dd8-b435016263ed
+      - name: ARGOCD_AUTH_TOKEN
+        key: 8547da2b-1250-4d8a-b0bb-b435016266aa
+      - name: TRAEFIK_API_URL
+        key: 58dc7b54-8484-4674-84e6-b43501626943
+      - name: KYVERNO_POLICY_REPORTER_URL
+        key: 00ad9159-77a6-44aa-ba93-b43501626c29
+      - name: UPLOAD_API_KEY
+        key: 89116dca-d5f4-4b8c-8f55-b43501626eec
+      # Misc
+      - name: REBRANDLY_API_KEY
+        key: 752c8382-a23a-4794-a458-b4350162718e
+      - name: KEILA_API_KEY
+        key: c12aff01-fed3-4ae4-ab14-b43501627431
+      - name: KEILA_PROJECT_ID
+        key: 4ca41ab1-017e-4b05-8398-b435016276cb
+      - name: SENTRY_DSN
+        key: e559f17f-b877-4e25-9596-b43501627970
+      - name: GCP_PROJECT_NUMBER
+        key: d526f0af-09ef-483b-af04-b43501627c0b
+      # Redis
+      - name: REDIS_SENTINEL_HOST
+        key: 96a109cb-2e6f-4ce8-99d1-b43501627e98
+      - name: REDIS_SENTINEL_PORT
+        key: daa5abb4-5ecf-4762-9638-b43501628131
+      - name: REDIS_SENTINEL_MASTER
+        key: a70b5542-1ae3-4729-bdb0-b435016283cc
+      - name: REDIS_PASSWORD
+        key: 4f07c0bd-e4b6-41c5-93fe-b4350162866b
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  livenessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
