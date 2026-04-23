@@ -23,7 +23,7 @@ staging-app:
   migration:
     enabled: false
     repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web-migrate
-    digest: "sha256:PLACEHOLDER" # Updated by CI/CD
+    digest: "sha256:3e73ea78490f96edcf2be0296362f2736dfa60a87f238abf407b295f2790e000" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web
     pullPolicy: IfNotPresent

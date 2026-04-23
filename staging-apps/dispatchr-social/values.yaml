@@ -23,7 +23,7 @@ staging-app:
   migration:
     enabled: false
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web-migrate
-    digest: "sha256:PLACEHOLDER" # Updated by CI/CD
+    digest: "sha256:103d9295549373e6c462f704ce19a04d5441f4afdfc73ed5dc15c592c0b714b0" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
     pullPolicy: IfNotPresent

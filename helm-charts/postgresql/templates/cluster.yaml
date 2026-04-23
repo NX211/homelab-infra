@@ -21,7 +21,9 @@ spec:
     size: {{ .Values.storage.size }}
     storageClass: {{ .Values.storage.storageClass }}
 
-  # Superuser secret
+  # Allow CNPG to manage the postgres superuser password.
+  # When the superuserSecret changes, CNPG will ALTER USER postgres PASSWORD automatically.
+  enableSuperuserAccess: true
   superuserSecret:
     name: postgres-superuser
 
