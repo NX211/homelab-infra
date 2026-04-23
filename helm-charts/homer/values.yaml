@@ -2,7 +2,7 @@
 
 image:
   repository: b4bz/homer
-  tag: "v25.11.1"
+  tag: "v26.4.2"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
