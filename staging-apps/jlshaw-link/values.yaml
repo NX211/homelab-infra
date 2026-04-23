@@ -27,7 +27,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web
     pullPolicy: IfNotPresent
-    digest: "sha256:a4eeb00cc58c97b25ae737d0dee2d430cea3bdc60f6995c4c0551a3279d99fcc" # Updated by CI/CD
+    digest: "sha256:4d0aea7fb8bbda3fdd31f13bd3927562f957ec2cd589fdbdbe0d7ec1ba81a0fa" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-jlshaw
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
