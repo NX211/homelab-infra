@@ -212,7 +212,7 @@ staging-app:
       - name: ARGOCD_AUTH_TOKEN
         key: 8547da2b-1250-4d8a-b0bb-b435016266aa
       - name: TRAEFIK_API_URL
-        key: 58dc7b54-8484-4674-84e6-b43501626943
+        key: 58dc7b54-8484-4674-84e6-b43501626963
       - name: KYVERNO_POLICY_REPORTER_URL
         key: 00ad9159-77a6-44aa-ba93-b43501626c29
       - name: UPLOAD_API_KEY
