@@ -228,15 +228,11 @@ staging-app:
         key: e559f17f-b877-4e25-9596-b43501627970
       - name: GCP_PROJECT_NUMBER
         key: d526f0af-09ef-483b-af04-b43501627c0b
-      # Redis
-      - name: REDIS_SENTINEL_HOST
-        key: 96a109cb-2e6f-4ce8-99d1-b43501627e98
-      - name: REDIS_SENTINEL_PORT
-        key: daa5abb4-5ecf-4762-9638-b43501628131
-      - name: REDIS_SENTINEL_MASTER
-        key: a70b5542-1ae3-4729-bdb0-b435016283cc
-      - name: REDIS_PASSWORD
-        key: 4f07c0bd-e4b6-41c5-93fe-b4350162866b
+      # Redis (standalone)
+      - name: REDIS_HOST
+        key: 897368f0-1efc-406b-adde-b43600084ace
+      - name: REDIS_PORT
+        key: f35cd8b2-bdac-4332-b0e9-b43600085211
   resources:
     requests:
       cpu: 100m
