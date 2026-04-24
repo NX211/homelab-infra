@@ -23,7 +23,7 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web-migrate
-    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" # Updated by CI/CD
+    digest: "sha256:9818bef097bb0e3ba4ccc3e67e869a7ff79c37c39fb484968f5f85f1cdce5b0c" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
     pullPolicy: IfNotPresent
