@@ -1,0 +1,129 @@
+# Capturly - Staging Values
+# Build once, deploy many: same image as prod, different config
+
+staging-app:
+  appName: capturly-web
+  appLabel: Capturly
+  fullnameOverride: capturly-web-staging
+  replicaCount: 1
+  # Per-app Bitwarden secret store (least privilege)
+  bitwarden:
+    projectID: "e4e50481-5885-41f4-b138-b435015fa5b3"
+    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+    credentialsSecret: bitwarden-staging-capturly-web-credentials
+  # Database provisioning
+  database:
+    enabled: true
+    superuser:
+      create: false # jlshaw owns the shared postgres-superuser-staging secret
+    userKey: 90d030c0-ebc6-482c-8695-b436011e5bbc # Populated by scripts/populate-capturly-web-staging-secrets.sh
+    passwordKey: eaa72afe-14ce-4216-800d-b436011e5e4f # Populated by scripts/populate-capturly-web-staging-secrets.sh
+    nameKey: b4ed1940-2f15-4585-8d2d-b436011e60fe # Populated by scripts/populate-capturly-web-staging-secrets.sh
+  # Migration image (built by CI alongside the app image)
+  migration:
+    enabled: true
+    repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web-migrate
+    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" # Updated by CI/CD
+  image:
+    repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
+    pullPolicy: IfNotPresent
+    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" # Updated by CI/CD
+  imagePullSecrets:
+    - name: gcr-pull-secret-capturly-web
+  # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
+  gcrPullSecret:
+    bitwardenKey: e0f8ecb7-a120-479d-9957-b436011e97c8 # Populated by scripts/populate-capturly-web-staging-secrets.sh
+    secretName: gcr-pull-secret-capturly-web
+  service:
+    type: ClusterIP
+    port: 3000
+  ingress:
+    enabled: true
+    host: staging.capturly.app
+    clusterIssuer: letsencrypt-prod
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: NEXT_PUBLIC_APP_URL
+      value: https://staging.capturly.app
+    - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
+      value: staging
+  envFrom:
+    - secretRef:
+        name: capturly-web-staging-secrets
+  # External Secrets (Bitwarden staging project)
+  externalSecrets:
+    enabled: true
+    secretName: capturly-web-staging-secrets
+    refreshInterval: 1h
+    secrets:
+      # Auth & Core
+      - name: DATABASE_URL
+        key: 93b29102-f45d-4e04-806c-b436011e639c
+      - name: NEXTAUTH_SECRET
+        key: 10ccf3be-f8c4-4820-a199-b436011e6628
+      - name: NEXTAUTH_URL
+        key: 5aae568b-8d36-49ab-84f9-b436011e68c1
+      # Google OAuth
+      - name: GOOGLE_CLIENT_ID
+        key: 2d3c2e7a-ca46-4dad-9a38-b436011e6b6d
+      - name: GOOGLE_CLIENT_SECRET
+        key: 9e1d77cf-da1a-4511-96b1-b436011e6e36
+      # Stripe
+      - name: STRIPE_SECRET_KEY
+        key: 31b126ea-fe87-4bf0-94f6-b436011e70d1
+      - name: STRIPE_WEBHOOK_SECRET
+        key: c8c07d38-fd5a-4c72-b286-b436011e7366
+      - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+        key: 0e35a9ec-ee5b-4bc1-b885-b436011e75fc
+      # Email
+      - name: EMAIL_SERVER_HOST
+        key: 5008353d-e5b5-42b6-b749-b436011e7894
+      - name: EMAIL_SERVER_PORT
+        key: af278caa-6654-401d-a5ca-b436011e7b27
+      - name: EMAIL_SERVER_USER
+        key: 84d52450-010f-4089-82a2-b436011e7db3
+      - name: EMAIL_SERVER_PASSWORD
+        key: 551af77d-8d3c-4309-b212-b436011e8048
+      - name: EMAIL_FROM
+        key: e2c21cd4-2cc3-416c-93a8-b436011e82f5
+      # Chatwoot
+      - name: NEXT_PUBLIC_CHATWOOT_ENABLED
+        key: 04b2d246-20fe-4800-8186-b436011e858e
+      - name: NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN
+        key: 3afdf748-fdd0-45d1-ba20-b436011e8835
+      - name: NEXT_PUBLIC_CHATWOOT_BASE_URL
+        key: 66fa5b05-6035-4882-ae31-b436011e8acd
+      # Monitoring
+      - name: SENTRY_DSN
+        key: 978dd26c-9db4-4885-85c3-b436011e8d60
+      # Redis (standalone)
+      - name: REDIS_HOST
+        key: a18ad24a-f37e-4c85-83bd-b436011e9004
+      - name: REDIS_PORT
+        key: cba9fd41-632e-49ac-8c8b-b436011e929c
+      - name: REDIS_PASSWORD
+        key: e530ef06-e9e5-4727-b980-b436011e9530
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  livenessProbe:
+    enabled: true
+    path: /
+    port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    path: /
+    port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
