@@ -23,7 +23,7 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/coreyalan-web-migrate
-    digest: "sha256:b2c1b877e4a6fd82b7c10eeb169aff2bfd5e464b4be6d0e9cab35b67fafe7503" # Updated by CI/CD
+    digest: "sha256:302f8acea11d01e7b8fbd3153bc9e29dcfb66676ff2886877e1c668c44d32ae0" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/coreyalan-web
     pullPolicy: IfNotPresent
