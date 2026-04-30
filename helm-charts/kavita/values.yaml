@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: jvmilazz0/kavita
-  tag: "0.8.9"
+  tag: "0.9.0"
   pullPolicy: IfNotPresent
 
 # Service configuration
