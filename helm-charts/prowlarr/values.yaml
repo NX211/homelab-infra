@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: ghcr.io/linuxserver/prowlarr
-  tag: "develop"
+  tag: "2.3.5.5327-ls144"
   pullPolicy: IfNotPresent
 
 # Service configuration

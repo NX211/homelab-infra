@@ -34,13 +34,11 @@ spec:
         - name: postgres
           containerPort: {{ .Values.postgres.service.port }}
           protocol: TCP
-        env:
-        - name: POSTGRES_USER
-          value: {{ .Values.postgres.env.POSTGRES_USER | quote }}
-        - name: POSTGRES_PASSWORD
-          value: {{ .Values.postgres.env.POSTGRES_PASSWORD | quote }}
-        - name: POSTGRES_DB
-          value: {{ .Values.postgres.env.POSTGRES_DB | quote }}
+        {{- if .Values.externalSecrets.enabled }}
+        envFrom:
+        - secretRef:
+            name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "paperless.fullname" .)) }}
+        {{- end }}
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data

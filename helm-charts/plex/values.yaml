@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: lscr.io/linuxserver/plex
-  tag: "latest"
+  tag: "1.43.1.10611-1e34174b1-ls303"
   pullPolicy: IfNotPresent
 
 # Service configuration

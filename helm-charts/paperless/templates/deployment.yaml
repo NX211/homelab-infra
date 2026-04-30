@@ -37,12 +37,6 @@ spec:
           value: {{ .Values.env.PAPERLESS_DBHOST | quote }}
         - name: PAPERLESS_DBPORT
           value: {{ .Values.env.PAPERLESS_DBPORT | quote }}
-        - name: PAPERLESS_DBNAME
-          value: {{ .Values.env.PAPERLESS_DBNAME | quote }}
-        - name: PAPERLESS_DBUSER
-          value: {{ .Values.env.PAPERLESS_DBUSER | quote }}
-        - name: PAPERLESS_DBPASS
-          value: {{ .Values.env.PAPERLESS_DBPASS | quote }}
         - name: PAPERLESS_URL
           value: {{ .Values.env.PAPERLESS_URL | quote }}
         - name: PAPERLESS_APPS
@@ -51,6 +45,11 @@ spec:
           value: {{ .Values.env.PAPERLESS_TIKA_ENABLED | quote }}
         - name: PAPERLESS_OCR_LANGUAGE
           value: {{ .Values.env.PAPERLESS_OCR_LANGUAGE | quote }}
+        {{- if .Values.externalSecrets.enabled }}
+        envFrom:
+        - secretRef:
+            name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "paperless.fullname" .)) }}
+        {{- end }}
         volumeMounts:
         - name: data
           mountPath: /usr/src/paperless/data

@@ -221,21 +221,21 @@ staging-app:
         key: 89116dca-d5f4-4b8c-8f55-b43501626eec
       # Shippo (Store shipping)
       - name: SHIPPO_API_KEY
-        key: REPLACE_ME_SHIPPO_API_KEY
-      - name: SHIPPO_WEBHOOK_SECRET
-        key: REPLACE_ME_SHIPPO_WEBHOOK_SECRET
+        key: 7ef977ff-cfa0-434c-94d8-b43c0167183f
       - name: SHIPPO_FROM_NAME
-        key: REPLACE_ME_SHIPPO_FROM_NAME
+        key: 4fccd095-82bb-46e9-af1b-b43c0168f9a9
       - name: SHIPPO_FROM_ADDRESS1
-        key: REPLACE_ME_SHIPPO_FROM_ADDRESS1
+        key: a4a462ad-3bd8-4087-8411-b43c01692169
       - name: SHIPPO_FROM_CITY
-        key: REPLACE_ME_SHIPPO_FROM_CITY
+        key: 288208a5-b7e2-4840-beb1-b43c016923bb
       - name: SHIPPO_FROM_STATE
-        key: REPLACE_ME_SHIPPO_FROM_STATE
+        key: a6e5b768-b9e0-4bb4-8ccd-b43c01692541
       - name: SHIPPO_FROM_ZIP
-        key: REPLACE_ME_SHIPPO_FROM_ZIP
+        key: bba56675-e056-4667-812a-b43c0169263c
       - name: SHIPPO_FROM_COUNTRY
-        key: REPLACE_ME_SHIPPO_FROM_COUNTRY
+        key: 4b7c579c-05c7-4b1b-99f1-b43c01692729
+      # Note: Shippo HMAC webhook signing is enterprise-gated (must be requested from Shippo Solutions).
+      # App verifies webhooks by fetching the referenced object via SHIPPO_API_KEY instead.
       # Misc
       - name: REBRANDLY_API_KEY
         key: 752c8382-a23a-4794-a458-b4350162718e
