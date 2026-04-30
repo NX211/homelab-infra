@@ -48,6 +48,8 @@ staging-app:
       value: https://staging.coreyalan.com
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
       value: staging
+    - name: GCS_STORE_ASSETS_BUCKET
+      value: coreyalan-store-assets-staging
   envFrom:
     - secretRef:
         name: coreyalan-staging-secrets
@@ -217,6 +219,23 @@ staging-app:
         key: 00ad9159-77a6-44aa-ba93-b43501626c29
       - name: UPLOAD_API_KEY
         key: 89116dca-d5f4-4b8c-8f55-b43501626eec
+      # Shippo (Store shipping)
+      - name: SHIPPO_API_KEY
+        key: REPLACE_ME_SHIPPO_API_KEY
+      - name: SHIPPO_WEBHOOK_SECRET
+        key: REPLACE_ME_SHIPPO_WEBHOOK_SECRET
+      - name: SHIPPO_FROM_NAME
+        key: REPLACE_ME_SHIPPO_FROM_NAME
+      - name: SHIPPO_FROM_ADDRESS1
+        key: REPLACE_ME_SHIPPO_FROM_ADDRESS1
+      - name: SHIPPO_FROM_CITY
+        key: REPLACE_ME_SHIPPO_FROM_CITY
+      - name: SHIPPO_FROM_STATE
+        key: REPLACE_ME_SHIPPO_FROM_STATE
+      - name: SHIPPO_FROM_ZIP
+        key: REPLACE_ME_SHIPPO_FROM_ZIP
+      - name: SHIPPO_FROM_COUNTRY
+        key: REPLACE_ME_SHIPPO_FROM_COUNTRY
       # Misc
       - name: REBRANDLY_API_KEY
         key: 752c8382-a23a-4794-a458-b4350162718e

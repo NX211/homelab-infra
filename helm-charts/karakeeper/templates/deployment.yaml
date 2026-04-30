@@ -43,6 +43,11 @@ spec:
           value: {{ .Values.env.OCR_CONFIDENCE_THRESHOLD | quote }}
         - name: OCR_LANGS
           value: {{ .Values.env.OCR_LANGS | quote }}
+        {{- if .Values.externalSecrets.enabled }}
+        envFrom:
+        - secretRef:
+            name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "karakeeper.fullname" .)) }}
+        {{- end }}
         {{- if .Values.persistence.data.enabled }}
         volumeMounts:
         - name: data

@@ -36,6 +36,14 @@ env:
   OCR_CONFIDENCE_THRESHOLD: "60"
   OCR_LANGS: "eng"
 
+# External Secrets (Bitwarden Secrets Manager — Workbench project)
+externalSecrets:
+  enabled: true
+  refreshInterval: 1h
+  secrets:
+    - name: NEXTAUTH_SECRET
+      key: a7c9e554-0b9f-430e-8435-b43c0161d96d  # karakeeper_nextauth_secret
+
 # Resource limits
 resources:
   requests:
