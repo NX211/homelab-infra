@@ -38,8 +38,8 @@ flaresolverr:
   enabled: true
   image:
     repository: ghcr.io/flaresolverr/flaresolverr
-    tag: "latest"
-    pullPolicy: Always
+    tag: "v3.4.6"
+    pullPolicy: IfNotPresent
   service:
     port: 8191
   env:
