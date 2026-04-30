@@ -2,8 +2,8 @@
 
 image:
   repository: redis
-  tag: "latest"
-  pullPolicy: Always
+  tag: "8.6.2"
+  pullPolicy: IfNotPresent
 
 # Node selector - deploy to greytalon
 nodeSelector:

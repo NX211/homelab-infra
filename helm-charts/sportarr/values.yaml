@@ -3,8 +3,8 @@
 # Image configuration
 image:
   repository: sportarr/sportarr
-  tag: "latest"
-  pullPolicy: Always
+  tag: "4.0.996.1075"
+  pullPolicy: IfNotPresent
 
 # Service configuration
 service:

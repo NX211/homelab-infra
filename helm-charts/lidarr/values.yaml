@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: lscr.io/linuxserver/lidarr
-  tag: "develop"
+  tag: "3.1.0.4875-ls26"
   pullPolicy: IfNotPresent
 
 # Service configuration
@@ -54,8 +54,8 @@ lidatube:
   enabled: true
   image:
     repository: thewicklowwolf/lidatube
-    tag: "latest"
-    pullPolicy: Always
+    tag: "0.2.51"
+    pullPolicy: IfNotPresent
   service:
     port: 5000
   ingress:

@@ -2,8 +2,8 @@ replicaCount: 1
 
 image:
   repository: authelia/authelia
-  tag: "latest"
-  pullPolicy: Always
+  tag: "4.39"
+  pullPolicy: IfNotPresent
 
 # Domains
 domain: "login.authoritah.com"
