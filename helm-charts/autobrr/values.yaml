@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: ghcr.io/autobrr/autobrr
-  tag: "v1.76.0"
+  tag: "v1.77.0"
   pullPolicy: IfNotPresent
 
 # Service configuration
