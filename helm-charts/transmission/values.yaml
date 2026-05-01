@@ -57,7 +57,7 @@ resources:
 # Cluster + LAN traffic still flows over flannel.
 # Requires the `multus` Argo app to have applied the vlan70-airvpn NAD.
 vpn:
-  enabled: false
+  enabled: true
   networkName: vlan70-airvpn
   gateway: 10.70.0.1
   podCIDR: 10.42.0.0/16
