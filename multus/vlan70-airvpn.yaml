@@ -15,6 +15,11 @@ metadata:
   namespace: default
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+    # CRD is installed by the Multus HelmChart on sync-wave -2, but it may
+    # not exist yet at the moment Argo dry-runs this manifest on first sync.
+    # Skip dry-run so the rest of the wave proceeds; Argo retries this
+    # resource until the CRD appears.
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   config: |
     {
