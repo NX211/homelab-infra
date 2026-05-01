@@ -29,10 +29,15 @@ persistence:
 
 # Environment variables
 env:
+  DATA_DIR: "/data"
   NEXTAUTH_URL: "https://authoritah.click"
   MEILI_ADDR: "http://karakeeper-meilisearch:7700"
   BROWSER_WEB_URL: "http://karakeeper-chrome:9222"
   OAUTH_WELLKNOWN_URL: "https://login.authoritah.com/.well-known/openid-configuration"
+  OAUTH_PROVIDER_NAME: "Authoritah"
+  OAUTH_SCOPE: "openid email profile"
+  OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING: "true"
+  DISABLE_SIGNUPS: "true"
   OCR_CONFIDENCE_THRESHOLD: "60"
   OCR_LANGS: "eng"
 
@@ -42,7 +47,11 @@ externalSecrets:
   refreshInterval: 1h
   secrets:
     - name: NEXTAUTH_SECRET
-      key: a7c9e554-0b9f-430e-8435-b43c0161d96d  # karakeeper_nextauth_secret
+      key: 188cf1f6-6cf1-442c-a5dc-b3e8016f0e21  # karakeeper_nextauth_secret
+    - name: OAUTH_CLIENT_ID
+      key: 09d027db-98ca-4e74-9d6b-b3d30135ce2d  # karakeeper_oidc_client_id
+    - name: OAUTH_CLIENT_SECRET
+      key: 4260a82a-56ed-4282-8f80-b3d30135e653  # karakeeper_oidc_client_secret
 
 # Resource limits
 resources:

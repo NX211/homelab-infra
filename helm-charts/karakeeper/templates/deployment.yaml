@@ -31,6 +31,8 @@ spec:
           containerPort: {{ .Values.service.port }}
           protocol: TCP
         env:
+        - name: DATA_DIR
+          value: {{ .Values.env.DATA_DIR | quote }}
         - name: NEXTAUTH_URL
           value: {{ .Values.env.NEXTAUTH_URL | quote }}
         - name: MEILI_ADDR
@@ -39,6 +41,14 @@ spec:
           value: {{ .Values.env.BROWSER_WEB_URL | quote }}
         - name: OAUTH_WELLKNOWN_URL
           value: {{ .Values.env.OAUTH_WELLKNOWN_URL | quote }}
+        - name: OAUTH_PROVIDER_NAME
+          value: {{ .Values.env.OAUTH_PROVIDER_NAME | quote }}
+        - name: OAUTH_SCOPE
+          value: {{ .Values.env.OAUTH_SCOPE | quote }}
+        - name: OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING
+          value: {{ .Values.env.OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING | quote }}
+        - name: DISABLE_SIGNUPS
+          value: {{ .Values.env.DISABLE_SIGNUPS | quote }}
         - name: OCR_CONFIDENCE_THRESHOLD
           value: {{ .Values.env.OCR_CONFIDENCE_THRESHOLD | quote }}
         - name: OCR_LANGS
