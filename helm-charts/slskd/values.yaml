@@ -1,0 +1,78 @@
+# slskd Helm Chart Values
+
+image:
+  repository: slskd/slskd
+  tag: "0.25.1"
+  pullPolicy: IfNotPresent
+
+service:
+  port: 5030
+
+ingress:
+  enabled: true
+  host: slskd.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# Pin to blacktalon — that's where /blacktalon/media/downloads/ lives
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  # /app holds slskd's config (slskd.yml), DB, app state, logs
+  app:
+    enabled: true
+    size: 2Gi
+    storageClass: local-path
+  # Existing media tree (downloads + complete subdirs)
+  downloads:
+    enabled: true
+    hostPath: /blacktalon/media/downloads
+    mountPath: /downloads
+  # Read-only share so peers can pull from us — improves search reliability
+  music:
+    enabled: true
+    hostPath: /blacktalon/media/music
+    mountPath: /shared/music
+    readOnly: true
+
+# Environment variables (slskd reads SLSKD_* env to override slskd.yml at runtime)
+env:
+  TZ: America/New_York
+  # Where slskd writes finished files (subdir of mounted /downloads)
+  SLSKD_DOWNLOADS_DIR: "/downloads/soulseek"
+  # In-progress downloads (subdir of mounted /downloads)
+  SLSKD_INCOMPLETE_DIR: "/downloads/incomplete/soulseek"
+  # Comma-separated list of dirs to share with peers
+  SLSKD_SHARED_DIR: "/shared/music"
+  # Don't serve slskd over plain HTTP — Traefik handles TLS
+  SLSKD_HTTP_PORT: "5030"
+  # Disable slskd's self-signed HTTPS listener (we terminate at Traefik)
+  SLSKD_NO_HTTPS: "true"
+  # Soulseek peer port (TCP) — exposed inbound for peers when network allows
+  SLSKD_SLSK_LISTEN_PORT: "50300"
+  # Disable slskd's metrics endpoint authentication (cluster-internal only)
+  SLSKD_METRICS: "true"
+  SLSKD_METRICS_NO_AUTH: "true"
+
+# External Secrets (Bitwarden Secrets Manager — Workbench project)
+externalSecrets:
+  enabled: true
+  refreshInterval: 1h
+  secrets:
+    - name: SLSKD_SLSK_USERNAME
+      key: 1497a593-d822-45b3-9391-b43d00f5ad1b  # slskd_soulseek_username
+    - name: SLSKD_SLSK_PASSWORD
+      key: 57fb7234-cea0-4156-ad87-b43d00f5b377  # slskd_soulseek_password
+    - name: SLSKD_USERNAME
+      key: d3bcd21e-e9be-42c8-9fb0-b43d00f5b49a  # slskd_web_username
+    - name: SLSKD_PASSWORD
+      key: 391a7ea7-9e98-4a24-918e-b43d00f5b4cf  # slskd_web_password
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi

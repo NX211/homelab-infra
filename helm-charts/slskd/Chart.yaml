@@ -1,0 +1,15 @@
+apiVersion: v2
+name: slskd
+description: slskd - Modern Soulseek client with web UI and REST API
+type: application
+version: 1.0.0
+appVersion: "0.25.1"
+
+keywords:
+  - slskd
+  - soulseek
+  - p2p
+  - music
+
+maintainers:
+  - name: Homelab Admin

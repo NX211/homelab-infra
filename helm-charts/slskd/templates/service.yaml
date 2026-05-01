@@ -1,0 +1,20 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "slskd.fullname" . }}
+  labels:
+    {{- include "slskd.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.service.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: 50300
+    targetPort: slsk
+    protocol: TCP
+    name: slsk
+  selector:
+    {{- include "slskd.selectorLabels" . | nindent 4 }}

@@ -1,0 +1,18 @@
+---
+{{- if .Values.persistence.app.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "slskd.fullname" . }}-app
+  labels:
+    {{- include "slskd.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.persistence.app.storageClass }}
+  storageClassName: {{ .Values.persistence.app.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.app.size }}
+{{- end }}
