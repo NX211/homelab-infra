@@ -1,0 +1,26 @@
+---
+# Installs Multus CNI (thick plugin) via the rke2-multus Helm chart, which
+# bakes in the k3s-specific CNI conf/bin paths automatically.
+# Applied to the cluster as a HelmChart CRD; k3s' helm-controller does the
+# actual helm install. Argo tracks the HelmChart resource itself.
+#
+# Sync wave -2 so the CRD lands well before the NetworkAttachmentDefinition.
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: multus
+  namespace: kube-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  repo: https://rke2-charts.rancher.io
+  chart: rke2-multus
+  targetNamespace: kube-system
+  valuesContent: |-
+    config:
+      fullnameOverride: multus
+      cni_conf:
+        confDir: /var/lib/rancher/k3s/agent/etc/cni/net.d
+        binDir: /var/lib/rancher/k3s/data/cni/
+        kubeconfig: /var/lib/rancher/k3s/agent/etc/cni/net.d/multus.d/multus.kubeconfig
+        multusAutoconfigDir: /var/lib/rancher/k3s/agent/etc/cni/net.d

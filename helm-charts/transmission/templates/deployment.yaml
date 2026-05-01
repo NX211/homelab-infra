@@ -16,6 +16,10 @@ spec:
     metadata:
       labels:
         {{- include "transmission.selectorLabels" . | nindent 8 }}
+      {{- if .Values.vpn.enabled }}
+      annotations:
+        k8s.v1.cni.cncf.io/networks: '[{"name":"{{ .Values.vpn.networkName }}","default-route":["{{ .Values.vpn.gateway }}"]}]'
+      {{- end }}
     spec:
       enableServiceLinks: false
       {{- with .Values.nodeSelector }}
@@ -23,6 +27,26 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
+      {{- if .Values.vpn.enabled }}
+      - name: vpn-cluster-routes
+        image: nicolaka/netshoot:v0.13
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          # Multus has swapped the pod's default route to net1 (VPN).
+          # Re-add cluster CIDR routes via the flannel gateway on eth0
+          # so kube-dns, services, and other pods stay reachable.
+          GW=$(ip -4 addr show dev eth0 | awk '/inet / {print $2}' | head -1 | awk -F. '{print $1"."$2"."$3".1"}')
+          ip route add {{ .Values.vpn.podCIDR }} via $GW dev eth0 2>/dev/null || true
+          ip route add {{ .Values.vpn.serviceCIDR }} via $GW dev eth0 2>/dev/null || true
+          echo "Cluster routes pinned via $GW dev eth0:"
+          ip route
+      {{- end }}
       - name: fix-permissions
         image: busybox
         command:

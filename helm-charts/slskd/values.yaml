@@ -76,3 +76,13 @@ resources:
   limits:
     cpu: 1000m
     memory: 1Gi
+
+# Route outbound public-internet traffic through the AirVPN-policy-routed
+# VLAN70 macvlan (eno2). Cluster + LAN traffic still flows over flannel.
+# Requires the `multus` Argo app to have applied the vlan70-airvpn NAD.
+vpn:
+  enabled: false
+  networkName: vlan70-airvpn
+  gateway: 10.70.0.1
+  podCIDR: 10.42.0.0/16
+  serviceCIDR: 10.43.0.0/16
