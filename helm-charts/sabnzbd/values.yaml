@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: ghcr.io/linuxserver/sabnzbd
-  tag: "4.5.5"
+  tag: "5.0.1"
   pullPolicy: IfNotPresent
 
 # Service configuration
