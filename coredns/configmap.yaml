@@ -16,7 +16,7 @@ data:
           pods insecure
           fallthrough in-addr.arpa ip6.arpa
         }
-        hosts /etc/coredns/CustomHosts {
+        hosts /etc/coredns/NodeHosts {
           ttl 60
           reload 15s
           fallthrough
@@ -28,16 +28,16 @@ data:
         reload
         loadbalance
     }
-  CustomHosts: |
-    # Node hostnames
+  NodeHosts: |
+    # Node hostnames (also auto-populated by k3s on restart; Argo re-syncs).
     10.20.0.210 greytalon
     10.20.0.250 blacktalon
     10.20.0.240 yellowtalon
     10.20.0.230 redtalon
 
-    # Internal DNS overrides - Traefik ClusterIP for homelab domains
-    # This enables split-horizon DNS so internal traffic routes correctly
-    # and cert-manager HTTP-01 challenges can self-check
+    # Internal DNS overrides - Traefik ClusterIP for homelab domains.
+    # Enables split-horizon DNS so cert-manager HTTP-01 self-checks succeed
+    # and in-cluster traffic to *.authoritah.com stays inside the cluster.
     10.43.5.100 authoritah.com
     10.43.5.100 www.authoritah.com
     10.43.5.100 login.authoritah.com
@@ -82,8 +82,3 @@ data:
     10.43.5.100 tools.authoritah.com
     10.43.5.100 transmission.authoritah.com
     10.43.5.100 13ft.authoritah.link
-  NodeHosts: |
-    10.20.0.210 greytalon
-    10.20.0.250 blacktalon
-    10.20.0.240 yellowtalon
-    10.20.0.230 redtalon
