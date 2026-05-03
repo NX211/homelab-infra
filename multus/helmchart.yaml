@@ -21,6 +21,9 @@ spec:
       fullnameOverride: multus
       cni_conf:
         confDir: /var/lib/rancher/k3s/agent/etc/cni/net.d
-        binDir: /var/lib/rancher/k3s/data/cni/
+        # k3s/containerd looks for CNI binaries here (the "current" symlink
+        # target). /var/lib/rancher/k3s/data/cni/ holds upstream CNI plugins
+        # but is NOT in containerd's search path on k3s.
+        binDir: /var/lib/rancher/k3s/data/current/bin/
         kubeconfig: /var/lib/rancher/k3s/agent/etc/cni/net.d/multus.d/multus.kubeconfig
         multusAutoconfigDir: /var/lib/rancher/k3s/agent/etc/cni/net.d

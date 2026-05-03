@@ -1,47 +1,39 @@
 ---
-{{- if .Values.flaresolverr.enabled }}
+{{- if .Values.byparr.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "prowlarr.fullname" . }}-flaresolverr
+  name: {{ include "prowlarr.fullname" . }}-byparr
   labels:
     {{- include "prowlarr.labels" . | nindent 4 }}
-    app.kubernetes.io/component: flaresolverr
+    app.kubernetes.io/component: byparr
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app.kubernetes.io/name: flaresolverr
+      app.kubernetes.io/name: byparr
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: flaresolverr
+        app.kubernetes.io/name: byparr
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       containers:
-      - name: flaresolverr
-        image: "{{ .Values.flaresolverr.image.repository }}:{{ .Values.flaresolverr.image.tag }}"
-        imagePullPolicy: {{ .Values.flaresolverr.image.pullPolicy }}
+      - name: byparr
+        image: "{{ .Values.byparr.image.repository }}:{{ .Values.byparr.image.tag }}"
+        imagePullPolicy: {{ .Values.byparr.image.pullPolicy }}
         ports:
         - name: http
-          containerPort: {{ .Values.flaresolverr.service.port }}
+          containerPort: {{ .Values.byparr.service.port }}
           protocol: TCP
         env:
         - name: HOST
           value: "0.0.0.0"
         - name: PORT
-          value: {{ .Values.flaresolverr.service.port | quote }}
-        - name: BROWSER_TIMEOUT
-          value: {{ .Values.flaresolverr.env.BROWSER_TIMEOUT | quote }}
-        - name: LOG_LEVEL
-          value: {{ .Values.flaresolverr.env.LOG_LEVEL | quote }}
-        - name: LOG_HTML
-          value: {{ .Values.flaresolverr.env.LOG_HTML | quote }}
-        - name: CAPTCHA_SOLVER
-          value: {{ .Values.flaresolverr.env.CAPTCHA_SOLVER | quote }}
+          value: {{ .Values.byparr.service.port | quote }}
         - name: TZ
           value: {{ .Values.env.TZ | quote }}
         livenessProbe:
@@ -61,5 +53,5 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
         resources:
-          {{- toYaml .Values.flaresolverr.resources | nindent 10 }}
+          {{- toYaml .Values.byparr.resources | nindent 10 }}
 {{- end }}

@@ -33,20 +33,15 @@ env:
   PUID: "8675309"  # media user
   PGID: "8675309"  # media group
 
-# FlareSolverr sidecar
-flaresolverr:
+# Byparr sidecar (FlareSolverr-compatible /v1 API)
+byparr:
   enabled: true
   image:
-    repository: ghcr.io/flaresolverr/flaresolverr
-    tag: "v3.4.6"
+    repository: ghcr.io/thephaseless/byparr
+    tag: "latest"
     pullPolicy: IfNotPresent
   service:
     port: 8191
-  env:
-    BROWSER_TIMEOUT: "60000"
-    LOG_LEVEL: "info"
-    LOG_HTML: "false"
-    CAPTCHA_SOLVER: "none"
   resources:
     requests:
       cpu: 200m
