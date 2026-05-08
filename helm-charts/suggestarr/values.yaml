@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: ciuse99/suggestarr
-  tag: "v2.7.0"
+  tag: "v2.7.1"
   pullPolicy: IfNotPresent
 
 # Service configuration
