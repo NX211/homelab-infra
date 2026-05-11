@@ -27,7 +27,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
     pullPolicy: IfNotPresent
-    digest: "sha256:8a9820c17ce867db0ac8b526fcf412016b44ddeb914aa4ab0fa7054fc3b7e9a7" # Updated by CI/CD
+    digest: "sha256:903aa83ffc8cffaa8524b60184b1c2de98a8a530553732adb81d9ae062512b28" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-capturly-web
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
