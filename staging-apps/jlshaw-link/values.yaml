@@ -21,7 +21,7 @@ staging-app:
     nameKey: 6dc3af9c-d88e-42b6-85b6-b423015f56ee # jlshaw db name
   # Migration image (built by CI alongside the app image)
   migration:
-    enabled: false
+    enabled: true
     repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web-migrate
     digest: "sha256:f19a90e777e4eac5417c1d4cf6890eb99eb6f69d295ee23c393222e61a48c971" # Updated by CI/CD
   image:
