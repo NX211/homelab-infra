@@ -106,10 +106,18 @@ jobs:
           # Values are nested under the staging-app subchart key
           yq eval ".\"staging-app\".image.digest = \"${DIGEST}\"" -i "${VALUES_FILE}"
 
-          # Update migration digest if provided and migration is enabled
+          # Update migration digest whenever the deploy workflow publishes a
+          # new migrate image and the chart declares a migration block. Don't
+          # gate on `migration.enabled`: charts can disable the upstream
+          # subchart's job (enabled: false) while running an override Job that
+          # reads the same digest. Gating on enabled freezes the override at
+          # whatever digest was last seeded — staging-promote then propagates
+          # that stale value to prod, and schema changes silently never run
+          # (same failure mode that broke capturly-web v1.5/v1.6, mirror of
+          # the platform-infra gitops-update.yml fix in PR #589).
           if [ -n "$MIGRATE_DIGEST" ]; then
-            MIGRATION_ENABLED=$(yq eval '.["staging-app"].migration.enabled // false' "${VALUES_FILE}")
-            if [ "$MIGRATION_ENABLED" = "true" ]; then
+            HAS_MIGRATION=$(yq eval '.["staging-app"].migration // "null"' "${VALUES_FILE}")
+            if [ "$HAS_MIGRATION" != "null" ]; then
               yq eval ".\"staging-app\".migration.digest = \"${MIGRATE_DIGEST}\"" -i "${VALUES_FILE}"
               echo "Updated migration digest to ${MIGRATE_DIGEST}"
             fi

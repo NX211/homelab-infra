@@ -23,7 +23,7 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web-migrate
-    digest: "sha256:9818bef097bb0e3ba4ccc3e67e869a7ff79c37c39fb484968f5f85f1cdce5b0c" # Updated by CI/CD
+    digest: "sha256:b6d23fab2eaf5052729a5d4798ffa899a6b0e673dad5553b3ca835bfffc6cba1" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
     pullPolicy: IfNotPresent
@@ -104,6 +104,24 @@ staging-app:
         key: cba9fd41-632e-49ac-8c8b-b436011e929c
       - name: REDIS_PASSWORD
         key: e530ef06-e9e5-4727-b980-b436011e9530
+      # Multi-participant transfer (Phase 5 — UNIFIED_RECORDING_ENGINE_PLAN.md)
+      # JWT keys for transfer/session tokens (distinct from prod keys)
+      - name: SESSION_JWT_PRIVATE_KEY
+        key: 7128f047-86bc-4061-a948-b44100d64247
+      - name: SESSION_JWT_PUBLIC_KEY
+        key: 30eef6c1-08ff-444f-84b8-b44100d64289
+      # GCS transfer bucket (shared with prod; 7-day TTL via lifecycle rule)
+      - name: GCP_TRANSFER_BUCKET
+        key: 1be7adba-f17c-488f-8c0f-b44100d445a9
+      # Service account JSON for the bucket (off-cluster: no Workload Identity).
+      # Generate after `terraform apply` provisions the staging SA:
+      #   gcloud iam service-accounts keys create staging-key.json \
+      #     --iam-account=capturly-transfer-staging@capturly-app.iam.gserviceaccount.com
+      #   bws secret edit 65478699-f036-47f9-9917-b44100d445e1 -- \
+      #     "$(cat staging-key.json)"
+      #   rm staging-key.json
+      - name: GCP_TRANSFER_SA_KEY
+        key: 65478699-f036-47f9-9917-b44100d445e1
   resources:
     requests:
       cpu: 100m
