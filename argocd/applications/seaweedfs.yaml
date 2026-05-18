@@ -28,3 +28,17 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 3m
+  # Ignore fields that the cluster fills in after apply (immutable on
+  # StatefulSet.volumeClaimTemplates, defaulted by the ESO admission webhook on
+  # ExternalSecret). Without these, ArgoCD would show permanent OutOfSync drift.
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /spec/volumeClaimTemplates
+    - group: external-secrets.io
+      kind: ExternalSecret
+      jsonPointers:
+        - /spec/data
+        - /spec/target/deletionPolicy
+        - /spec/target/template/mergePolicy
