@@ -1,0 +1,28 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "seaweedfs.fullname" . }}-filer
+  labels:
+    {{- include "seaweedfs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: filer
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.filer.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.filer.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+    {{- if .Values.filer.s3.enabled }}
+    - port: {{ .Values.filer.s3.port }}
+      targetPort: s3
+      protocol: TCP
+      name: s3
+    {{- end }}
+  selector:
+    {{- include "seaweedfs.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: filer

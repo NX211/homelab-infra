@@ -1,0 +1,15 @@
+apiVersion: v2
+name: seaweedfs
+description: SeaweedFS - distributed object store exposing an S3-compatible API for the staging cluster
+type: application
+version: 1.0.0
+appVersion: "3.80"
+
+keywords:
+  - seaweedfs
+  - s3
+  - object-storage
+  - storage
+
+maintainers:
+  - name: Homelab Admin

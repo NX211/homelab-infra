@@ -1,0 +1,23 @@
+---
+# Headless service for master discovery (stable per-pod DNS).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "seaweedfs.fullname" . }}-master
+  labels:
+    {{- include "seaweedfs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: master
+spec:
+  clusterIP: None
+  ports:
+    - port: {{ .Values.master.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.master.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+  selector:
+    {{- include "seaweedfs.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: master

@@ -48,6 +48,18 @@ staging-app:
       value: https://staging.dispatchr.social
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
       value: staging
+    # ---- SeaweedFS S3 endpoint (in-cluster) ----
+    # App code uses these when STORAGE_PROVIDER=s3. Prod uses native GCS.
+    - name: STORAGE_PROVIDER
+      value: s3
+    - name: S3_ENDPOINT
+      value: http://seaweedfs-filer.seaweedfs.svc:8333
+    - name: S3_REGION
+      value: us-east-1
+    - name: S3_FORCE_PATH_STYLE
+      value: "true"
+    - name: S3_BUCKET_NAME
+      value: dispatchr-social-uploads
   envFrom:
     - secretRef:
         name: dispatchr-staging-secrets
@@ -133,6 +145,11 @@ staging-app:
         key: 9bd3d8b7-c9b0-4be2-b3f1-b423018b1362
       - name: REDIS_PASSWORD
         key: 6a68a51f-4939-42f1-a5b1-b423018b377f
+      # SeaweedFS S3 credentials (identity: dispatchr-social; scoped to dispatchr-social-uploads)
+      - name: S3_ACCESS_KEY_ID
+        key: 4cdc219d-df58-4ae1-9d1d-b44e012680e7
+      - name: S3_SECRET_ACCESS_KEY
+        key: 427dcc21-f195-4b10-a330-b44e0126811a
   resources:
     requests:
       cpu: 250m

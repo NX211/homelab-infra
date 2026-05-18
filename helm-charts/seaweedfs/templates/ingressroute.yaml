@@ -1,0 +1,21 @@
+---
+{{- if and .Values.ingress.enabled .Values.filer.s3.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "seaweedfs.fullname" . }}-s3
+  labels:
+    {{- include "seaweedfs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: s3
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.ingress.host }}`)
+      kind: Rule
+      services:
+        - name: {{ include "seaweedfs.fullname" . }}-filer
+          port: {{ .Values.filer.s3.port }}
+  tls:
+    secretName: {{ include "seaweedfs.fullname" . }}-s3-tls
+{{- end }}

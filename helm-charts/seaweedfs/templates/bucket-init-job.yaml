@@ -1,0 +1,49 @@
+---
+{{- if .Values.buckets }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "seaweedfs.fullname" . }}-bucket-init
+  labels:
+    {{- include "seaweedfs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: bucket-init
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "seaweedfs.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: bucket-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bucket-init
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "Waiting for filer to become ready..."
+              until wget -q -O- "http://{{ include "seaweedfs.fullname" . }}-filer:{{ .Values.filer.port }}/healthz" >/dev/null 2>&1; do
+                sleep 2
+              done
+              echo "Filer ready. Creating buckets..."
+              cat <<EOF | weed shell -master={{ include "seaweedfs.fullname" . }}-master:{{ .Values.master.port }}
+              {{- range .Values.buckets }}
+              s3.bucket.create -name {{ . }}
+              {{- end }}
+              EOF
+              echo "Done."
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+{{- end }}

@@ -50,6 +50,21 @@ staging-app:
       value: staging
     - name: GCS_STORE_ASSETS_BUCKET
       value: coreyalan-store-assets-staging
+    # ---- SeaweedFS S3 endpoint (in-cluster) ----
+    # App code uses these when STORAGE_PROVIDER=s3. Bucket names are unsuffixed
+    # because the staging cluster *is* the staging boundary (prod uses GCS).
+    - name: STORAGE_PROVIDER
+      value: s3
+    - name: S3_ENDPOINT
+      value: http://seaweedfs-filer.seaweedfs.svc:8333
+    - name: S3_REGION
+      value: us-east-1
+    - name: S3_FORCE_PATH_STYLE
+      value: "true"
+    - name: S3_STORE_ASSETS_BUCKET
+      value: coreyalan-store-assets
+    - name: S3_SHOWCASE_ASSETS_BUCKET
+      value: coreyalan-showcase-assets
   envFrom:
     - secretRef:
         name: coreyalan-staging-secrets
@@ -252,6 +267,11 @@ staging-app:
         key: 897368f0-1efc-406b-adde-b43600084ace
       - name: REDIS_PORT
         key: f35cd8b2-bdac-4332-b0e9-b43600085211
+      # SeaweedFS S3 credentials (identity: coreyalan; scoped to coreyalan-{store,showcase}-assets)
+      - name: S3_ACCESS_KEY_ID
+        key: 5a3504af-e73a-4f48-a728-b44e0126808a
+      - name: S3_SECRET_ACCESS_KEY
+        key: 0882edf0-c16b-4463-b11a-b44e012680b1
   resources:
     requests:
       cpu: 100m

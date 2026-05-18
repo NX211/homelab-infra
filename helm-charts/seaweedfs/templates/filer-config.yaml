@@ -1,0 +1,14 @@
+---
+# Filer metadata store: leveldb2 backed by the filer PVC.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "seaweedfs.fullname" . }}-filer-config
+  labels:
+    {{- include "seaweedfs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: filer
+data:
+  filer.toml: |
+    [leveldb2]
+    enabled = true
+    dir = "/data/filerldb2"

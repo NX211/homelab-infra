@@ -1,0 +1,128 @@
+# SeaweedFS Helm Chart Values
+#
+# Architecture: three StatefulSets (master, volume, filer). Filer hosts the
+# S3 gateway on :8333. In-cluster S3 endpoint is http://seaweedfs-filer.seaweedfs.svc:8333;
+# external endpoint is https://<ingress.host> via Traefik.
+
+image:
+  repository: chrislusf/seaweedfs
+  tag: "3.80"
+  pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Master: tracks volume servers + filer metadata (raft)
+# ---------------------------------------------------------------------------
+master:
+  replicas: 1
+  port: 9333
+  grpcPort: 19333
+  nodeSelector:
+    kubernetes.io/hostname: blacktalon
+  persistence:
+    size: 5Gi
+    storageClass: local-path
+  # 000 = no replication (single-copy). 010/100/200 = rack/dc-level replication.
+  defaultReplication: "000"
+  volumeSizeLimitMB: 1024
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Volume: blob storage. Pinned to greytalon where the disk lives.
+# ---------------------------------------------------------------------------
+volume:
+  replicas: 1
+  port: 8080
+  grpcPort: 18080
+  nodeSelector:
+    kubernetes.io/hostname: greytalon
+  persistence:
+    size: 100Gi
+    storageClass: local-path
+  # 0 = unlimited volume files (bounded only by disk)
+  max: 0
+  dataCenter: dc1
+  rack: rack1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# ---------------------------------------------------------------------------
+# Filer + embedded S3 gateway
+# ---------------------------------------------------------------------------
+filer:
+  replicas: 1
+  port: 8888
+  grpcPort: 18888
+  nodeSelector:
+    kubernetes.io/hostname: greytalon
+  persistence:
+    size: 10Gi
+    storageClass: local-path
+  s3:
+    enabled: true
+    port: 8333
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Buckets to pre-create on first install (matches prod GCS bucket names so
+# staging app values can point at the same names with only the endpoint changed).
+# ---------------------------------------------------------------------------
+buckets:
+  - coreyalan-store-assets
+  - coreyalan-showcase-assets
+  - dispatchr-social-uploads
+  - capturly-transfer
+
+# ---------------------------------------------------------------------------
+# Ingress: external S3 endpoint via Traefik + cert-manager
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  host: s3.authoritah.com
+  clusterIssuer: letsencrypt-prod
+
+# ---------------------------------------------------------------------------
+# Credentials via ESO + Bitwarden
+#
+# Bootstrap: put the full rendered s3.json blob into Bitwarden under
+# `seaweedfs-s3-config-json`, then sync. Until that key exists, the filer pod
+# will stay pending the Secret (intentional - no anonymous S3 access).
+#
+# Example s3.json shape:
+#   {
+#     "identities": [
+#       { "name": "admin",
+#         "credentials": [{"accessKey": "...", "secretKey": "..."}],
+#         "actions": ["Admin","Read","Write","List","Tagging"] },
+#       { "name": "coreyalan",
+#         "credentials": [{"accessKey": "...", "secretKey": "..."}],
+#         "actions": ["Read:coreyalan-store-assets","Write:coreyalan-store-assets",
+#                     "List:coreyalan-store-assets",
+#                     "Read:coreyalan-showcase-assets","Write:coreyalan-showcase-assets",
+#                     "List:coreyalan-showcase-assets"] }
+#     ]
+#   }
+# ---------------------------------------------------------------------------
+externalSecrets:
+  enabled: true
+  secretName: seaweedfs-s3-config
+  refreshInterval: 1h
+  secrets:
+    - name: s3.json
+      key: seaweedfs-s3-config-json

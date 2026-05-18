@@ -1,0 +1,17 @@
+---
+{{- if and .Values.ingress.enabled .Values.filer.s3.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "seaweedfs.fullname" . }}-s3-tls
+  labels:
+    {{- include "seaweedfs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: s3
+spec:
+  secretName: {{ include "seaweedfs.fullname" . }}-s3-tls
+  issuerRef:
+    name: {{ .Values.ingress.clusterIssuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.ingress.host }}
+{{- end }}
