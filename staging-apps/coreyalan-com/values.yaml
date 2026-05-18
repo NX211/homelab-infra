@@ -55,8 +55,10 @@ staging-app:
     # because the staging cluster *is* the staging boundary (prod uses GCS).
     - name: STORAGE_PROVIDER
       value: s3
+    # External endpoint so app-minted signed URLs are reachable from browsers
+    # (in-cluster CoreDNS split-horizon resolves this back to the Traefik VIP).
     - name: S3_ENDPOINT
-      value: http://seaweedfs-filer.seaweedfs.svc:8333
+      value: https://s3.authoritah.com
     - name: S3_REGION
       value: us-east-1
     - name: S3_FORCE_PATH_STYLE
@@ -65,6 +67,8 @@ staging-app:
       value: coreyalan-store-assets
     - name: S3_SHOWCASE_ASSETS_BUCKET
       value: coreyalan-showcase-assets
+    - name: S3_MEETING_RECORDINGS_BUCKET
+      value: coreyalan-meeting-recordings
   envFrom:
     - secretRef:
         name: coreyalan-staging-secrets

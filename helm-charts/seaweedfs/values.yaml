@@ -86,6 +86,7 @@ filer:
 buckets:
   - coreyalan-store-assets
   - coreyalan-showcase-assets
+  - coreyalan-meeting-recordings
   - dispatchr-social-uploads
   - capturly-transfer
 
