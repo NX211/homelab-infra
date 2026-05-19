@@ -27,7 +27,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/coreyalan-web
     pullPolicy: IfNotPresent
-    digest: "sha256:3624ac89e21039a07ee9e7c57605a2cfa2cb47e09d54dc29f45d7c6a22a214f5" # Updated by CI/CD
+    digest: "sha256:cab58c7e9f271842953e618045287bbe5d5970419be641e34f9a671cae90e0cb" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-coreyalan
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
