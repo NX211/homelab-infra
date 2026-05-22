@@ -69,6 +69,13 @@ staging-app:
       value: coreyalan-showcase-assets
     - name: S3_MEETING_RECORDINGS_BUCKET
       value: coreyalan-meeting-recordings
+    # Mailgun webhook forwarder — staging Coreyalan forwards capturly.app
+    # bounce + complaint events to staging Capturly. SECRET comes from
+    # Bitwarden via the externalSecrets block below.
+    - name: WEBHOOK_FORWARD_CAPTURLY_URL
+      value: https://staging.capturly.app/api/internal/email-event
+    - name: WEBHOOK_FORWARD_CAPTURLY_TAG
+      value: capturly-transactional
   envFrom:
     - secretRef:
         name: coreyalan-staging-secrets
@@ -276,6 +283,14 @@ staging-app:
         key: 5a3504af-e73a-4f48-a728-b44e0126808a
       - name: S3_SECRET_ACCESS_KEY
         key: 0882edf0-c16b-4463-b11a-b44e012680b1
+      # Capturly webhook forwarder — shared HMAC secret with staging
+      # Capturly's /api/internal/email-event receiver. See TODO in
+      # homelab-infra/staging-apps/COREYALAN_INTEGRATION_TODO.md
+      # The same value must be set in staging Capturly's
+      # COREYALAN_WEBHOOK_SECRET (different env var name; same bytes).
+      # - name: WEBHOOK_FORWARD_CAPTURLY_SECRET
+      #   key: <BW UUID in the coreyalan staging project>
+
   resources:
     requests:
       cpu: 100m
