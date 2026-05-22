@@ -111,6 +111,17 @@ jobs:
             exit 1
           fi
 
+          # A rolling update transiently flips the app to Degraded while
+          # the old ReplicaSet drains and the new pods are not yet Ready.
+          # The previous logic exited on the first Degraded sighting,
+          # which raced the deploy: capturly-web v1.12.0 hit this at
+          # ~15s post-merge (runs 26304860528, 26304882054) and never
+          # dispatched image-push to platform-infra, so prod stayed on
+          # v1.10.0. Require a sustained Degraded streak instead — long
+          # enough to outlast a normal rollout, short enough to fail a
+          # genuinely broken app well before the overall timeout.
+          DEGRADED_THRESHOLD=5
+          DEGRADED_STREAK=0
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
 
@@ -128,8 +139,14 @@ jobs:
             fi
 
             if [ "$HEALTH" = "Degraded" ]; then
-              echo "ERROR: Staging app is Degraded. Aborting promotion."
-              exit 1
+              DEGRADED_STREAK=$((DEGRADED_STREAK + 1))
+              if [ "$DEGRADED_STREAK" -ge "$DEGRADED_THRESHOLD" ]; then
+                echo "ERROR: Staging app has been Degraded for ${DEGRADED_STREAK} consecutive checks. Aborting promotion."
+                exit 1
+              fi
+              echo "  Degraded streak ${DEGRADED_STREAK}/${DEGRADED_THRESHOLD} — likely transient rollout state, continuing"
+            else
+              DEGRADED_STREAK=0
             fi
 
             sleep 20
