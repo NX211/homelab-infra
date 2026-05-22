@@ -23,11 +23,11 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web-migrate
-    digest: "sha256:10414143dcc1c51135249e4069d7d3e129c86733ed30fe38f15cf980ba31fbcb" # Updated by CI/CD
+    digest: "sha256:f49cb5915b0729c53a45d0caf3dc82f9ffe397e89e3dbe342aec373c1d4c512a" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
     pullPolicy: IfNotPresent
-    digest: "sha256:c810cbf93de74d0dae68caf224e7fb0961c85938453dd31866460a91d284ae0c" # Updated by CI/CD
+    digest: "sha256:318006f10becce2b339a75fa591ac95facb23cdecb6884fd07876a1dc3460c96" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-capturly-web
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
@@ -146,17 +146,16 @@ staging-app:
         key: 003d91b5-183b-4d88-9a58-b44e012681e7
       - name: S3_SECRET_ACCESS_KEY
         key: 880cf68a-0179-4b27-a062-b44e01268246
-      # Coreyalan integration — see TODO in homelab-infra/staging-apps/COREYALAN_INTEGRATION_TODO.md
-      # Create both secrets in the capturly-web-staging Bitwarden project
-      # (projectID e4e50481-5885-41f4-b138-b435015fa5b3 above) and paste
-      # the UUIDs here. Both are required for the integration to fire —
-      # missing config means the signup-sync call is skipped (signup still
-      # completes) and the email-event receiver returns 503.
-      # - name: COREYALAN_API_KEY
-      #   key: <BW UUID for sk_live_... key minted at https://staging.coreyalan.com/admin/api-keys>
-      # - name: COREYALAN_WEBHOOK_SECRET
-      #   key: <BW UUID for the shared HMAC secret with staging coreyalan>
-
+        # Coreyalan integration — see TODO in homelab-infra/staging-apps/COREYALAN_INTEGRATION_TODO.md
+        # Create both secrets in the capturly-web-staging Bitwarden project
+        # (projectID e4e50481-5885-41f4-b138-b435015fa5b3 above) and paste
+        # the UUIDs here. Both are required for the integration to fire —
+        # missing config means the signup-sync call is skipped (signup still
+        # completes) and the email-event receiver returns 503.
+        # - name: COREYALAN_API_KEY
+        #   key: <BW UUID for sk_live_... key minted at https://staging.coreyalan.com/admin/api-keys>
+        # - name: COREYALAN_WEBHOOK_SECRET
+        #   key: <BW UUID for the shared HMAC secret with staging coreyalan>
   resources:
     requests:
       cpu: 100m
