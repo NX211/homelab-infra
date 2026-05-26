@@ -11,7 +11,11 @@ Chart.lock
 # Secrets (never commit!)
 *.secret.yaml
 *-secret.yaml
-secrets/
+# Ignore everything inside any 'secrets' directory at any depth, EXCEPT
+# inventory manifests (*.json) in the repo-root secrets/. Manifests contain
+# only UUID→name mappings (no values). Mirrors platform-infra/secrets/.
+**/secrets/**
+!/secrets/*.json
 
 # Backups
 *.backup
