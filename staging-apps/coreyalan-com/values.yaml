@@ -284,12 +284,11 @@ staging-app:
       - name: S3_SECRET_ACCESS_KEY
         key: 0882edf0-c16b-4463-b11a-b44e012680b1
       # Capturly webhook forwarder — shared HMAC secret with staging
-      # Capturly's /api/internal/email-event receiver. See TODO in
-      # homelab-infra/staging-apps/COREYALAN_INTEGRATION_TODO.md
-      # The same value must be set in staging Capturly's
-      # COREYALAN_WEBHOOK_SECRET (different env var name; same bytes).
-      # - name: WEBHOOK_FORWARD_CAPTURLY_SECRET
-      #   key: <BW UUID in the coreyalan staging project>
+      # Capturly's /api/internal/email-event receiver. The same value must
+      # be set in staging Capturly's COREYALAN_WEBHOOK_SECRET (different
+      # env var name; same bytes). See COREYALAN_INTEGRATION_TODO.md.
+      - name: WEBHOOK_FORWARD_CAPTURLY_SECRET
+        key: ba2df9be-10be-478c-b213-b4560163cdd2
 
   resources:
     requests:
