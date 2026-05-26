@@ -95,17 +95,6 @@ staging-app:
         key: c8c07d38-fd5a-4c72-b286-b436011e7366
       - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
         key: 0e35a9ec-ee5b-4bc1-b885-b436011e75fc
-      # Email
-      - name: EMAIL_SERVER_HOST
-        key: 5008353d-e5b5-42b6-b749-b436011e7894
-      - name: EMAIL_SERVER_PORT
-        key: af278caa-6654-401d-a5ca-b436011e7b27
-      - name: EMAIL_SERVER_USER
-        key: 84d52450-010f-4089-82a2-b436011e7db3
-      - name: EMAIL_SERVER_PASSWORD
-        key: 551af77d-8d3c-4309-b212-b436011e8048
-      - name: EMAIL_FROM
-        key: e2c21cd4-2cc3-416c-93a8-b436011e82f5
       # Chatwoot
       - name: NEXT_PUBLIC_CHATWOOT_ENABLED
         key: 04b2d246-20fe-4800-8186-b436011e858e
@@ -113,16 +102,31 @@ staging-app:
         key: 3afdf748-fdd0-45d1-ba20-b436011e8835
       - name: NEXT_PUBLIC_CHATWOOT_BASE_URL
         key: 66fa5b05-6035-4882-ae31-b436011e8acd
-      # Monitoring
-      - name: SENTRY_DSN
-        key: 978dd26c-9db4-4885-85c3-b436011e8d60
-      # Redis (standalone)
-      - name: REDIS_HOST
-        key: a18ad24a-f37e-4c85-83bd-b436011e9004
-      - name: REDIS_PORT
-        key: cba9fd41-632e-49ac-8c8b-b436011e929c
+      # Mailgun transactional email (lib/email/client.ts — code uses Mailgun HTTPS
+      # API directly; no SMTP). Domain must be verified in Mailgun.
+      - name: MAILGUN_API_KEY
+        key: ab038390-a2ea-45b9-b058-b456015c2a4f
+      - name: MAILGUN_DOMAIN
+        key: 7688bad7-a9f1-4cdf-b134-b456015c2ce3
+      # Redis (standalone — REDIS_URL is the single-instance path in lib/redis.ts;
+      # REDIS_PASSWORD optional if embedded in the URL)
+      - name: REDIS_URL
+        key: 7ca32e81-03b6-42bc-b57b-b456015c2f7b
       - name: REDIS_PASSWORD
         key: e530ef06-e9e5-4727-b980-b436011e9530
+      # Studios — DO shared secret + guest-invite kill-switch
+      - name: STUDIO_DO_INTERNAL_SECRET
+        key: fd98d9bf-a76e-4fdb-b402-b456015c3211
+      - name: STUDIO_GUEST_INVITES_ENABLED
+        key: a792bedc-b944-4c98-a33f-b456015c34b0
+      # Desktop license signing (Ed25519 keypair, distinct from prod)
+      - name: LICENSE_PRIVATE_KEY
+        key: 5b2ce9b6-1332-479d-a239-b456015c3743
+      - name: LICENSE_PUBLIC_KEY
+        key: d9997ba3-8fe0-40f0-9361-b456015c39e9
+      # Cron bearer (only consumed if a scheduler hits /api/cron/* in staging)
+      - name: CRON_SECRET
+        key: 7ec4273f-e202-42bc-b8b4-b456015c3c7e
       # Multi-participant transfer (Phase 5 — UNIFIED_RECORDING_ENGINE_PLAN.md)
       # JWT keys for transfer/session tokens (distinct from prod keys)
       - name: SESSION_JWT_PRIVATE_KEY
@@ -146,16 +150,15 @@ staging-app:
         key: 003d91b5-183b-4d88-9a58-b44e012681e7
       - name: S3_SECRET_ACCESS_KEY
         key: 880cf68a-0179-4b27-a062-b44e01268246
-        # Coreyalan integration — see TODO in homelab-infra/staging-apps/COREYALAN_INTEGRATION_TODO.md
-        # Create both secrets in the capturly-web-staging Bitwarden project
-        # (projectID e4e50481-5885-41f4-b138-b435015fa5b3 above) and paste
-        # the UUIDs here. Both are required for the integration to fire —
-        # missing config means the signup-sync call is skipped (signup still
-        # completes) and the email-event receiver returns 503.
-        # - name: COREYALAN_API_KEY
-        #   key: <BW UUID for sk_live_... key minted at https://staging.coreyalan.com/admin/api-keys>
-        # - name: COREYALAN_WEBHOOK_SECRET
-        #   key: <BW UUID for the shared HMAC secret with staging coreyalan>
+      # Coreyalan integration — see homelab-infra/staging-apps/COREYALAN_INTEGRATION_TODO.md
+      # Slots provisioned with placeholder values. Mint the real sk_live_* key at
+      # https://staging.coreyalan.com/admin/api-keys and the shared HMAC, then
+      # update both via `bws secret edit <uuid> --value <value>`.
+      - name: COREYALAN_API_KEY
+        key: ef9c00ef-c36d-4fe4-a022-b456015c3f15
+      - name: COREYALAN_WEBHOOK_SECRET
+        key: c3722f2e-77a3-4d5d-ad6e-b456015c41ad
+
   resources:
     requests:
       cpu: 100m
