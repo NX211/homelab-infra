@@ -23,11 +23,11 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web-migrate
-    digest: "sha256:412def3b8920e5ebc9248a06afb735f1046b1cfb933e8f0fbe3adbc3e0a4839d" # Updated by CI/CD
+    digest: "sha256:647a562609f38650ac4e8e8779cf39c8eefaf8e28dc5802c362abb094a102df9" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
     pullPolicy: IfNotPresent
-    digest: "sha256:0bdf5c4acd274f6a11744da8abf12c12bceab58e04dbcb14ddb9aa3f21386534" # Updated by CI/CD
+    digest: "sha256:48e7fedf0b3ae9d9f10bbc63b46c736bec603f710b6ef70d69eaefeafe56410b" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-capturly-web
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
@@ -158,7 +158,6 @@ staging-app:
         key: ef9c00ef-c36d-4fe4-a022-b456015c3f15
       - name: COREYALAN_WEBHOOK_SECRET
         key: c3722f2e-77a3-4d5d-ad6e-b456015c41ad
-
   resources:
     requests:
       cpu: 100m
