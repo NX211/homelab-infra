@@ -89,6 +89,7 @@ buckets:
   - coreyalan-meeting-recordings
   - dispatchr-social-uploads
   - capturly-transfer
+  - blue-skysolutions-uploads
 
 # ---------------------------------------------------------------------------
 # Ingress: external S3 endpoint via Traefik + cert-manager
