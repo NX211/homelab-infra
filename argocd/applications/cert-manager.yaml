@@ -19,6 +19,17 @@ spec:
         crds:
           enabled: true
         replicaCount: 1
+        # Route HTTP-01 self-checks to the edge node's internal IP so the
+        # controller does not have to hairpin through the public IP. Without
+        # this the self-check times out and certificates never issue.
+        hostAliases:
+          - ip: "10.20.0.240"
+            hostnames:
+              - staging.blue-skysolutions.com
+              - staging.dispatchr.social
+              - staging.jlshaw.link
+              - staging.coreyalan.com
+              - staging.capturly.app
         resources:
           requests:
             cpu: 15m
