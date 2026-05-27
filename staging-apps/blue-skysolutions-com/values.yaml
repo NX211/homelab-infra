@@ -6,7 +6,6 @@ staging-app:
   appLabel: Blue Sky Solutions
   fullnameOverride: blue-skysolutions-com-staging
   replicaCount: 1
-
   # Per-app Bitwarden secret store (least privilege)
   # NOTE: bitwarden-staging-blue-sky-credentials must exist as a K8s secret in
   # external-secrets-system ns holding a BWS access token scoped to projectID below.
@@ -16,37 +15,29 @@ staging-app:
     projectID: "a96c3c80-5344-4693-b43b-b435015fc390"
     organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
     credentialsSecret: bitwarden-staging-blue-sky-credentials
-
   # No database
   database:
     enabled: false
-
   # No migrations
   migration:
     enabled: false
-
   image:
     repository: us-central1-docker.pkg.dev/blue-skysolutions/blue-skysolutions/blue-skysolutions-web
     pullPolicy: IfNotPresent
-    digest: "sha256:f68880108588c6e999284924ebb51883e4563161189b98e1e4508ce1a9f4dfa6" # Updated by CI/CD via gitops-staging-update.yml — seeded from prod for first deploy
-
+    digest: "sha256:68e2ca90a5d6084da930ac0f36c84e3f190dfbb19075f3624b472c375a40fd5b" # Updated by CI/CD via gitops-staging-update.yml — seeded from prod for first deploy
   imagePullSecrets:
     - name: gcr-pull-secret-blue-sky
-
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
   gcrPullSecret:
     bitwardenKey: 1b39f4bd-9517-4177-bf36-b4570146ef86
     secretName: gcr-pull-secret-blue-sky
-
   service:
     type: ClusterIP
     port: 3000
-
   ingress:
     enabled: true
     host: staging.blue-skysolutions.com
     clusterIssuer: letsencrypt-prod
-
   env:
     - name: NODE_ENV
       value: production
@@ -68,11 +59,9 @@ staging-app:
       value: "true"
     - name: S3_BUCKET_NAME
       value: blue-skysolutions-uploads
-
   envFrom:
     - secretRef:
         name: blue-sky-staging-secrets
-
   # External Secrets (Bitwarden staging project)
   externalSecrets:
     enabled: true
@@ -92,7 +81,6 @@ staging-app:
         key: b13d2ad0-b08b-4521-bdf7-b4570138e7fa
       - name: S3_SECRET_ACCESS_KEY
         key: e3d0f504-8e53-4982-9902-b4570138e830
-
   resources:
     requests:
       cpu: 100m
@@ -100,7 +88,6 @@ staging-app:
     limits:
       cpu: 500m
       memory: 512Mi
-
   livenessProbe:
     enabled: true
     path: /api/health
@@ -109,7 +96,6 @@ staging-app:
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
-
   readinessProbe:
     enabled: true
     path: /api/health
