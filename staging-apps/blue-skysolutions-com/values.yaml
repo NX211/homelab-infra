@@ -1,0 +1,120 @@
+# Blue Sky Solutions - Staging Values
+# Build once, deploy many: same image as prod, different config.
+
+staging-app:
+  appName: blue-sky
+  appLabel: Blue Sky Solutions
+  fullnameOverride: blue-skysolutions-com-staging
+  replicaCount: 1
+
+  # Per-app Bitwarden secret store (least privilege)
+  # NOTE: bitwarden-staging-blue-sky-credentials must exist as a K8s secret in
+  # external-secrets-system ns holding a BWS access token scoped to projectID below.
+  # This is a one-time manual bootstrap (or via SealedSecret) — same pattern as the
+  # other staging apps.
+  bitwarden:
+    projectID: "a96c3c80-5344-4693-b43b-b435015fc390"
+    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+    credentialsSecret: bitwarden-staging-blue-sky-credentials
+
+  # No database
+  database:
+    enabled: false
+
+  # No migrations
+  migration:
+    enabled: false
+
+  image:
+    repository: us-central1-docker.pkg.dev/blue-skysolutions/blue-skysolutions/blue-skysolutions-web
+    pullPolicy: IfNotPresent
+    digest: "sha256:PLACEHOLDER" # Updated by CI/CD via gitops-staging-update.yml
+
+  imagePullSecrets:
+    - name: gcr-pull-secret-blue-sky
+
+  # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
+  gcrPullSecret:
+    bitwardenKey: 1b39f4bd-9517-4177-bf36-b4570146ef86
+    secretName: gcr-pull-secret-blue-sky
+
+  service:
+    type: ClusterIP
+    port: 3000
+
+  ingress:
+    enabled: true
+    host: staging.blue-skysolutions.com
+    clusterIssuer: letsencrypt-prod
+
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: NEXT_PUBLIC_SITE_URL
+      value: https://staging.blue-skysolutions.com
+    - name: NEXT_PUBLIC_APP_NAME
+      value: Blue Sky Solutions
+    - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
+      value: staging
+    # ---- SeaweedFS S3 (in-cluster) ----
+    # Prod uses native GCS; staging uses SeaweedFS via the storage abstraction.
+    - name: STORAGE_PROVIDER
+      value: s3
+    - name: S3_ENDPOINT
+      value: http://seaweedfs-filer.seaweedfs.svc:8333
+    - name: S3_REGION
+      value: us-east-1
+    - name: S3_FORCE_PATH_STYLE
+      value: "true"
+    - name: S3_BUCKET_NAME
+      value: blue-skysolutions-uploads
+
+  envFrom:
+    - secretRef:
+        name: blue-sky-staging-secrets
+
+  # External Secrets (Bitwarden staging project)
+  externalSecrets:
+    enabled: true
+    secretName: blue-sky-staging-secrets
+    refreshInterval: 1h
+    secrets:
+      - name: MAILGUN_API_KEY
+        key: 6efa8f66-5972-4ae8-bd32-b4570120849a
+      - name: MAILGUN_DOMAIN
+        key: ff4c3f6d-54e0-4101-a998-b457012083df
+      - name: EMAIL_FROM
+        key: 1b00e0fd-a13a-4591-9d59-b45701208422
+      - name: EMAIL_TO
+        key: 42b5a1d2-fe5d-4bc6-89ef-b4570120845f
+      # SeaweedFS S3 credentials (identity: blue-sky; scoped to blue-skysolutions-uploads)
+      - name: S3_ACCESS_KEY_ID
+        key: b13d2ad0-b08b-4521-bdf7-b4570138e7fa
+      - name: S3_SECRET_ACCESS_KEY
+        key: e3d0f504-8e53-4982-9902-b4570138e830
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  livenessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+  readinessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
