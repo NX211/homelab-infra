@@ -23,11 +23,11 @@ staging-app:
   migration:
     enabled: false
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web-migrate
-    digest: "sha256:103d9295549373e6c462f704ce19a04d5441f4afdfc73ed5dc15c592c0b714b0" # Updated by CI/CD
+    digest: "sha256:e6f68597421ebffafe740154da7142d41f8ee2c899c53fc7f590b91dbfd27390" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
     pullPolicy: IfNotPresent
-    digest: "sha256:89ca49279731615427ea6233c5732957d26c194f2f5e75a24d1bb713f1bcf53d" # Updated by CI/CD
+    digest: "sha256:cae7849c43241f0ec3b163d533ef2232e136873bdfb5f875f99b84b5a0c743ff" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-dispatchr
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
