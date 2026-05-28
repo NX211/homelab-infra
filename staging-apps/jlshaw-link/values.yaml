@@ -44,6 +44,8 @@ staging-app:
   env:
     - name: NODE_ENV
       value: production
+    - name: APP_ENV
+      value: staging
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.jlshawconsulting.com
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
@@ -75,6 +77,9 @@ staging-app:
         key: 6aa33b1f-6133-42da-aa73-b42200fec4c5
       - name: API_KEY_HASH_SECRET
         key: 5aa854b6-bcd6-41bb-8f89-b43000efdc6b
+      # FasterFixes feedback widget — staging only
+      - name: FASTERFIXES_API_KEY
+        key: 70b511ff-d684-4f02-b23d-b458016f54b4
   resources:
     requests:
       cpu: 100m
