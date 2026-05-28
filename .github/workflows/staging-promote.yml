@@ -142,7 +142,7 @@ jobs:
 
       - name: Generate GitHub App token for production dispatch
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.GITOPS_APP_ID }}
           private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
