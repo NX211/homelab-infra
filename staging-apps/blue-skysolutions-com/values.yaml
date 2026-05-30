@@ -38,9 +38,22 @@ staging-app:
     enabled: true
     host: staging.blue-skysolutions.com
     clusterIssuer: letsencrypt-prod
+    # Restrict access to the homelab WAN + on-LAN sources. CoreDNS resolves
+    # this host to the internal LB for cluster/LAN clients, so the RFC1918
+    # ranges cover internal traffic; the /32 covers external traffic that
+    # egresses through the static ISP IP.
+    ipAllowList:
+      enabled: true
+      sourceRange:
+        - 206.225.142.166/32
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
   env:
     - name: NODE_ENV
       value: production
+    - name: APP_ENV
+      value: staging
     - name: NEXT_PUBLIC_SITE_URL
       value: https://staging.blue-skysolutions.com
     - name: NEXT_PUBLIC_APP_NAME
@@ -81,6 +94,12 @@ staging-app:
         key: b13d2ad0-b08b-4521-bdf7-b4570138e7fa
       - name: S3_SECRET_ACCESS_KEY
         key: e3d0f504-8e53-4982-9902-b4570138e830
+      # FasterFixes feedback widget — staging only.
+      # TODO: create a "FASTERFIXES_API_KEY" secret in the blue-sky staging
+      # Bitwarden project (a96c3c80-5344-4693-b43b-b435015fc390) and replace
+      # the placeholder UUID below with the new item's id.
+      - name: FASTERFIXES_API_KEY
+        key: 00000000-0000-0000-0000-000000000000
   resources:
     requests:
       cpu: 100m
