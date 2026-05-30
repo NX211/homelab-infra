@@ -99,7 +99,7 @@ staging-app:
       # Bitwarden project (a96c3c80-5344-4693-b43b-b435015fc390) and replace
       # the placeholder UUID below with the new item's id.
       - name: FASTERFIXES_API_KEY
-        key: 00000000-0000-0000-0000-000000000000
+        key: 3a00be9d-19fa-4ea0-9fdc-b45a00e4e5e3
   resources:
     requests:
       cpu: 100m
