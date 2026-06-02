@@ -1,0 +1,55 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: reloader
+  namespace: argocd
+  annotations:
+    # Reloader watches ConfigMaps + Secrets and rolls dependent Deployments
+    # when they change. Comes up before app workloads so the first restart
+    # cycle is owned by Reloader rather than by manual kubectl after the
+    # first ESO refresh. -1 puts it after cert-manager (-2) but before apps.
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://stakater.github.io/stakater-charts
+    chart: reloader
+    # Keep in lockstep with platform-infra/argocd/applications/reloader.yaml
+    # so prod and staging behavior is identical. Bump together.
+    targetRevision: "2.2.9"
+    helm:
+      valuesObject:
+        reloader:
+          # Cluster-wide watch — Reloader sees secrets/configmaps in every
+          # namespace it has read access to, not just its own. Required so
+          # one Reloader instance covers all staging-apps namespaces.
+          watchGlobally: true
+
+          deployment:
+            resources:
+              requests:
+                cpu: 15m
+                memory: 128Mi
+              limits:
+                cpu: 200m
+                memory: 256Mi
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: reloader
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

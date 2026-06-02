@@ -6,6 +6,10 @@ staging-app:
   appLabel: Capturly
   fullnameOverride: capturly-web-staging
   replicaCount: 1
+  # Reloader watches referenced Secrets + ConfigMaps and rolls this Deployment
+  # when any change. Matches the prod opt-in in platform-infra/helm-charts/capturly-web.
+  deploymentAnnotations:
+    reloader.stakater.com/auto: "true"
   # Per-app Bitwarden secret store (least privilege)
   bitwarden:
     projectID: "e4e50481-5885-41f4-b138-b435015fa5b3"

@@ -6,6 +6,10 @@ staging-app:
   appLabel: Dispatchr
   fullnameOverride: dispatchr-social-staging
   replicaCount: 1
+  # Reloader watches referenced Secrets + ConfigMaps and rolls this Deployment
+  # when any change. Matches the prod opt-in in platform-infra/helm-charts/dispatchr-social.
+  deploymentAnnotations:
+    reloader.stakater.com/auto: "true"
   # Per-app Bitwarden secret store (least privilege)
   bitwarden:
     projectID: "43127155-7737-4dd3-a964-b42300e8c787"

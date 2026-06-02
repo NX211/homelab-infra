@@ -6,6 +6,10 @@ staging-app:
   appLabel: JLShaw
   fullnameOverride: jlshaw-link-staging
   replicaCount: 1
+  # Reloader watches referenced Secrets + ConfigMaps and rolls this Deployment
+  # when any change. Matches the prod opt-in in platform-infra/helm-charts/jlshaw-link.
+  deploymentAnnotations:
+    reloader.stakater.com/auto: "true"
   # Per-app Bitwarden secret store (least privilege)
   bitwarden:
     projectID: "2339785b-1aff-45ca-bd1e-b42200fc7070"

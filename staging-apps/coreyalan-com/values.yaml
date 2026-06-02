@@ -6,6 +6,12 @@ staging-app:
   appLabel: CoreyAlan
   fullnameOverride: coreyalan-com-staging
   replicaCount: 1
+  # Reloader watches every Secret + ConfigMap this Deployment references and
+  # rolls the pods when any value changes. Matches the prod opt-in in
+  # platform-infra/helm-charts/coreyalan-com/values.yaml so secret rotations
+  # propagate the same way through both environments.
+  deploymentAnnotations:
+    reloader.stakater.com/auto: "true"
   # Per-app Bitwarden secret store (least privilege)
   bitwarden:
     projectID: "14f07d19-a565-4e54-aa9c-b435015f87ce"
