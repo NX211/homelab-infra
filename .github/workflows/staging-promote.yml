@@ -4,9 +4,15 @@ on:
     types: [closed]
     branches: [main]
 
+# Promotion no longer waits for staging to roll out — it dispatches the prod
+# gitops update immediately. The prod PR is created right away (visibility,
+# review window), and gating is handled by the `staging/ok` check_run that
+# platform-infra opens on that PR and homelab-infra's staging-track.yml
+# finalizes once ArgoCD + smoke complete. See staging-track.yml.
+
 jobs:
   promote:
-    name: Promote to Production
+    name: Dispatch prod gitops update
     if: >
       github.event.pull_request.merged == true &&
       contains(github.event.pull_request.labels.*.name, 'staging')
@@ -75,71 +81,6 @@ jobs:
 
           echo "App: ${APP_NAME}, Image: ${IMAGE_SHORT}, Digest: ${DIGEST}, Tag: ${TAG}, Migrate: ${MIGRATE_DIGEST}"
 
-      - name: Wait for ArgoCD sync and health
-        env:
-          ARGOCD_TOKEN: ${{ secrets.ARGOCD_API_TOKEN }}
-          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER_URL }}
-          APP_NAME: ${{ steps.app-info.outputs.app_name }}
-        run: |
-          ARGO_APP="staging-${APP_NAME}"
-          MAX_ATTEMPTS=30
-          ATTEMPT=0
-          HEALTH=""
-          SYNC=""
-
-          echo "Waiting for ArgoCD app ${ARGO_APP} to be Healthy and Synced..."
-
-          # Pre-flight: verify the Application actually exists before
-          # burning the full polling budget. A mismatched app name (e.g.
-          # renamed in homelab-infra but not reflected in the workflow
-          # convention) previously caused the old loop to tick through
-          # 30 "Unknown/Unknown" attempts and fail after 10 minutes, with
-          # no signal that the real cause was a 404. Fail loud, fail fast.
-          PREFLIGHT_STATUS=$(curl -sS -o /tmp/argo-preflight.json -w '%{http_code}' \
-            -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
-            "${ARGOCD_SERVER}/api/v1/applications/${ARGO_APP}" || echo "000")
-          if [ "$PREFLIGHT_STATUS" = "404" ]; then
-            echo "ERROR: ArgoCD Application '${ARGO_APP}' not found (404)."
-            echo "Expected naming convention: staging-<app-name> matching staging-apps/<app-name>/."
-            echo "Check that argocd/applications/${ARGO_APP}.yaml exists with metadata.name: ${ARGO_APP}"
-            exit 1
-          fi
-          if [ "$PREFLIGHT_STATUS" != "200" ]; then
-            echo "ERROR: ArgoCD preflight failed with HTTP ${PREFLIGHT_STATUS}"
-            echo "Response body:"
-            cat /tmp/argo-preflight.json || true
-            exit 1
-          fi
-
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            ATTEMPT=$((ATTEMPT + 1))
-
-            RESPONSE=$(curl -sS -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
-              "${ARGOCD_SERVER}/api/v1/applications/${ARGO_APP}" || echo "{}")
-
-            HEALTH=$(echo "$RESPONSE" | jq -r '.status.health.status // "Unknown"')
-            SYNC=$(echo "$RESPONSE" | jq -r '.status.sync.status // "Unknown"')
-
-            echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: health=${HEALTH} sync=${SYNC}"
-
-            if [ "$HEALTH" = "Healthy" ] && [ "$SYNC" = "Synced" ]; then
-              echo "Staging app is Healthy and Synced!"
-              break
-            fi
-
-            if [ "$HEALTH" = "Degraded" ]; then
-              echo "ERROR: Staging app is Degraded. Aborting promotion."
-              exit 1
-            fi
-
-            sleep 20
-          done
-
-          if [ "$HEALTH" != "Healthy" ] || [ "$SYNC" != "Synced" ]; then
-            echo "ERROR: Timed out waiting for staging app to be Healthy and Synced (last: health=${HEALTH}, sync=${SYNC})"
-            exit 1
-          fi
-
       - name: Generate GitHub App token for production dispatch
         id: app-token
         uses: actions/create-github-app-token@v1
@@ -148,88 +89,61 @@ jobs:
           private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
           owner: Corey-Alan-Consulting
 
-      - name: Run staging smoke tests
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          APP_NAME: ${{ steps.app-info.outputs.app_name }}
+      - name: Mint dispatch correlation ID
+        id: dispatch-id
         run: |
-          # Map app names to repos that have smoke tests
-          declare -A SMOKE_REPOS=(
-            ["coreyalan-com"]="Corey-Alan-Consulting/coreyalan.com"
-          )
+          # Correlation ID threaded through the entire chain (image-push →
+          # gitops-update → staging-track → check_run output). Lets log
+          # searches join cleanly across repos.
+          DISPATCH_ID="dispatch-$(date -u +%Y%m%dT%H%M%SZ)-$(openssl rand -hex 4)"
+          echo "id=${DISPATCH_ID}" >> "$GITHUB_OUTPUT"
+          echo "Dispatch ID: ${DISPATCH_ID}"
 
-          REPO="${SMOKE_REPOS[$APP_NAME]:-}"
-          if [ -z "$REPO" ]; then
-            echo "No smoke test configured for ${APP_NAME}, skipping"
-            exit 0
-          fi
-
-          echo "Dispatching smoke tests to ${REPO}..."
-          gh api "repos/${REPO}/dispatches" \
-            -f event_type=staging-smoke-test \
-            -f "client_payload[staging_url]=https://staging.coreyalan.com"
-
-          # Wait for workflow run to appear
-          sleep 15
-
-          MAX_ATTEMPTS=30
-          for i in $(seq 1 $MAX_ATTEMPTS); do
-            RUN_JSON=$(gh run list --repo "$REPO" --event repository_dispatch \
-              --workflow "staging-smoke.yml" --limit 1 \
-              --json status,conclusion 2>/dev/null || echo "[]")
-
-            STATUS=$(echo "$RUN_JSON" | jq -r '.[0].status // "unknown"')
-            CONCLUSION=$(echo "$RUN_JSON" | jq -r '.[0].conclusion // ""')
-
-            if [ "$STATUS" = "completed" ]; then
-              if [ "$CONCLUSION" = "success" ]; then
-                echo "Smoke tests passed!"
-                break
-              else
-                echo "ERROR: Smoke tests failed (conclusion: ${CONCLUSION})"
-                exit 1
-              fi
-            fi
-
-            echo "Attempt ${i}/${MAX_ATTEMPTS}: smoke tests ${STATUS}..."
-            sleep 10
-          done
-
-          if [ "$STATUS" != "completed" ]; then
-            echo "ERROR: Smoke tests timed out after ${MAX_ATTEMPTS} attempts"
-            exit 1
-          fi
-
-      - name: Promote to production
+      - name: Dispatch image-push to production
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_NAME: ${{ steps.app-info.outputs.app_name }}
-          DIGEST: ${{ steps.app-info.outputs.digest }}
+          IMAGE_SHORT: ${{ steps.app-info.outputs.image_short }}
           IMAGE: ${{ steps.app-info.outputs.image }}
+          DIGEST: ${{ steps.app-info.outputs.digest }}
           TAG: ${{ steps.app-info.outputs.tag }}
           MIGRATE_DIGEST: ${{ steps.app-info.outputs.migrate_digest }}
+          DISPATCH_ID: ${{ steps.dispatch-id.outputs.id }}
         run: |
-          echo "Promoting ${APP_NAME} to production..."
+          PAYLOAD=$(jq -n \
+            --arg app_name "$APP_NAME" \
+            --arg image_short "$IMAGE_SHORT" \
+            --arg image "$IMAGE" \
+            --arg digest "$DIGEST" \
+            --arg tag "$TAG" \
+            --arg migrate_digest "$MIGRATE_DIGEST" \
+            --arg argo_app "staging-${APP_NAME}" \
+            --arg dispatch_id "$DISPATCH_ID" \
+            '{
+              event_type: "image-push",
+              client_payload: {
+                app_name: $app_name,
+                image_short: $image_short,
+                image: $image,
+                digest: $digest,
+                tag: $tag,
+                migrate_digest: $migrate_digest,
+                argo_app: $argo_app,
+                dispatch_id: $dispatch_id
+              }
+            }')
 
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+          HTTP_STATUS=$(curl -sS -o /tmp/dispatch.json -w "%{http_code}" -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/Corey-Alan-Consulting/platform-infra/dispatches" \
-            -d "{
-              \"event_type\": \"image-push\",
-              \"client_payload\": {
-                \"app_name\": \"${APP_NAME}\",
-                \"image\": \"${IMAGE}\",
-                \"digest\": \"${DIGEST}\",
-                \"tag\": \"${TAG}\",
-                \"migrate_digest\": \"${MIGRATE_DIGEST}\"
-              }
-            }")
+            -d "$PAYLOAD")
 
           if [ "$HTTP_STATUS" = "204" ]; then
-            echo "Production deployment dispatched successfully!"
+            echo "Production dispatch sent (${DISPATCH_ID})"
           else
             echo "ERROR: Production dispatch failed with status ${HTTP_STATUS}"
+            cat /tmp/dispatch.json || true
             exit 1
           fi
