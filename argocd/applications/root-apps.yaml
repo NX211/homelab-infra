@@ -1,0 +1,63 @@
+---
+# App-of-apps root. Watches argocd/applications/ and reconciles every
+# Application CR in this directory. Closes #29 — before this, adds /
+# deletes / renames in this directory required a manual kubectl apply
+# (the 2026-04-07 incident where renaming `staging-dispatchr.yaml` →
+# `staging-dispatchr-social.yaml` left the cluster pointing at a dead
+# Application until 6 manual kubectl commands fixed it).
+#
+# Self-reference is fine: this file lives in the directory it manages.
+# ArgoCD handles app-of-apps self-management cleanly. Don't set
+# `prune: false` on this app itself or future edits to root-apps become
+# unprune-able.
+#
+# `prune: true` on the root is safe because the root manages only
+# Application CRs (not workload resources). Whether a deleted Application
+# also tears down its own workloads is governed by the per-Application
+# `resources-finalizer.argocd.argoproj.io` finalizer — which the existing
+# Applications in this directory all have set.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-apps
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: HEAD
+    path: argocd/applications
+    directory:
+      # Flat directory only. Flip to true if/when apps get nested under
+      # argocd/applications/<group>/.
+      recurse: false
+      # Skip non-YAML files (README.md, etc.) so they don't break sync.
+      include: "*.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  # ArgoCD writes `status` + `operation` on every Application it manages.
+  # Without this ignore block, root-apps would see those server-written
+  # fields as drift from git and try to overwrite them on every sync,
+  # producing perpetual diffs in the UI. Mirrors platform-infra's
+  # argocd/applications/root.yaml convention.
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Application
+      jsonPointers:
+        - /status
+        - /operation
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
