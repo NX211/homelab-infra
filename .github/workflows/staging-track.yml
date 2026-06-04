@@ -191,6 +191,7 @@ jobs:
           # finalizer doesn't fail the check on a missing entry.
           declare -A SMOKE_REPOS=(
             ["coreyalan-com"]="Corey-Alan-Consulting/coreyalan.com"
+            ["blue-skysolutions-com"]="Corey-Alan-Consulting/blue-skysolutions.com"
           )
 
           REPO="${SMOKE_REPOS[$APP_NAME]:-}"
