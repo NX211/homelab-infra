@@ -65,6 +65,14 @@ staging-app:
       value: https://staging.jlshawconsulting.com
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
       value: staging
+    # coreyalan.com V1 partner API integration — non-secret config.
+    # Tenant tag (matches the source binding on the staging API key).
+    - name: COREYALAN_TICKET_SOURCE
+      value: jlshaw-staging
+    # Public base URL of the upstream V1 API. Point at coreyalan staging
+    # if/when it has a separate host; otherwise leave at prod.
+    - name: COREYALAN_API_URL
+      value: https://coreyalan.com
   envFrom:
     - secretRef:
         name: jlshaw-staging-secrets
@@ -95,6 +103,15 @@ staging-app:
       # FasterFixes feedback widget — staging only
       - name: FASTERFIXES_API_KEY
         key: 70b511ff-d684-4f02-b23d-b458016f54b4
+      # coreyalan.com V1 partner API integration — only the credentials
+      # live in Bitwarden. COREYALAN_API_URL and COREYALAN_TICKET_SOURCE
+      # are non-secret config; see the inline `env:` block above.
+      # TODO: replace each `key:` UUID after provisioning the Bitwarden
+      # entries in the jlshaw-staging project.
+      - name: COREYALAN_API_KEY
+        key: REPLACE_WITH_BW_UUID_COREYALAN_API_KEY
+      - name: COREYALAN_WEBHOOK_SECRET
+        key: REPLACE_WITH_BW_UUID_COREYALAN_WEBHOOK_SECRET
   resources:
     requests:
       cpu: 100m
