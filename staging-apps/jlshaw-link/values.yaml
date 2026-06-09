@@ -106,12 +106,10 @@ staging-app:
       # coreyalan.com V1 partner API integration — only the credentials
       # live in Bitwarden. COREYALAN_API_URL and COREYALAN_TICKET_SOURCE
       # are non-secret config; see the inline `env:` block above.
-      # TODO: replace each `key:` UUID after provisioning the Bitwarden
-      # entries in the jlshaw-staging project.
       - name: COREYALAN_API_KEY
-        key: REPLACE_WITH_BW_UUID_COREYALAN_API_KEY
+        key: 2e25370f-cab8-45ae-9a4d-b4640121f477
       - name: COREYALAN_WEBHOOK_SECRET
-        key: REPLACE_WITH_BW_UUID_COREYALAN_WEBHOOK_SECRET
+        key: a0f2b1c1-415b-472c-a421-b4640121ff7d
   resources:
     requests:
       cpu: 100m
