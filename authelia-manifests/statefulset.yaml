@@ -32,8 +32,8 @@ spec:
 
       containers:
       - name: authelia
-        image: authelia/authelia:latest
-        imagePullPolicy: Always
+        image: authelia/authelia:4.39.20
+        imagePullPolicy: IfNotPresent
 
         securityContext:
           runAsUser: 65534

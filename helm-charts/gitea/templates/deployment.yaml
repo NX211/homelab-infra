@@ -27,7 +27,7 @@ spec:
       initContainers:
       # Fix permissions on PVCs
       - name: fix-permissions
-        image: busybox:latest
+        image: busybox:1.38.0
         command:
         - sh
         - -c
@@ -52,7 +52,7 @@ spec:
       {{- if .Values.customTemplates.enabled }}
       # Copy custom templates and assets
       - name: copy-custom-files
-        image: busybox:latest
+        image: busybox:1.38.0
         command:
         - sh
         - -c

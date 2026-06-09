@@ -2,7 +2,7 @@
 
 image:
   repository: gitea/gitea
-  tag: "latest-rootless"
+  tag: "1.26.2-rootless"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
