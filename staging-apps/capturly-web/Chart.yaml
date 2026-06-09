@@ -3,7 +3,7 @@ name: capturly-web-staging
 description: Capturly Web - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "v1.21.0"
+appVersion: "v2.0.0"
 keywords:
   - capturly
   - nextjs
