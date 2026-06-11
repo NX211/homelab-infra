@@ -3,7 +3,7 @@ name: blue-skysolutions-com-staging
 description: Blue Sky Solutions - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "v0.1.2"
+appVersion: "0.1.6"
 keywords:
   - blue-skysolutions
   - nextjs
