@@ -123,12 +123,37 @@ jobs:
             fi
           fi
 
-          if [[ "${TAG}" == v* ]]; then
+          # Normalize incoming tag to bare semver before writing it to
+          # Chart.yaml's appVersion. Two upstream tag conventions arrive
+          # here:
+          #
+          #   release-please: 'v0.1.27'         -> NORMALIZED_TAG='0.1.27'
+          #   Changesets:     'coreyalan@0.1.27' -> NORMALIZED_TAG='0.1.27'
+          #
+          # Strip a leading 'v' (release-please) OR a trailing '@semver'
+          # segment (Changesets). The resulting string must match strict
+          # semver so any unexpected shape (e.g. an SDK-style tag that
+          # somehow leaked through, or a pre-release with build metadata
+          # we don't yet support) is rejected — the chart's appVersion
+          # is left untouched and only digests advance for that dispatch.
+          #
+          # Helm tolerates a 'v' prefix in appVersion but rejects '@', so
+          # the prefix must be stripped to keep `helm lint` happy.
+          NORMALIZED_TAG=""
+          if [[ "$TAG" == *@* ]]; then
+            NORMALIZED_TAG="${TAG##*@}"
+          elif [[ "$TAG" == v* ]]; then
+            NORMALIZED_TAG="${TAG#v}"
+          fi
+
+          if [[ "$NORMALIZED_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             CHART_FILE="staging-apps/${APP_NAME}/Chart.yaml"
             if [ -f "$CHART_FILE" ]; then
-              yq eval ".appVersion = \"${TAG}\"" -i "${CHART_FILE}"
-              echo "Updated appVersion in ${CHART_FILE} to ${TAG}"
+              yq eval ".appVersion = \"${NORMALIZED_TAG}\"" -i "${CHART_FILE}"
+              echo "Updated appVersion in ${CHART_FILE} to ${NORMALIZED_TAG} (from incoming tag ${TAG})"
             fi
+          else
+            echo "Skipping appVersion update: tag '${TAG}' did not normalize to bare semver"
           fi
 
           echo "Updated ${VALUES_FILE}:"
