@@ -169,17 +169,21 @@ staging-app:
     limits:
       cpu: 500m
       memory: 768Mi
+  # Liveness must not touch the DB — probing `/` ran a DB query, so a Postgres
+  # blip killed the pod. /api/health/live is a dependency-free process check.
   livenessProbe:
     enabled: true
-    path: /
+    path: /api/health/live
     port: 3000
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
+  # Readiness pings DB + Redis (503 when DB down) — pulls the pod from rotation
+  # during an outage without restarting it.
   readinessProbe:
     enabled: true
-    path: /
+    path: /api/health
     port: 3000
     initialDelaySeconds: 10
     periodSeconds: 5
