@@ -3,7 +3,7 @@ name: coreyalan-com-staging
 description: CoreyAlan.com - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "0.2.0"
+appVersion: "0.2.1"
 keywords:
   - coreyalan
   - nextjs
