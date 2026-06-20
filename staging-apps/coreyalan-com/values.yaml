@@ -286,14 +286,10 @@ staging-app:
         key: e559f17f-b877-4e25-9596-b43501627970
       - name: GCP_PROJECT_NUMBER
         key: d526f0af-09ef-483b-af04-b43501627c0b
-      # redis-ng Sentinel auth — same value as STAGING_REDIS_NG_PASSWORD.
+      # redis-ng Sentinel auth — same value as STAGING_REDIS_NG_PASSWORD. The app
+      # (src/lib/redis.ts) reuses this as ioredis `sentinelPassword`, so no
+      # separate REDIS_SENTINEL_PASSWORD var is needed.
       - name: REDIS_PASSWORD
-        key: 34d8f4d0-65aa-4346-b821-b46f01019417
-      # redis-ng's Sentinel also requires AUTH (operator sets sentinel auth-pass
-      # = the redis password). coreyalan's client passes this as ioredis
-      # `sentinelPassword`, separate from REDIS_PASSWORD. Same value/key. Without
-      # it the sentinel returns NOAUTH -> "Stream isn't writeable" -> crashloop.
-      - name: REDIS_SENTINEL_PASSWORD
         key: 34d8f4d0-65aa-4346-b821-b46f01019417
       # SeaweedFS S3 credentials (identity: coreyalan; scoped to coreyalan-{store,showcase}-assets)
       - name: S3_ACCESS_KEY_ID
@@ -309,10 +305,14 @@ staging-app:
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      memory: 512Mi
     limits:
       cpu: 500m
-      memory: 768Mi
+      # coreyalan-web is a heavy Next.js app (PDF rendering, BlockNote, AWS/Google/
+      # Stripe SDKs). Node auto-sizes its V8 heap to ~50% of this cgroup limit, so
+      # 768Mi gave only a ~384MB heap and the process hit V8 OOM (exit 139) under
+      # normal load. 1.5Gi -> ~768MB heap with headroom for non-heap memory.
+      memory: 1536Mi
   # Liveness = process-only check; readiness = DB+Redis. Avoids restarting the
   # pod on a dependency blip (matches prod).
   livenessProbe:
