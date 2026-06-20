@@ -210,7 +210,7 @@ env:
 # Value: abc123
 
 # ExternalSecret (in Git)
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: sonarr-secrets
