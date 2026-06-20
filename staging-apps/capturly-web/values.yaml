@@ -194,3 +194,13 @@ staging-app:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+  # Scheduled-job crons — mirror prod. Curl the IN-CLUSTER service (not the
+  # public host like prod) so cron health isn't coupled to ingress/app uptime.
+  # CRON_SECRET is already synced from Bitwarden (externalSecrets above).
+  httpCronJobs:
+    - name: license-revocation-prune
+      schedule: "10 3 * * *"
+      endpoint: http://capturly-web-staging:3000/api/cron/license-revocation-prune
+    - name: session-expiry
+      schedule: "*/30 * * * *"
+      endpoint: http://capturly-web-staging:3000/api/cron/session-expiry
