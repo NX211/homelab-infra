@@ -290,9 +290,9 @@ staging-app:
       - name: REDIS_PASSWORD
         key: 34d8f4d0-65aa-4346-b821-b46f01019417
       # redis-ng's Sentinel also requires AUTH (operator sets sentinel auth-pass
-      # = the redis password). ioredis authenticates to the sentinels with a
-      # separate `sentinelPassword`, so expose the same value under its own var.
-      # Without this, sentinel returns NOAUTH -> "Stream isn't writeable".
+      # = the redis password). coreyalan's client passes this as ioredis
+      # `sentinelPassword`, separate from REDIS_PASSWORD. Same value/key. Without
+      # it the sentinel returns NOAUTH -> "Stream isn't writeable" -> crashloop.
       - name: REDIS_SENTINEL_PASSWORD
         key: 34d8f4d0-65aa-4346-b821-b46f01019417
       # SeaweedFS S3 credentials (identity: coreyalan; scoped to coreyalan-{store,showcase}-assets)
