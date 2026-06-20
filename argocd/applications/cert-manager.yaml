@@ -13,9 +13,9 @@ spec:
   source:
     repoURL: https://charts.jetstack.io
     chart: cert-manager
-    # v1.15 only supports k8s <=1.30; bumped to 1.18 (supports 1.30-1.33) ahead
-    # of the k3s upgrade to 1.31/1.32. CRDs are clean (no selectableFields).
-    targetRevision: v1.18.6
+    # On latest v1.19.5 (kubeVersion >= 1.22; CRDs have no selectableFields),
+    # matching prod. Cluster is on k3s 1.32.
+    targetRevision: v1.19.5
     helm:
       valuesObject:
         crds:
