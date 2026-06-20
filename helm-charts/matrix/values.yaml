@@ -45,6 +45,8 @@ postgres:
 redis:
   image: redis:7-alpine
   maxmemory: "256mb"
+  authSecretName: matrix-redis-auth
+  passwordRemoteKey: synapse-redis-password
   resources:
     requests:
       cpu: 25m
@@ -86,3 +88,112 @@ tls:
     - chat.coreyalan.com
     - call.coreyalan.com
     - mrtc.coreyalan.com
+
+# ESO-synced signing key secret name (created by externalsecret-synapse.yaml).
+synapseSigningKeySecret: matrix-synapse-signing-key
+
+# --------------------------------------------------------------------------
+# ananace matrix-synapse subchart (Phase 2: monolith).
+# Workers, MAS delegation, and S3 media are layered on in later phases.
+# --------------------------------------------------------------------------
+matrix-synapse:
+  enabled: true
+  serverName: coreyalan.com
+  publicServerName: matrix.coreyalan.com
+  # Force ArgoCD compatibility (stable hooks/annotations).
+  argoCD: true
+
+  signingkey:
+    # Key is generated once and stored in Bitwarden; never let the chart make one.
+    job:
+      enabled: false
+    existingSecret: matrix-synapse-signing-key
+    existingSecretKey: signing.key
+
+  config:
+    publicBaseurl: https://matrix.coreyalan.com
+    logLevel: INFO
+    reportStats: false
+    enableRegistration: false
+    # Private server: don't consult external key servers.
+    trustedKeyServers: []
+    # Pinned to stop the chart regenerating it on every ArgoCD render (which
+    # would restart Synapse continuously). This is a BOOTSTRAP-ONLY secret used
+    # by register_new_matrix_user; it goes inert in Phase 3 when MAS takes over
+    # auth (delegated Synapse disables shared-secret registration). Recorded in
+    # Bitwarden as synapse_registration_shared_secret. matrix.coreyalan.com is
+    # not publicly resolvable until DNS is added, limiting interim exposure.
+    registrationSharedSecret: "805cc1842f8f33b10a72d04ae25c40906e3b922e68cff7cb"
+
+  extraConfig:
+    # Closed federation — empty whitelist blocks send/receive with other servers.
+    federation_domain_whitelist: []
+    suppress_key_server_warning: true
+    url_preview_enabled: false
+    # Media upload cap (matches default; explicit for clarity).
+    max_upload_size: 50M
+
+  # External CNPG Postgres (Phase 1). Synapse requires C collation (asserted by db-init).
+  postgresql:
+    enabled: false
+  externalPostgresql:
+    host: matrix-postgres-rw.matrix.svc.cluster.local
+    port: 5432
+    username: synapse
+    database: synapse
+    existingSecret: matrix-synapse-db
+    existingSecretPasswordKey: password
+
+  # External dedicated noeviction Redis (Phase 1). Passwordless, in-cluster only.
+  redis:
+    enabled: false
+  externalRedis:
+    host: matrix-redis.matrix.svc.cluster.local
+    port: 6379
+    existingSecret: matrix-redis-auth
+    existingSecretPasswordKey: redis-password
+
+  # Local media store for the monolith. Moves to a media_repository worker + S3
+  # in Phase 4 (which also switches this to RWX).
+  persistence:
+    enabled: true
+    storageClass: local-path
+    accessMode: ReadWriteOnce
+    size: 20Gi
+
+  service:
+    type: ClusterIP
+    port: 8008
+
+  # Well-known is served at the coreyalan.com apex by the prod cluster.
+  wellknown:
+    enabled: false
+
+  ingress:
+    enabled: true
+    # This cluster's Traefik handles both IngressRoute CRDs and standard Ingress.
+    traefikPaths: true
+    className: traefik
+    # The apex coreyalan.com is owned by the prod cluster — do not claim it here.
+    includeServerName: false
+    includeUnderscoreSynapse: true
+    csHosts:
+      - matrix.coreyalan.com
+    hosts:
+      - matrix.coreyalan.com
+    wkHosts: []
+    tls:
+      - secretName: matrix-tls
+        hosts:
+          - matrix.coreyalan.com
+
+  synapse:
+    strategy:
+      type: Recreate
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 3Gi

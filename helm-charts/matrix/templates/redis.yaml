@@ -28,15 +28,21 @@ spec:
       containers:
         - name: redis
           image: {{ .Values.redis.image }}
+          command: ["sh", "-c"]
           args:
-            - "--maxmemory"
-            - {{ .Values.redis.maxmemory | quote }}
-            - "--maxmemory-policy"
-            - "noeviction"
-            - "--save"
-            - ""
-            - "--appendonly"
-            - "no"
+            - >-
+              exec redis-server
+              --maxmemory {{ .Values.redis.maxmemory }}
+              --maxmemory-policy noeviction
+              --save ""
+              --appendonly no
+              --requirepass "$REDIS_PASSWORD"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.redis.authSecretName }}
+                  key: redis-password
           ports:
             - name: redis
               containerPort: 6379

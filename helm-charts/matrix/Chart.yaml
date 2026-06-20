@@ -2,9 +2,10 @@ apiVersion: v2
 name: matrix
 description: Self-hosted Matrix stack (Synapse + workers, MAS, Element Web, Element Call/LiveKit) for server_name coreyalan.com
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "1.155.0"
-# NOTE: The ananace matrix-synapse chart is added as a dependency in Phase 2.
-# Phase 1 (this commit) provisions only the supporting infrastructure:
-# dedicated CNPG Postgres (C collation), dedicated Redis, S3 wiring, secrets,
-# and the shared TLS certificate.
+dependencies:
+  - name: matrix-synapse
+    version: "3.12.30"
+    repository: "https://ananace.gitlab.io/charts"
+    condition: matrix-synapse.enabled
