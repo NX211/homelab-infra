@@ -1,0 +1,73 @@
+---
+# Creates the synapse + mas roles and databases. The synapse DB is built with
+# C collation from template0 (Synapse refuses to start otherwise) and the Job
+# asserts the collation before declaring success. Idempotent + safe to re-run.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: matrix-db-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    # Runs after the CNPG cluster (wave 0); waits for readiness via pg_isready.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 30
+  template:
+    metadata:
+      labels:
+        app: matrix-db-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: db-init
+          image: postgres:16-alpine
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              HOST={{ .Values.postgres.name }}-rw.{{ .Release.Namespace }}.svc.cluster.local
+              echo "Waiting for PostgreSQL at $HOST ..."
+              until pg_isready -h "$HOST" -U postgres; do sleep 2; done
+
+              run() { PGPASSWORD="$SU_PASS" psql -v ON_ERROR_STOP=1 -h "$HOST" -U postgres "$@"; }
+
+              # --- synapse role + database (C collation, required) ---
+              run -tc "SELECT 1 FROM pg_roles WHERE rolname='{{ .Values.databases.synapse.user }}'" | grep -q 1 || \
+                run -c "CREATE ROLE \"{{ .Values.databases.synapse.user }}\" LOGIN PASSWORD '$SYNAPSE_PASS'"
+              run -c "ALTER ROLE \"{{ .Values.databases.synapse.user }}\" LOGIN PASSWORD '$SYNAPSE_PASS'"
+              run -tc "SELECT 1 FROM pg_database WHERE datname='{{ .Values.databases.synapse.name }}'" | grep -q 1 || \
+                run -c "CREATE DATABASE \"{{ .Values.databases.synapse.name }}\" OWNER \"{{ .Values.databases.synapse.user }}\" ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0"
+
+              COLL=$(run -tAc "SELECT datcollate FROM pg_database WHERE datname='{{ .Values.databases.synapse.name }}'")
+              echo "synapse datcollate=$COLL"
+              [ "$COLL" = "C" ] || { echo "FATAL: synapse DB collation is '$COLL', expected 'C'"; exit 1; }
+
+              # --- mas role + database (default collation is fine) ---
+              run -tc "SELECT 1 FROM pg_roles WHERE rolname='{{ .Values.databases.mas.user }}'" | grep -q 1 || \
+                run -c "CREATE ROLE \"{{ .Values.databases.mas.user }}\" LOGIN PASSWORD '$MAS_PASS'"
+              run -c "ALTER ROLE \"{{ .Values.databases.mas.user }}\" LOGIN PASSWORD '$MAS_PASS'"
+              run -tc "SELECT 1 FROM pg_database WHERE datname='{{ .Values.databases.mas.name }}'" | grep -q 1 || \
+                run -c "CREATE DATABASE \"{{ .Values.databases.mas.name }}\" OWNER \"{{ .Values.databases.mas.user }}\""
+
+              echo "Database initialization complete."
+          env:
+            - name: SU_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.name }}-superuser
+                  key: password
+            - name: SYNAPSE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.databases.synapse.secretName }}
+                  key: password
+            - name: MAS_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.databases.mas.secretName }}
+                  key: password

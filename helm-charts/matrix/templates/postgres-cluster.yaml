@@ -1,0 +1,51 @@
+---
+# Dedicated CloudNativePG cluster for Matrix (Synapse + MAS databases).
+# Databases are created by the db-init Job (templates/job-db-init.yaml) so the
+# synapse DB can be built with C collation from template0, which CNPG's
+# bootstrap.initdb cannot express per-database.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.postgres.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.instances }}
+  imageName: {{ .Values.postgres.imageName }}
+
+  # CNPG auto-generates the "<cluster>-superuser" secret (username/password)
+  # because no superuserSecret is specified. The db-init Job reads it.
+  enableSuperuserAccess: true
+
+  postgresql:
+    parameters:
+      {{- range $key, $value := .Values.postgres.parameters }}
+      {{ $key }}: {{ $value | quote }}
+      {{- end }}
+
+  storage:
+    size: {{ .Values.postgres.storage.size }}
+    storageClass: {{ .Values.postgres.storage.storageClass }}
+
+  # Minimal bootstrap DB; the real synapse/mas DBs are created by db-init.
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                  - {{ .Values.postgres.nodeSelector }}
+
+  resources:
+    {{- toYaml .Values.postgres.resources | nindent 4 }}
+
+  monitoring:
+    enablePodMonitor: {{ .Values.postgres.monitoring.enablePodMonitor }}

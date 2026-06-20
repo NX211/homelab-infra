@@ -1,0 +1,37 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: matrix
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    # Tracks the repo's default branch. Point at feat/matrix-stack in the Argo
+    # UI to test before merge.
+    targetRevision: HEAD
+    path: helm-charts/matrix
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: matrix
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  ignoreDifferences:
+    - group: external-secrets.io
+      kind: ExternalSecret
+      jsonPointers:
+        - /spec/data
+        - /spec/target

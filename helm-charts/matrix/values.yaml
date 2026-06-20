@@ -1,0 +1,88 @@
+# Matrix stack — values
+#
+# Phase 1 (foundations) uses the postgres/redis/databases/externalSecrets/tls
+# sections below. Synapse/MAS/Element/LiveKit sections are added in later phases.
+
+# --------------------------------------------------------------------------
+# Dedicated CloudNativePG cluster (isolated from default/postgres so Synapse
+# gets the required C collation without touching shared databases).
+# --------------------------------------------------------------------------
+postgres:
+  name: matrix-postgres
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+  storage:
+    size: 20Gi
+    storageClass: local-path
+  # Co-locate with the disk node, matching the shared postgres cluster.
+  nodeSelector: greytalon
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  parameters:
+    max_connections: "200"
+    shared_buffers: "256MB"
+    effective_cache_size: "1GB"
+    maintenance_work_mem: "64MB"
+    work_mem: "8MB"
+    checkpoint_completion_target: "0.9"
+    random_page_cost: "1.1"
+  monitoring:
+    # Opt-in (cluster-wide pattern). Enabled in Phase 7.
+    enablePodMonitor: false
+
+# --------------------------------------------------------------------------
+# Dedicated Redis for Synapse worker replication.
+# MUST be noeviction (a shared LRU cache would corrupt the replication stream)
+# and Synapse's redis client speaks plain host:port (no Sentinel) — hence a
+# dedicated standalone instance rather than reusing redis-ng-sentinel.
+# In-cluster only; no persistence needed (replication state is ephemeral).
+# --------------------------------------------------------------------------
+redis:
+  image: redis:7-alpine
+  maxmemory: "256mb"
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 500m
+      memory: 320Mi
+
+# --------------------------------------------------------------------------
+# Databases provisioned by the db-init Job. Passwords come from Bitwarden via
+# ESO (Bitwarden key snake_case -> secrets-vault secret kebab-case -> value).
+# --------------------------------------------------------------------------
+databases:
+  synapse:
+    user: synapse
+    name: synapse
+    secretName: matrix-synapse-db
+    passwordRemoteKey: synapse-db-password
+  mas:
+    user: mas
+    name: mas
+    secretName: matrix-mas-db
+    passwordRemoteKey: mas-db-password
+
+externalSecrets:
+  storeName: kubernetes-backend
+  refreshInterval: 1h
+
+# --------------------------------------------------------------------------
+# Shared TLS cert for all staging-cluster Matrix hostnames. (The apex
+# coreyalan.com well-known is served by the prod cluster, not here.)
+# --------------------------------------------------------------------------
+tls:
+  secretName: matrix-tls
+  clusterIssuer: letsencrypt-prod
+  dnsNames:
+    - matrix.coreyalan.com
+    - auth.coreyalan.com
+    - chat.coreyalan.com
+    - call.coreyalan.com
+    - mrtc.coreyalan.com

@@ -1,0 +1,75 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+    app.kubernetes.io/name: matrix-redis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: matrix-redis
+  template:
+    metadata:
+      labels:
+        {{- include "matrix.labels" . | nindent 8 }}
+        app.kubernetes.io/name: matrix-redis
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image }}
+          args:
+            - "--maxmemory"
+            - {{ .Values.redis.maxmemory | quote }}
+            - "--maxmemory-policy"
+            - "noeviction"
+            - "--save"
+            - ""
+            - "--appendonly"
+            - "no"
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: matrix-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
