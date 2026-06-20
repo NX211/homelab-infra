@@ -1,0 +1,63 @@
+{{- if .Values.redisShared.enabled }}
+---
+# redis-shared: persistent standalone store for homelab-only apps (authelia
+# sessions, gitea sessions/cache). `noeviction` + AOF so session/cache keys are
+# never dropped — the opposite personality from redis-ng's disposable cache.
+# Passwordless to stay a drop-in for the apps that used the old `redis` Service
+# (ClusterIP-only, in-cluster). No prod equivalent.
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: Redis
+metadata:
+  name: redis-shared
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSecurityContext:
+    runAsUser: 1000
+    runAsNonRoot: true
+    fsGroup: 1000
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  redisConfig:
+    additionalRedisConfig: redis-shared-additional-config
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v8.6.2
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: {{ .Values.redisShared.storage.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.redisShared.storage.size }}
+  {{- with .Values.redisShared.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-shared-additional-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: redis-shared
+    app.kubernetes.io/component: store
+data:
+  redis-additional.conf: |
+    maxmemory {{ .Values.redisShared.maxmemory }}
+    maxmemory-policy noeviction
+    appendonly yes
+    appendfsync everysec
+{{- end }}

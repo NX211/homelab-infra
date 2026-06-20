@@ -1,39 +1,30 @@
-# Redis Configuration
+# Staging Redis — operator-managed (OT-CONTAINER-KIT), mirroring prod
+# (platform-infra/helm-charts/redis). Two instances, one operator:
+#
+#   redis-ng      — in-memory `allkeys-lru` cache + Sentinel, the same personality
+#                   as prod. Exercised by the apps that also run in prod
+#                   (capturly-web, coreyalan-com, dispatchr-social) so their
+#                   Sentinel client path matches prod. templates/operator-redis-*.
+#
+#   redis-shared  — persistent, `noeviction` standalone store for homelab-only
+#                   apps (authelia sessions, gitea sessions/cache). Replaces the
+#                   old hand-rolled StatefulSet. NOT a prod parity target — these
+#                   apps don't exist in prod and must not have keys evicted.
+#                   templates/operator-redis-shared.yaml.
 
-image:
-  repository: redis
-  tag: "8.6.3"
-  pullPolicy: IfNotPresent
+# redis-ng: prod-parity Sentinel cache for the shared apps.
+operatorRedis:
+  enabled: true
+  # Mirrors prod (platform-infra .../operator-redis-config: maxmemory 384mb).
+  maxmemory: "384mb"
 
-# Node selector - deploy to greytalon
-nodeSelector:
-  kubernetes.io/hostname: greytalon
-
-# Service configuration
-service:
-  type: ClusterIP
-  port: 6379
-
-# Storage
-storage:
-  size: "1Gi"
-  storageClass: "local-path"
-
-# Resources
-resources:
-  requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: "1"
-    memory: 1Gi
-
-# Redis configuration
-config:
-  port: 6379
+# redis-shared: persistent store for the homelab infra apps. No prod equivalent.
+redisShared:
+  enabled: true
   maxmemory: "256mb"
-  # Password configuration (set via secret if needed)
-  # requirepass: ""
-
-# Timezone
-timezone: "America/Chicago"
+  storage:
+    size: "1Gi"
+    storageClass: "local-path"
+  # local-path is node-local; pin to the storage node so the PVC stays put.
+  nodeSelector:
+    kubernetes.io/hostname: greytalon

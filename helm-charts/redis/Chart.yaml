@@ -1,6 +1,8 @@
 apiVersion: v2
 name: redis
-description: Redis cache for Gitea and other services
+description: Operator-managed Redis (OT-CONTAINER-KIT) — redis-ng Sentinel cache (prod parity) + redis-shared persistent store for homelab apps
 type: application
-version: 1.0.0
-appVersion: "latest"
+# 2.0.0: replaced the hand-rolled standalone StatefulSet with OT-CONTAINER-KIT
+# operator CRs, to mirror the prod data plane (platform-infra/helm-charts/redis).
+version: 2.0.0
+appVersion: "8.6.2"

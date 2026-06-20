@@ -52,6 +52,13 @@ staging-app:
       value: https://staging.dispatchr.social
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
       value: staging
+    # Redis Sentinel (prod parity — same redis-ng-sentinel endpoint as prod)
+    - name: REDIS_SENTINEL_HOST
+      value: redis-ng-sentinel.redis.svc.cluster.local
+    - name: REDIS_SENTINEL_PORT
+      value: "26379"
+    - name: REDIS_SENTINEL_MASTER
+      value: mymaster
     # ---- SeaweedFS S3 endpoint (in-cluster) ----
     # App code uses these when STORAGE_PROVIDER=s3. Prod uses native GCS.
     - name: STORAGE_PROVIDER
@@ -147,6 +154,7 @@ staging-app:
         key: c0a65c7c-7c69-4375-8f74-b423018ae494
       - name: CHATWOOT_IDENTITY_TOKEN
         key: 9bd3d8b7-c9b0-4be2-b3f1-b423018b1362
+      # Value MUST equal redis-ng's password (helm-charts/redis externalsecret).
       - name: REDIS_PASSWORD
         key: 6a68a51f-4939-42f1-a5b1-b423018b377f
       # SeaweedFS S3 credentials (identity: dispatchr-social; scoped to dispatchr-social-uploads)

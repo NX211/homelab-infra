@@ -71,6 +71,13 @@ staging-app:
     # WEBHOOK_SECRET come from Bitwarden via the externalSecrets block below.
     - name: COREYALAN_API_URL
       value: https://staging.coreyalan.com
+    # Redis Sentinel (prod parity — same redis-ng-sentinel endpoint as prod)
+    - name: REDIS_SENTINEL_HOST
+      value: redis-ng-sentinel.redis.svc.cluster.local
+    - name: REDIS_SENTINEL_PORT
+      value: "26379"
+    - name: REDIS_SENTINEL_MASTER
+      value: mymaster
   envFrom:
     - secretRef:
         name: capturly-web-staging-secrets
@@ -112,10 +119,8 @@ staging-app:
         key: ab038390-a2ea-45b9-b058-b456015c2a4f
       - name: MAILGUN_DOMAIN
         key: 7688bad7-a9f1-4cdf-b134-b456015c2ce3
-      # Redis (standalone — REDIS_URL is the single-instance path in lib/redis.ts;
-      # REDIS_PASSWORD optional if embedded in the URL)
-      - name: REDIS_URL
-        key: 7ca32e81-03b6-42bc-b57b-b456015c2f7b
+      # Redis Sentinel auth. Value MUST equal redis-ng's password (helm-charts/
+      # redis externalsecret) — set this Bitwarden secret to the same value.
       - name: REDIS_PASSWORD
         key: e530ef06-e9e5-4727-b980-b436011e9530
       # Studios — DO shared secret + guest-invite kill-switch

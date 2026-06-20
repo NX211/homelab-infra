@@ -1,0 +1,63 @@
+{{- if .Values.operatorRedis.enabled }}
+---
+# Sentinel quorum for redis-ng. Operator appends `-sentinel`, creating the
+# `redis-ng-sentinel` Service apps point REDIS_SENTINEL_HOST at. masterGroupName
+# pinned to `mymaster` to match prod (and the apps' REDIS_SENTINEL_MASTER).
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisSentinel
+metadata:
+  name: redis-ng
+  namespace: {{ .Release.Namespace }}
+spec:
+  clusterSize: 3
+  podSecurityContext:
+    runAsUser: 1000
+    runAsNonRoot: true
+    fsGroup: 1000
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  redisSentinelConfig:
+    redisReplicationName: redis-ng
+    masterGroupName: mymaster
+    quorum: "2"
+    downAfterMilliseconds: "10000"
+    failoverTimeout: "60000"
+    redisReplicationPassword:
+      secretKeyRef:
+        name: redis-credentials
+        key: redis-password
+  kubernetesConfig:
+    image: quay.io/opstree/redis-sentinel:v8.6.2
+    imagePullPolicy: IfNotPresent
+    redisSecret:
+      name: redis-credentials
+      key: redis-password
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  # One-per-host spread: quorum HA needs sentinels on distinct nodes so a single
+  # node outage can't take 2 of 3. Local equivalent of prod's one-per-zone.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app: redis-ng-sentinel
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                app: redis-ng-sentinel
+{{- end }}
