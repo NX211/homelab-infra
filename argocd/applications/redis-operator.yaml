@@ -1,0 +1,50 @@
+---
+# OT-CONTAINER-KIT redis-operator — installs the operator + CRDs only; the CRs
+# live in the `redis` app. watchNamespace scoped to `redis`. Mirrors prod
+# (platform-infra/argocd/applications/redis-operator.yaml), minus the node-pool
+# pinning the homelab has no labels for.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: redis-operator
+  namespace: argocd
+  annotations:
+    # Install the operator + CRDs ahead of the `redis` app that defines its CRs.
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://ot-container-kit.github.io/helm-charts/
+    chart: redis-operator
+    targetRevision: 0.24.0
+    helm:
+      valuesObject:
+        redisOperator:
+          watchNamespace: redis
+        # Trim the chart's default 500m CPU request. Matches prod.
+        resources:
+          requests:
+            cpu: 25m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: redis-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # CRDs are large; server-side apply avoids the annotation size limit.
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

@@ -44,9 +44,9 @@ database:
   host: "postgres-rw:5432"
   sslMode: disable
 
-# Redis configuration
+# Redis configuration (operator-managed redis-shared, redis namespace)
 redis:
-  host: "redis:6379"
+  host: "redis-shared.redis.svc.cluster.local:6379"
 
 # Email configuration (from secrets)
 email:

@@ -1,0 +1,69 @@
+{{- if .Values.operatorRedis.enabled }}
+---
+# redis-ng: 1 leader + 2 followers, the prod-parity Sentinel cache. Same name and
+# `redis-ng-sentinel` endpoint as prod, so the apps' connection string is
+# identical. No `storage` block => in-memory only (see operator-redis-config).
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisReplication
+metadata:
+  name: redis-ng
+  namespace: {{ .Release.Namespace }}
+spec:
+  clusterSize: 3
+  # opstree images run as UID/GID 1000.
+  podSecurityContext:
+    runAsUser: 1000
+    runAsNonRoot: true
+    fsGroup: 1000
+  # readOnlyRootFilesystem omitted: redis rewrites its conf to the rootfs.
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  redisConfig:
+    additionalRedisConfig: redis-ng-additional-config
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v8.6.2
+    imagePullPolicy: IfNotPresent
+    redisSecret:
+      name: redis-credentials
+      key: redis-password
+    resources:
+      requests:
+        cpu: 100m
+        # Limit must sit above maxmemory (384mb) for redis overhead.
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  redisExporter:
+    enabled: true
+    image: quay.io/opstree/redis-exporter:v1.83.0
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  # One-per-host spread (local equivalent of prod's one-per-zone): a node outage
+  # can't take more than one pod.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app: redis-ng
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                app: redis-ng
+{{- end }}

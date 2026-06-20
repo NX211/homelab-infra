@@ -38,9 +38,9 @@ database:
   name: "authelia"
   user: "authelia"
 
-# Redis configuration
+# Redis configuration (operator-managed redis-shared, redis namespace)
 redis:
-  host: "redis"
+  host: "redis-shared.redis.svc.cluster.local"
   port: 6379
   databaseIndex: 1
 

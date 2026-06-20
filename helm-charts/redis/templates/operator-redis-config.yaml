@@ -1,0 +1,20 @@
+{{- if .Values.operatorRedis.enabled }}
+---
+# Extra redis.conf for redis-ng, appended by the operator. Disposable
+# `allkeys-lru` cache with persistence fully off (no RDB, no AOF) — mirrors prod.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-ng-additional-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: redis-ng
+    app.kubernetes.io/component: cache
+data:
+  redis-additional.conf: |
+    maxmemory {{ .Values.operatorRedis.maxmemory }}
+    maxmemory-policy allkeys-lru
+    save ""
+    appendonly no
+    repl-diskless-sync yes
+{{- end }}
