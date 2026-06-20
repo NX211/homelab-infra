@@ -65,6 +65,18 @@ staging-app:
       value: https://staging.jlshawconsulting.com
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
       value: staging
+    # Redis (redis-ng Sentinel). jlshaw's client (src/lib/redis/client.ts) takes
+    # the Sentinel path when REDIS_SENTINEL_HOST is set and reuses REDIS_PASSWORD
+    # as the sentinelPassword automatically — so no separate sentinel-password var
+    # is needed (unlike coreyalan). Backs rate-limiting, distributed locks, and
+    # account-lockout. NOT a prod-parity target (jlshaw doesn't run in prod); it
+    # shares redis-ng for convenience. REDIS_PASSWORD comes from Bitwarden below.
+    - name: REDIS_SENTINEL_HOST
+      value: redis-ng-sentinel.redis.svc.cluster.local
+    - name: REDIS_SENTINEL_PORT
+      value: "26379"
+    - name: REDIS_SENTINEL_MASTER
+      value: mymaster
     # coreyalan.com V1 partner API integration — non-secret config.
     # Tenant tag (matches the source binding on the staging API key).
     - name: COREYALAN_TICKET_SOURCE
@@ -100,6 +112,11 @@ staging-app:
         key: 6aa33b1f-6133-42da-aa73-b42200fec4c5
       - name: API_KEY_HASH_SECRET
         key: 5aa854b6-bcd6-41bb-8f89-b43000efdc6b
+      # redis-ng Sentinel auth (master + sentinel share one password). Lives in
+      # jlshaw's own staging Bitwarden project; same value as redis-ng's
+      # STAGING_REDIS_NG_PASSWORD (helm-charts/redis/templates/externalsecret.yaml).
+      - name: REDIS_PASSWORD
+        key: a32f3666-4157-478b-b7df-b46f0113e45f
       # FasterFixes feedback widget — staging only
       - name: FASTERFIXES_API_KEY
         key: 70b511ff-d684-4f02-b23d-b458016f54b4
