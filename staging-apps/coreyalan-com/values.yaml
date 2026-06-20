@@ -307,9 +307,11 @@ staging-app:
     limits:
       cpu: 500m
       memory: 768Mi
+  # Liveness = process-only check; readiness = DB+Redis. Avoids restarting the
+  # pod on a dependency blip (matches prod).
   livenessProbe:
     enabled: true
-    path: /api/health
+    path: /api/health/live
     port: 3000
     initialDelaySeconds: 45
     periodSeconds: 15
