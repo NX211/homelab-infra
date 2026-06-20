@@ -162,6 +162,11 @@ staging-app:
         key: 4cdc219d-df58-4ae1-9d1d-b44e012680e7
       - name: S3_SECRET_ACCESS_KEY
         key: 427dcc21-f195-4b10-a330-b44e0126811a
+      # GCP SA key for the off-cluster worker to auth to the ISOLATED staging
+      # Pub/Sub (job-queue-staging / worker-sub-staging). Scoped to staging only
+      # — see platform-infra pubsub-staging.tf. Mounted as a file by the worker.
+      - name: GCP_WORKER_SA_KEY
+        key: 01ccff5d-8bed-477d-b8e4-b46f015e8c84
   resources:
     requests:
       cpu: 250m
@@ -185,3 +190,40 @@ staging-app:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+  # Background worker + cron tier — mirrors prod, but on the ISOLATED staging
+  # Pub/Sub queue (job-queue-staging / worker-sub-staging, NOT prod's). The
+  # worker inherits the web env (Redis Sentinel) + envFrom (DATABASE_URL,
+  # REDIS_PASSWORD) and adds the Pub/Sub vars + a mounted SA-key file.
+  worker:
+    enabled: true
+    replicas: 1
+    image:
+      repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-worker
+      digest: "sha256:5df098d1062bdd934430854b500ceb52713158e1ea8eaa9bf49f9e36099aba27" # v0.1.54; update via CI
+    command: ["tsx", "packages/core/src/jobs/worker.ts"]
+    healthPort: 8080
+    healthPath: /healthz
+    gcpServiceAccountKey:
+      enabled: true # mounts GCP_WORKER_SA_KEY (externalSecrets) as the ADC file
+    env:
+      - name: GCP_PROJECT_ID
+        value: dispatchr-social
+      # ISOLATED staging queue — never prod's job-queue/worker-sub.
+      - name: PUBSUB_TOPIC_NAME
+        value: job-queue-staging
+      - name: PUBSUB_SUBSCRIPTION_NAME
+        value: worker-sub-staging
+      - name: WORKER_MAX_CONCURRENT
+        value: "5"
+      - name: WORKER_HEALTH_PORT
+        value: "8080"
+    cronJobs:
+      - name: process-scheduled
+        schedule: "* * * * *"
+        command: ["tsx", "packages/core/src/jobs/cron-runner.ts", "PROCESS_SCHEDULED"]
+      - name: refresh-tokens
+        schedule: "*/15 * * * *"
+        command: ["tsx", "packages/core/src/jobs/cron-runner.ts", "REFRESH_TOKENS"]
+      - name: cleanup
+        schedule: "0 * * * *"
+        command: ["tsx", "packages/core/src/jobs/cron-runner.ts", "CLEANUP"]
