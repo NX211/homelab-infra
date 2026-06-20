@@ -19,6 +19,29 @@ argo-cd:
       timeout.reconciliation: 180s
       # Enable API key generation for admin account
       accounts.admin: apiKey, login
+      # Argo ships no built-in health assessment for the CloudNativePG Cluster
+      # CR, so the `postgresql` app perpetually reported "Unknown" health even
+      # while the database was up. This Lua check reads the CR's `Ready`
+      # condition so the app reflects real state (Healthy/Degraded).
+      resource.customizations.health.postgresql.cnpg.io_Cluster: |
+        local hs = {}
+        if obj.status ~= nil and obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = condition.message
+              return hs
+            end
+            if condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
+            end
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "Waiting for CloudNativePG cluster to report Ready"
+        return hs
 
     params:
       # Run server without TLS (Traefik handles TLS termination)
