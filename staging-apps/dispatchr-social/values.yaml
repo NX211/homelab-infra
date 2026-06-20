@@ -25,7 +25,7 @@ staging-app:
     nameKey: aa6e43f9-115a-402e-b527-b423016103b2 # DISPATCHR_STAGING_DB_NAME
   # Migration image (built by CI alongside the app image)
   migration:
-    enabled: false
+    enabled: true # was false — staging DB had no schema (P2021); runs prisma migrate deploy
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web-migrate
     digest: "sha256:fb290cc0a7b9ff70dade020b98e5e058cb055edfa312b615b7ebd584d998a523" # Updated by CI/CD
   image:
