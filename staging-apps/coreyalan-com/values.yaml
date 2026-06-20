@@ -47,6 +47,19 @@ staging-app:
     enabled: true
     host: staging.coreyalan.com
     clusterIssuer: letsencrypt-prod
+    # Restrict to the homelab WAN + on-LAN/in-cluster sources (matches jlshaw &
+    # blue-sky staging). In-cluster callers (capturly/dispatchr/jlshaw → this
+    # host via split-horizon DNS) and the worker land in 10.42.x (RFC1918); the
+    # /32 is the static ISP egress IP. Webhooks here are outbound, so this
+    # doesn't break integrations. Closes the public-exposure gap (prod uses
+    # authRateLimit; staging standardizes on the allowlist).
+    ipAllowList:
+      enabled: true
+      sourceRange:
+        - 206.225.142.166/32
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
   env:
     - name: NODE_ENV
       value: production
