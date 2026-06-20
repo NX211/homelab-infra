@@ -24,6 +24,17 @@ spec:
           kind: Deployment
           replicas: 1
 
+        # Single replica pinned to the one proxy node (yellowtalon), binding
+        # hostPort 80/443. The chart default RollingUpdate (maxUnavailable:0,
+        # maxSurge:1) deadlocks on every upgrade: the new pod can't bind the
+        # hostPorts the old pod still holds, and the old pod won't terminate
+        # until the new one is Ready -> ProgressDeadlineExceeded. Recreate tears
+        # the old pod down first (brief ingress blip) so the new one gets the
+        # ports. rollingUpdate must be nulled or k8s rejects it under Recreate.
+        updateStrategy:
+          type: Recreate
+          rollingUpdate: null
+
         # Node selector - only yellowtalon has proxy role
         nodeSelector:
           node-role.kubernetes.io/proxy: "true"
