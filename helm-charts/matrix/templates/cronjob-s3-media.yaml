@@ -66,6 +66,11 @@ spec:
                       key: secret-access-key
                 - name: AWS_S3_ADDRESSING_STYLE
                   value: path
+                # botocore >=1.36 default checksums break SeaweedFS PutObject.
+                - name: AWS_REQUEST_CHECKSUM_CALCULATION
+                  value: when_required
+                - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+                  value: when_required
               volumeMounts:
                 - name: media
                   mountPath: /media
