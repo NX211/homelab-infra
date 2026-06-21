@@ -1,0 +1,103 @@
+{{- if .Values.draupnir.enabled }}
+---
+# Draupnir bot access token. Create a @draupnir account via MAS and issue a
+# token, store it in Bitwarden as draupnir_access_token.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: {{ .Values.draupnir.secretName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  refreshInterval: {{ .Values.externalSecrets.refreshInterval }}
+  secretStoreRef:
+    name: {{ .Values.externalSecrets.storeName }}
+    kind: ClusterSecretStore
+  target:
+    name: {{ .Values.draupnir.secretName }}
+    creationPolicy: Owner
+  data:
+    - secretKey: access-token
+      remoteRef:
+        key: draupnir-access-token
+        property: value
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matrix-draupnir
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+data:
+  production.yaml: |
+    homeserverUrl: "{{ .Values.synapseEndpoint }}"
+    rawHomeserverUrl: "{{ (index .Values "matrix-synapse" "config" "publicBaseurl") }}"
+    # accessToken is injected via DRAUPNIR_ACCESS_TOKEN env (kept out of git).
+    accessToken: ""
+    managementRoom: "{{ .Values.draupnir.managementRoom }}"
+    dataPath: "/data"
+    autojoinOnlyIfManager: true
+    automaticallyRedactForReasons:
+      - "spam"
+      - "abuse"
+    protectAllJoinedRooms: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-draupnir
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+    app.kubernetes.io/name: matrix-draupnir
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: matrix-draupnir
+  template:
+    metadata:
+      labels:
+        {{- include "matrix.labels" . | nindent 8 }}
+        app.kubernetes.io/name: matrix-draupnir
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: draupnir
+          image: {{ .Values.draupnir.image }}
+          args: ["--draupnir-config", "/config/production.yaml"]
+          env:
+            - name: DRAUPNIR_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.draupnir.secretName }}
+                  key: access-token
+          resources:
+            {{- toYaml .Values.draupnir.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: matrix-draupnir
+        - name: data
+          emptyDir: {}
+{{- end }}

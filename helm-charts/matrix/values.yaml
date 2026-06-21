@@ -271,6 +271,25 @@ matrix-synapse:
           bucket: synapse-media
           endpoint_url: http://seaweedfs-filer.seaweedfs.svc:8333
           region_name: us-east-1
+    # Rate limiting (Phase 7). Modest limits for a small private server; login/
+    # registration limits are mostly moot under MAS but harmless.
+    rc_message:
+      per_second: 0.5
+      burst_count: 15
+    rc_joins:
+      local:
+        per_second: 0.1
+        burst_count: 10
+      remote:
+        per_second: 0.01
+        burst_count: 10
+    rc_invites:
+      per_room:
+        per_second: 0.3
+        burst_count: 10
+      per_user:
+        per_second: 0.003
+        burst_count: 5
 
   # External CNPG Postgres (Phase 1). Synapse requires C collation (asserted by db-init).
   postgresql:
@@ -402,3 +421,40 @@ matrix-synapse:
       generic: true
       name: background
       listeners: [replication]
+
+# --------------------------------------------------------------------------
+# Phase 7: hardening
+# --------------------------------------------------------------------------
+
+# Prometheus PodMonitor for Synapse (main + workers expose /metrics on :9090).
+# Opt-in, matching the cluster's ServiceMonitor convention.
+monitoring:
+  podMonitor:
+    enabled: true
+    interval: 30s
+
+# Local media cleanup: offload + delete local copies older than the cutoff so
+# the RWO media PVC doesn't grow unbounded. Uses the custom synapse-s3 image's
+# s3_media_upload tool; pinned to the media worker's node for the RWO PVC.
+mediaCleanup:
+  enabled: true
+  schedule: "30 4 * * *"
+  olderThan: "30d"
+  # Same image as Synapse (carries s3_media_upload + the S3 provider).
+  image: ghcr.io/nx211/synapse-s3:1.155.0
+
+# Draupnir moderation bot. Requires a @draupnir bot account (create via MAS)
+# and an access token in Bitwarden (draupnir_access_token), plus a management
+# room the bot is invited to (set managementRoom to its room ID/alias).
+draupnir:
+  enabled: true
+  image: gnuxie/draupnir:v2.4.0
+  managementRoom: "#moderation:coreyalan.com"
+  secretName: matrix-draupnir
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
