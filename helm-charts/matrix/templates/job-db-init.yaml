@@ -12,8 +12,11 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: Sync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
-    # Runs after the CNPG cluster (wave 0); waits for readiness via pg_isready.
-    argocd.argoproj.io/sync-wave: "1"
+    # Must run AFTER the CNPG cluster (-2) but BEFORE the app deployments (0),
+    # otherwise ArgoCD waits for the deployments to be healthy first — but they
+    # can't be until this job creates their databases (deadlock). Waits for
+    # postgres readiness via pg_isready regardless.
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   ttlSecondsAfterFinished: 300
   backoffLimit: 30
