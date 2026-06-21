@@ -136,6 +136,13 @@ matrix-synapse:
   # Force ArgoCD compatibility (stable hooks/annotations).
   argoCD: true
 
+  # Custom image = element-hq/synapse + synapse-s3-storage-provider (Phase 4).
+  # Build/push per helm-charts/matrix/docker/synapse-s3/Dockerfile. All workers
+  # use this image so the media worker has the S3 provider.
+  image:
+    repository: ghcr.io/nx211/synapse-s3
+    tag: "1.155.0"
+
   signingkey:
     # Key is generated once and stored in Bitwarden; never let the chart make one.
     job:
@@ -178,6 +185,24 @@ matrix-synapse:
     password_config:
       enabled: false
     enable_3pid_changes: false
+    # Worker background-task routing (Phase 4). Both target workers carry a
+    # `name` + replication listener so they appear in instance_map.
+    run_background_tasks_on: background
+    media_instance_running_background_jobs: media
+    # S3 media offload via synapse-s3-storage-provider (runs on the media
+    # worker). Credentials come from boto3 env (AWS_* in extraEnv) so they stay
+    # out of the ConfigMap; AWS_S3_ADDRESSING_STYLE=path forces SeaweedFS path
+    # style. store_synchronous uploads inline; local copies remain until the
+    # cleanup cron is added in Phase 7.
+    media_storage_providers:
+      - module: s3_storage_provider.S3StorageProviderBackend
+        store_local: true
+        store_remote: true
+        store_synchronous: true
+        config:
+          bucket: synapse-media
+          endpoint_url: http://seaweedfs-filer.seaweedfs.svc:8333
+          region_name: us-east-1
 
   # External CNPG Postgres (Phase 1). Synapse requires C collation (asserted by db-init).
   postgresql:
@@ -246,6 +271,20 @@ matrix-synapse:
       - name: mas-shared-secret
         mountPath: /mas
         readOnly: true
+    # S3 credentials for the storage provider (boto3 env). Path-style for SeaweedFS.
+    extraEnv:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: matrix-synapse-s3
+            key: access-key-id
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: matrix-synapse-s3
+            key: secret-access-key
+      - name: AWS_S3_ADDRESSING_STYLE
+        value: path
     resources:
       requests:
         cpu: 250m
@@ -253,3 +292,45 @@ matrix-synapse:
       limits:
         cpu: "2"
         memory: 3Gi
+
+  # --------------------------------------------------------------------------
+  # Workers (Phase 4): generic_worker (sync/client/federation reads) +
+  # federation_sender + media_repository (runs the S3 provider) + background.
+  # Redis replication + instance_map are wired by the chart. Stream writers
+  # stay on main for now. worker_replication_secret is intentionally omitted
+  # (in-cluster only, no NetworkPolicies); add via secret_path if locked down.
+  # --------------------------------------------------------------------------
+  workers:
+    default:
+      replicaCount: 1
+      # Inherited by every worker (incl. the media worker that runs the S3 provider).
+      extraEnv:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: matrix-synapse-s3
+              key: access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: matrix-synapse-s3
+              key: secret-access-key
+        - name: AWS_S3_ADDRESSING_STYLE
+          value: path
+    generic_worker:
+      enabled: true
+    federation_sender:
+      enabled: true
+    media_repository:
+      enabled: true
+      # name + replication listener so media_instance_running_background_jobs
+      # can target it; pinned to the disk node for the RWO media PVC.
+      name: media
+      listeners: [media, replication]
+      nodeSelector:
+        kubernetes.io/hostname: greytalon
+    background:
+      enabled: true
+      generic: true
+      name: background
+      listeners: [replication]
