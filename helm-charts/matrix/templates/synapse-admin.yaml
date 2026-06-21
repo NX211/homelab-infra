@@ -58,7 +58,8 @@ spec:
               drop: ["ALL"]
           volumeMounts:
             - name: config
-              mountPath: /app/config.json
+              # static-web-server web root is /home/sws/public
+              mountPath: /home/sws/public/config.json
               subPath: config.json
               readOnly: true
       volumes:
