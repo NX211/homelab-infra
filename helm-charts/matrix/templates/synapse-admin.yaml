@@ -43,7 +43,8 @@ spec:
           image: {{ .Values.synapseAdmin.image }}
           ports:
             - name: http
-              containerPort: 80
+              # etke.cc image runs static-web-server on 8080 (SERVER_PORT=8080)
+              containerPort: 8080
           readinessProbe:
             httpGet:
               path: /config.json
@@ -58,8 +59,8 @@ spec:
               drop: ["ALL"]
           volumeMounts:
             - name: config
-              # static-web-server web root is /home/sws/public
-              mountPath: /home/sws/public/config.json
+              # static-web-server web root (SERVER_FALLBACK_PAGE=/var/public/index.html)
+              mountPath: /var/public/config.json
               subPath: config.json
               readOnly: true
       volumes:
