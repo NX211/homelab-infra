@@ -116,6 +116,10 @@ mas:
   googleProviderUlid: "79WE6V3GK12MP3R7NRVBXEEFM9"
   # Public OAuth client identifier — replace with the real Google Web client_id.
   googleClientId: "861533890029-g27v11rp22r6fql2k3cmcpbareu93cug.apps.googleusercontent.com"
+  # Only these email-address suffixes may register (incl. via Google). Locks
+  # signups to the org domain; without this ANY Google account could sign up.
+  allowedEmailSuffixes:
+    - "@coreyalan.com"
   secretName: matrix-mas
   resources:
     requests:

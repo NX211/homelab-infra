@@ -63,6 +63,18 @@ data:
               action: suggest
               template: {{ `"{{ user.name }}"` }}
             email:
-              action: suggest
+              # require (not suggest) so the Google email is always set and the
+              # registration policy below can enforce the allowed domain.
+              action: require
               template: {{ `"{{ user.email }}"` }}
+    # Registration policy: only allow accounts whose email matches an allowed
+    # suffix. Applies to Google signups too (email is required above).
+    policy:
+      data:
+        emails:
+          allowed_addresses:
+            suffixes:
+              {{- range .Values.mas.allowedEmailSuffixes }}
+              - {{ . | quote }}
+              {{- end }}
 {{- end }}
