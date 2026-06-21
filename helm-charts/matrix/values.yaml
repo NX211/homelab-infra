@@ -117,13 +117,15 @@ matrix-synapse:
     enableRegistration: false
     # Private server: don't consult external key servers.
     trustedKeyServers: []
-    # Pinned to stop the chart regenerating it on every ArgoCD render (which
-    # would restart Synapse continuously). This is a BOOTSTRAP-ONLY secret used
-    # by register_new_matrix_user; it goes inert in Phase 3 when MAS takes over
-    # auth (delegated Synapse disables shared-secret registration). Recorded in
-    # Bitwarden as synapse_registration_shared_secret. matrix.coreyalan.com is
-    # not publicly resolvable until DNS is added, limiting interim exposure.
-    registrationSharedSecret: "805cc1842f8f33b10a72d04ae25c40906e3b922e68cff7cb"
+    # The ananace chart always writes registration_shared_secret and, if unset,
+    # regenerates it on every render (which would restart Synapse continuously
+    # under ArgoCD). It has no existingSecret option for this field, so it must
+    # be inlined. This deployment delegates ALL auth to MAS (see the
+    # matrix_authentication_service block), which disables Synapse-side
+    # shared-secret registration — so this is NOT a live credential, just a
+    # fixed non-secret marker to stop the churn. If MAS is ever removed, replace
+    # this with a real secret before exposing the server.
+    registrationSharedSecret: "registration-delegated-to-mas-do-not-use"
 
   extraConfig:
     # Closed federation — empty whitelist blocks send/receive with other servers.
