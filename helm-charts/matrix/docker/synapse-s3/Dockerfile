@@ -11,8 +11,10 @@
 #
 # Keep the tag in sync with matrix-synapse.image.tag in values.yaml and bump
 # both together when upgrading Synapse.
+# NB: element-hq/synapse image tags are v-prefixed (e.g. v1.155.0), while the
+# output image + chart values.yaml use the bare version (1.155.0).
 ARG SYNAPSE_VERSION=1.155.0
-FROM ghcr.io/element-hq/synapse:${SYNAPSE_VERSION}
+FROM ghcr.io/element-hq/synapse:v${SYNAPSE_VERSION}
 
 # pip install needs root; the image entrypoint drops privileges at runtime.
 USER root
