@@ -1,0 +1,91 @@
+{{- if .Values.rtc.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matrix-element-call
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {
+      "default_server_config": {
+        "m.homeserver": {
+          "base_url": "{{ (index .Values "matrix-synapse" "config" "publicBaseurl") }}",
+          "server_name": "{{ .Values.serverName }}"
+        }
+      },
+      "livekit": {
+        "livekit_service_url": "https://{{ .Values.rtc.rtcHost }}/livekit/jwt"
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-element-call
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+    app.kubernetes.io/name: matrix-element-call
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: matrix-element-call
+  template:
+    metadata:
+      labels:
+        {{- include "matrix.labels" . | nindent 8 }}
+        app.kubernetes.io/name: matrix-element-call
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: element-call
+          image: {{ .Values.rtc.elementCall.image }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /config.json
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.rtc.elementCall.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.json
+              subPath: config.json
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: matrix-element-call
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-element-call
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: matrix-element-call
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- end }}

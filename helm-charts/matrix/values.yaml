@@ -146,6 +146,54 @@ elementWeb:
       memory: 128Mi
 
 # --------------------------------------------------------------------------
+# Element Call / MatrixRTC (Phase 6): LiveKit SFU + lk-jwt-service + the
+# Element Call SPA. The SFU media path is UDP and bypasses Traefik — LiveKit
+# runs hostNetwork on the proxy node with a single muxed UDP port, which you
+# must port-forward on UniFi to the proxy node's public IP.
+#
+# Verify image tags at deploy (these are pins, not necessarily latest):
+#   livekit/livekit-server, ghcr.io/element-hq/lk-jwt-service, element-call.
+# --------------------------------------------------------------------------
+rtc:
+  enabled: true
+  rtcHost: mrtc.coreyalan.com
+  callHost: call.coreyalan.com
+  secretName: matrix-livekit
+  livekit:
+    image: livekit/livekit-server:v1.13.1
+    wsPort: 7880        # signalling, proxied via Traefik (/livekit/sfu)
+    tcpPort: 7881       # ICE/TCP fallback (hostPort)
+    udpPort: 7882       # MUXED media UDP (hostPort) — UniFi-forward this port
+    # Pin to the proxy node (public traffic ingress) for hostNetwork/hostPort.
+    nodeSelector:
+      node-role.kubernetes.io/proxy: "true"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "2"
+        memory: 1Gi
+  lkJwt:
+    image: ghcr.io/element-hq/lk-jwt-service:0.5.0
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  elementCall:
+    image: ghcr.io/element-hq/element-call:v0.20.1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+# --------------------------------------------------------------------------
 # ananace matrix-synapse subchart (Phase 2: monolith).
 # Workers, MAS delegation, and S3 media are layered on in later phases.
 # --------------------------------------------------------------------------

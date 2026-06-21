@@ -1,0 +1,77 @@
+{{- if .Values.rtc.enabled }}
+---
+# lk-jwt serves /sfu/get + /healthz; the well-known points clients at
+# https://mrtc/livekit/jwt, so strip that prefix before reaching lk-jwt.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: matrix-strip-livekit-jwt
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - /livekit/jwt
+---
+# LiveKit WS signalling lives at /rtc; clients are given wss://mrtc/livekit/sfu,
+# so strip /livekit/sfu before reaching LiveKit.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: matrix-strip-livekit-sfu
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - /livekit/sfu
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: matrix-rtc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.rtc.rtcHost }}`) && PathPrefix(`/livekit/jwt`)
+      kind: Rule
+      middlewares:
+        - name: matrix-strip-livekit-jwt
+      services:
+        - name: matrix-lk-jwt
+          port: 8080
+    - match: Host(`{{ .Values.rtc.rtcHost }}`) && PathPrefix(`/livekit/sfu`)
+      kind: Rule
+      middlewares:
+        - name: matrix-strip-livekit-sfu
+      services:
+        - name: matrix-livekit
+          port: {{ .Values.rtc.livekit.wsPort }}
+  tls:
+    secretName: {{ .Values.tls.secretName }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: matrix-element-call
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.rtc.callHost }}`)
+      kind: Rule
+      services:
+        - name: matrix-element-call
+          port: 8080
+  tls:
+    secretName: {{ .Values.tls.secretName }}
+{{- end }}

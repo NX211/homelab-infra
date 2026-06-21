@@ -1,0 +1,80 @@
+{{- if .Values.rtc.enabled }}
+---
+# lk-jwt-service: validates a Matrix OpenID token against the homeserver and
+# mints a scoped LiveKit JWT. Needs the homeserver openid endpoint reachable.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-lk-jwt
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+    app.kubernetes.io/name: matrix-lk-jwt
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: matrix-lk-jwt
+  template:
+    metadata:
+      labels:
+        {{- include "matrix.labels" . | nindent 8 }}
+        app.kubernetes.io/name: matrix-lk-jwt
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: lk-jwt
+          image: {{ .Values.rtc.lkJwt.image }}
+          env:
+            - name: LIVEKIT_URL
+              value: "wss://{{ .Values.rtc.rtcHost }}/livekit/sfu"
+            - name: LIVEKIT_JWT_BIND
+              value: ":8080"
+            - name: LIVEKIT_FULL_ACCESS_HOMESERVERS
+              value: "{{ .Values.serverName }}"
+            - name: LIVEKIT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rtc.secretName }}
+                  key: api-key
+            - name: LIVEKIT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.rtc.secretName }}
+                  key: api-secret
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.rtc.lkJwt.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-lk-jwt
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: matrix-lk-jwt
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- end }}
