@@ -1,0 +1,36 @@
+{{- $host := (index .Values "matrix-synapse" "publicServerName") -}}
+---
+# Synapse routing (replaces the ananace standard Ingress). Media goes to the
+# media_repository worker (main runs with enable_media_repo: false); the heavy
+# /sync + /events endpoints go to the generic_worker; everything else to main.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: matrix-synapse
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ $host }}`) && PathRegexp(`^/_matrix/(media|client/v1/media|federation/v1/media)/`)
+      kind: Rule
+      priority: 100
+      services:
+        - name: {{ .Release.Name }}-media-repository
+          port: 8083
+    - match: Host(`{{ $host }}`) && PathRegexp(`^/_matrix/client/(api/v1|r0|v3|unstable)/(sync|events)`)
+      kind: Rule
+      priority: 90
+      services:
+        - name: {{ .Release.Name }}-generic-worker
+          port: 8083
+    - match: Host(`{{ $host }}`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: {{ .Release.Name }}-matrix-synapse
+          port: 8008
+  tls:
+    secretName: {{ .Values.tls.secretName }}

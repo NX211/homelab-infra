@@ -327,23 +327,12 @@ matrix-synapse:
   wellknown:
     enabled: false
 
+  # The chart's standard networking.k8s.io/Ingress never gets a loadBalancer
+  # status from this Traefik (ClusterIP/hostPort), so ArgoCD treats it as
+  # permanently unhealthy and the sync hangs. We disable it and route Synapse
+  # via a Traefik IngressRoute instead (templates/ingressroute-synapse.yaml).
   ingress:
-    enabled: true
-    # This cluster's Traefik handles both IngressRoute CRDs and standard Ingress.
-    traefikPaths: true
-    className: traefik
-    # The apex coreyalan.com is owned by the prod cluster — do not claim it here.
-    includeServerName: false
-    includeUnderscoreSynapse: true
-    csHosts:
-      - matrix.coreyalan.com
-    hosts:
-      - matrix.coreyalan.com
-    wkHosts: []
-    tls:
-      - secretName: matrix-tls
-        hosts:
-          - matrix.coreyalan.com
+    enabled: false
 
   synapse:
     strategy:
