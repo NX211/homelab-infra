@@ -39,7 +39,7 @@ data:
     matrix:
       homeserver: "{{ .Values.serverName }}"
       endpoint: "{{ .Values.synapseEndpoint }}"
-      secret_path: /secrets/synapse-shared-secret
+      secret_file: /secrets/synapse-shared-secret
     secrets:
       encryption_file: /secrets/encryption
       keys:
