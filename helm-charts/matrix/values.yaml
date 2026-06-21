@@ -126,6 +126,26 @@ mas:
       memory: 512Mi
 
 # --------------------------------------------------------------------------
+# Element Web (Phase 5) — static client at chat.coreyalan.com.
+# Login is via MAS (OIDC-native, discovered automatically); no client config
+# needed. element_call.url points at the Element Call SPA (Phase 6).
+# --------------------------------------------------------------------------
+elementWeb:
+  enabled: true
+  # Verify/update the tag at deploy time (https://github.com/element-hq/element-web/releases).
+  image: ghcr.io/element-hq/element-web:v1.12.21
+  host: chat.coreyalan.com
+  brand: "Coreyalan Chat"
+  callUrl: https://call.coreyalan.com
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# --------------------------------------------------------------------------
 # ananace matrix-synapse subchart (Phase 2: monolith).
 # Workers, MAS delegation, and S3 media are layered on in later phases.
 # --------------------------------------------------------------------------
