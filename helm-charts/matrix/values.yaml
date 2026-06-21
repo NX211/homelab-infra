@@ -88,6 +88,7 @@ tls:
     - chat.coreyalan.com
     - call.coreyalan.com
     - mrtc.coreyalan.com
+    - admin.coreyalan.com
 
 # ESO-synced signing key secret name (created by externalsecret-synapse.yaml).
 synapseSigningKeySecret: matrix-synapse-signing-key
@@ -141,6 +142,23 @@ elementWeb:
   host: chat.coreyalan.com
   brand: "Coreyalan Chat"
   callUrl: https://call.coreyalan.com
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# --------------------------------------------------------------------------
+# synapse-admin (etke.cc fork) — admin web UI at admin.coreyalan.com.
+# Static SPA; pinned to our homeserver via restrictBaseUrl. Log in with an
+# admin access token (password login is disabled under MAS).
+# --------------------------------------------------------------------------
+synapseAdmin:
+  enabled: true
+  image: ghcr.io/etkecc/synapse-admin:v0.11.4-etke54
+  host: admin.coreyalan.com
   resources:
     requests:
       cpu: 10m
@@ -365,6 +383,12 @@ matrix-synapse:
             key: secret-access-key
       - name: AWS_S3_ADDRESSING_STYLE
         value: path
+      # botocore >=1.36 adds default CRC32 checksums that SeaweedFS rejects
+      # (PutObject -> AccessDenied). Revert to checksums only when required.
+      - name: AWS_REQUEST_CHECKSUM_CALCULATION
+        value: when_required
+      - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+        value: when_required
     resources:
       requests:
         cpu: 250m
@@ -397,6 +421,11 @@ matrix-synapse:
               key: secret-access-key
         - name: AWS_S3_ADDRESSING_STYLE
           value: path
+        # botocore >=1.36 default checksums break SeaweedFS PutObject.
+        - name: AWS_REQUEST_CHECKSUM_CALCULATION
+          value: when_required
+        - name: AWS_RESPONSE_CHECKSUM_VALIDATION
+          value: when_required
       # Workers read the shared homeserver config (matrix_authentication_service.
       # secret_path: /mas/shared-secret), so they need the MAS shared secret too.
       volumes:

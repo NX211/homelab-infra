@@ -6,6 +6,10 @@ metadata:
   labels:
     {{- include "seaweedfs.labels" . | nindent 4 }}
     app.kubernetes.io/component: filer
+  annotations:
+    # S3 identities are loaded only at startup (-s3.config). Restart the filer
+    # when the s3.json secret changes (e.g. a new tenant identity is added).
+    reloader.stakater.com/auto: "true"
 spec:
   serviceName: {{ include "seaweedfs.fullname" . }}-filer
   replicas: {{ .Values.filer.replicas }}

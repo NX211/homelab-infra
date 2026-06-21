@@ -1,7 +1,8 @@
 {{- if .Values.draupnir.enabled }}
 ---
-# Draupnir bot access token. Create a @draupnir account via MAS and issue a
-# token, store it in Bitwarden as draupnir_access_token.
+# Draupnir config is built entirely inside the ESO secret so the access token
+# (the only sensitive field) never lands in a ConfigMap/git. The non-secret
+# fields are rendered by Helm; accessToken is filled by ESO from Bitwarden.
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
@@ -19,32 +20,32 @@ spec:
   target:
     name: {{ .Values.draupnir.secretName }}
     creationPolicy: Owner
+    template:
+      type: Opaque
+      data:
+        production.yaml: |
+          homeserverUrl: "{{ .Values.synapseEndpoint }}"
+          rawHomeserverUrl: "{{ (index .Values "matrix-synapse" "config" "publicBaseurl") }}"
+          accessToken: {{ `"{{ .token }}"` }}
+          managementRoom: "{{ .Values.draupnir.managementRoom }}"
+          dataPath: "/data"
+          autojoinOnlyIfManager: true
+          recordIgnoredInvites: false
+          protectAllJoinedRooms: false
+          backgroundDelayMS: 500
+          automaticallyRedactForReasons:
+            - "spam"
+            - "abuse"
+          web:
+            enabled: false
+          health:
+            healthz:
+              enabled: false
   data:
-    - secretKey: access-token
+    - secretKey: token
       remoteRef:
         key: draupnir-access-token
         property: value
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: matrix-draupnir
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "matrix.labels" . | nindent 4 }}
-data:
-  production.yaml: |
-    homeserverUrl: "{{ .Values.synapseEndpoint }}"
-    rawHomeserverUrl: "{{ (index .Values "matrix-synapse" "config" "publicBaseurl") }}"
-    # accessToken is injected via DRAUPNIR_ACCESS_TOKEN env (kept out of git).
-    accessToken: ""
-    managementRoom: "{{ .Values.draupnir.managementRoom }}"
-    dataPath: "/data"
-    autojoinOnlyIfManager: true
-    automaticallyRedactForReasons:
-      - "spam"
-      - "abuse"
-    protectAllJoinedRooms: false
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -75,13 +76,8 @@ spec:
       containers:
         - name: draupnir
           image: {{ .Values.draupnir.image }}
-          args: ["--draupnir-config", "/config/production.yaml"]
-          env:
-            - name: DRAUPNIR_ACCESS_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.draupnir.secretName }}
-                  key: access-token
+          # The image entrypoint rewrites `bot <args>` to `node /draupnir/index.js <args>`.
+          args: ["bot", "--draupnir-config", "/config/production.yaml"]
           resources:
             {{- toYaml .Values.draupnir.resources | nindent 12 }}
           securityContext:
@@ -96,8 +92,8 @@ spec:
               mountPath: /data
       volumes:
         - name: config
-          configMap:
-            name: matrix-draupnir
+          secret:
+            secretName: {{ .Values.draupnir.secretName }}
         - name: data
           emptyDir: {}
 {{- end }}
