@@ -92,6 +92,39 @@ tls:
 # ESO-synced signing key secret name (created by externalsecret-synapse.yaml).
 synapseSigningKeySecret: matrix-synapse-signing-key
 
+# Shared identity values referenced by multiple components.
+serverName: coreyalan.com
+synapseEndpoint: http://matrix-matrix-synapse:8008
+
+# --------------------------------------------------------------------------
+# Matrix Authentication Service (MAS) — Phase 3. Hand-rolled (no official chart).
+# Google is the only login method; registration is owned by MAS.
+#
+# Secret handling (MAS has NO env-var substitution — only file refs / merged
+# config files): the ConfigMap holds non-secret config + *_file references; an
+# ESO secret (matrix-mas) supplies encryption, signing keys, the Google client
+# secret, the Synapse shared secret, and a merged db.yaml with the DB password.
+# The Google client_id is a public OAuth identifier and is set here in git; the
+# client_secret stays in Bitwarden (google_oauth_client_secret).
+# --------------------------------------------------------------------------
+mas:
+  enabled: true
+  image: ghcr.io/element-hq/matrix-authentication-service:1.19.0
+  host: auth.coreyalan.com
+  # ULID for the Google upstream provider; the Google redirect URI is derived
+  # from it: https://auth.coreyalan.com/upstream/callback/<this>
+  googleProviderUlid: "79WE6V3GK12MP3R7NRVBXEEFM9"
+  # Public OAuth client identifier — replace with the real Google Web client_id.
+  googleClientId: "REPLACE_WITH_GOOGLE_CLIENT_ID"
+  secretName: matrix-mas
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
 # --------------------------------------------------------------------------
 # ananace matrix-synapse subchart (Phase 2: monolith).
 # Workers, MAS delegation, and S3 media are layered on in later phases.
@@ -134,6 +167,17 @@ matrix-synapse:
     url_preview_enabled: false
     # Media upload cap (matches default; explicit for clarity).
     max_upload_size: 50M
+    # Delegate all auth to MAS (Phase 3). secret_path reads the shared secret
+    # from a file mounted via synapse.extraVolumes below (kept out of git).
+    matrix_authentication_service:
+      enabled: true
+      endpoint: http://matrix-mas:8080/
+      secret_path: /mas/shared-secret
+    # Required under delegated auth: Synapse must not run its own password login
+    # or 3pid changes (MAS owns these). enable_registration is already false.
+    password_config:
+      enabled: false
+    enable_3pid_changes: false
 
   # External CNPG Postgres (Phase 1). Synapse requires C collation (asserted by db-init).
   postgresql:
@@ -192,6 +236,16 @@ matrix-synapse:
   synapse:
     strategy:
       type: Recreate
+    # Mount the Synapse<->MAS shared secret so matrix_authentication_service.
+    # secret_path can read it (ESO-managed; never in git).
+    extraVolumes:
+      - name: mas-shared-secret
+        secret:
+          secretName: matrix-synapse-mas
+    extraVolumeMounts:
+      - name: mas-shared-secret
+        mountPath: /mas
+        readOnly: true
     resources:
       requests:
         cpu: 250m

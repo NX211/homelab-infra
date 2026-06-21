@@ -2,7 +2,7 @@ apiVersion: v2
 name: matrix
 description: Self-hosted Matrix stack (Synapse + workers, MAS, Element Web, Element Call/LiveKit) for server_name coreyalan.com
 type: application
-version: 0.2.0
+version: 0.3.0
 appVersion: "1.155.0"
 dependencies:
   - name: matrix-synapse

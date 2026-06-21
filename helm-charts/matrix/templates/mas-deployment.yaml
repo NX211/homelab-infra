@@ -1,0 +1,110 @@
+{{- if .Values.mas.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-mas
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+    app.kubernetes.io/name: matrix-mas
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: matrix-mas
+  template:
+    metadata:
+      labels:
+        {{- include "matrix.labels" . | nindent 8 }}
+        app.kubernetes.io/name: matrix-mas
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mas
+          image: {{ .Values.mas.image }}
+          # Migrations and config sync run automatically on startup.
+          args:
+            - "server"
+            - "--config=/config/config.yaml"
+            - "--config=/secrets/db.yaml"
+          ports:
+            - name: web
+              containerPort: 8080
+            - name: internal
+              containerPort: 8081
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: internal
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: internal
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.mas.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: matrix-mas-config
+        - name: secrets
+          secret:
+            secretName: {{ .Values.mas.secretName }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-mas
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: matrix-mas
+  ports:
+    - name: web
+      port: 8080
+      targetPort: web
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: matrix-mas
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.mas.host }}`)
+      kind: Rule
+      services:
+        - name: matrix-mas
+          port: 8080
+  tls:
+    secretName: {{ .Values.tls.secretName }}
+{{- end }}
