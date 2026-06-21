@@ -130,6 +130,8 @@ spec:
         - name: secrets
           secret:
             secretName: {{ .Values.rtc.secretName }}
+            # LiveKit refuses a key_file readable by "others"; restrict perms.
+            defaultMode: 0400
 ---
 apiVersion: v1
 kind: Service

@@ -447,7 +447,10 @@ mediaCleanup:
 # and an access token in Bitwarden (draupnir_access_token), plus a management
 # room the bot is invited to (set managementRoom to its room ID/alias).
 draupnir:
-  enabled: true
+  # Enable after creating the @draupnir bot account via MAS, issuing its access
+  # token into Bitwarden (draupnir_access_token), and creating the management
+  # room. Until then it crash-loops, so it ships disabled.
+  enabled: false
   image: gnuxie/draupnir:v2.4.0
   managementRoom: "#moderation:coreyalan.com"
   secretName: matrix-draupnir
