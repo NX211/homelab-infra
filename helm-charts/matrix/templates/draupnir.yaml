@@ -75,7 +75,9 @@ spec:
       containers:
         - name: draupnir
           image: {{ .Values.draupnir.image }}
-          args: ["--draupnir-config", "/config/production.yaml"]
+          # The image entrypoint requires the `bot` subcommand before flags
+          # (it rewrites `bot ...` to `node /draupnir/index.js ...`).
+          args: ["bot", "--draupnir-config", "/config/production.yaml"]
           env:
             - name: DRAUPNIR_ACCESS_TOKEN
               valueFrom:
