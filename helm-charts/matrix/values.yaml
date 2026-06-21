@@ -482,7 +482,7 @@ draupnir:
   # Bot account (@draupnir), admin access token (Bitwarden draupnir_access_token),
   # and the #moderation:coreyalan.com management room are all provisioned.
   enabled: true
-  image: gnuxie/draupnir:v2.4.0
+  image: gnuxie/draupnir:v2.9.0
   managementRoom: "#moderation:coreyalan.com"
   secretName: matrix-draupnir
   resources:
