@@ -393,6 +393,16 @@ matrix-synapse:
               key: secret-access-key
         - name: AWS_S3_ADDRESSING_STYLE
           value: path
+      # Workers read the shared homeserver config (matrix_authentication_service.
+      # secret_path: /mas/shared-secret), so they need the MAS shared secret too.
+      volumes:
+        - name: mas-shared-secret
+          secret:
+            secretName: matrix-synapse-mas
+      volumeMounts:
+        - name: mas-shared-secret
+          mountPath: /mas
+          readOnly: true
     generic_worker:
       enabled: true
     federation_sender:
