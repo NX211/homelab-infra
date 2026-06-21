@@ -115,7 +115,7 @@ mas:
   # from it: https://auth.coreyalan.com/upstream/callback/<this>
   googleProviderUlid: "79WE6V3GK12MP3R7NRVBXEEFM9"
   # Public OAuth client identifier — replace with the real Google Web client_id.
-  googleClientId: "REPLACE_WITH_GOOGLE_CLIENT_ID"
+  googleClientId: "861533890029-g27v11rp22r6fql2k3cmcpbareu93cug.apps.googleusercontent.com"
   secretName: matrix-mas
   resources:
     requests:
