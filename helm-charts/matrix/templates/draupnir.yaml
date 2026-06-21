@@ -29,7 +29,6 @@ spec:
           accessToken: {{ `"{{ .token }}"` }}
           managementRoom: "{{ .Values.draupnir.managementRoom }}"
           dataPath: "/data"
-          autojoin: true
           autojoinOnlyIfManager: true
           recordIgnoredInvites: false
           protectAllJoinedRooms: false
