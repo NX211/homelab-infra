@@ -1,0 +1,103 @@
+{{- if .Values.synapseAdmin.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matrix-synapse-admin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+data:
+  # Pin the admin UI to our homeserver so it can't be pointed at arbitrary servers.
+  config.json: |
+    {
+      "restrictBaseUrl": ["{{ (index .Values "matrix-synapse" "config" "publicBaseurl") }}"]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-synapse-admin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+    app.kubernetes.io/name: matrix-synapse-admin
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: matrix-synapse-admin
+  template:
+    metadata:
+      labels:
+        {{- include "matrix.labels" . | nindent 8 }}
+        app.kubernetes.io/name: matrix-synapse-admin
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: synapse-admin
+          image: {{ .Values.synapseAdmin.image }}
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /config.json
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.synapseAdmin.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.json
+              subPath: config.json
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: matrix-synapse-admin
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-synapse-admin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: matrix-synapse-admin
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: matrix-synapse-admin
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.synapseAdmin.host }}`)
+      kind: Rule
+      services:
+        - name: matrix-synapse-admin
+          port: 80
+  tls:
+    secretName: {{ .Values.tls.secretName }}
+{{- end }}
