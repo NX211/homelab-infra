@@ -1,0 +1,126 @@
+{{- if .Values.elementWeb.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matrix-element-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {
+      "default_server_config": {
+        "m.homeserver": {
+          "base_url": "{{ (index .Values "matrix-synapse" "config" "publicBaseurl") }}",
+          "server_name": "{{ .Values.serverName }}"
+        }
+      },
+      "brand": "{{ .Values.elementWeb.brand }}",
+      "disable_guests": true,
+      "disable_3pid_login": true,
+      "default_country_code": "US",
+      "element_call": {
+        "url": "{{ .Values.elementWeb.callUrl }}",
+        "use_exclusively": false,
+        "participant_limit": 8,
+        "brand": "Element Call"
+      },
+      "setting_defaults": {
+        "UIFeature.urlPreviews": false
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-element-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+    app.kubernetes.io/name: matrix-element-web
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: matrix-element-web
+  template:
+    metadata:
+      labels:
+        {{- include "matrix.labels" . | nindent 8 }}
+        app.kubernetes.io/name: matrix-element-web
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: element-web
+          image: {{ .Values.elementWeb.image }}
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /config.json
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /index.html
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.elementWeb.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.json
+              subPath: config.json
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: matrix-element-web
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-element-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: matrix-element-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: matrix-element-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.elementWeb.host }}`)
+      kind: Rule
+      services:
+        - name: matrix-element-web
+          port: 80
+  tls:
+    secretName: {{ .Values.tls.secretName }}
+{{- end }}

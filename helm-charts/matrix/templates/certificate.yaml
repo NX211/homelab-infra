@@ -1,0 +1,19 @@
+---
+# Shared TLS certificate for all staging-cluster Matrix hostnames.
+# HTTP-01 issuance requires the dnsNames to resolve publicly to this cluster.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: matrix-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.tls.secretName }}
+  issuerRef:
+    name: {{ .Values.tls.clusterIssuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    {{- range .Values.tls.dnsNames }}
+    - {{ . }}
+    {{- end }}

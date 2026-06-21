@@ -90,6 +90,10 @@ buckets:
   - dispatchr-social-uploads
   - capturly-transfer
   - blue-skysolutions-uploads
+  # Matrix/Synapse media store. A scoped `synapse` S3 identity (Read/Write/List
+  # on synapse-media only) must be added to the seaweedfs-s3-config-json blob in
+  # Bitwarden — see the example shape above.
+  - synapse-media
 
 # ---------------------------------------------------------------------------
 # Ingress: external S3 endpoint via Traefik + cert-manager

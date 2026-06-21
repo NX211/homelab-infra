@@ -1,0 +1,68 @@
+{{- if .Values.mas.enabled }}
+---
+# MAS non-secret config. Secret-bearing values come from the matrix-mas secret
+# via *_file references and the merged db.yaml (see mas-externalsecret.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matrix-mas-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    http:
+      public_base: "https://{{ .Values.mas.host }}/"
+      issuer: "https://{{ .Values.mas.host }}/"
+      listeners:
+        - name: web
+          resources:
+            - name: discovery
+            - name: human
+            - name: oauth
+            - name: compat
+            - name: graphql
+            - name: assets
+          binds:
+            - address: "[::]:8080"
+        - name: internal
+          resources:
+            - name: health
+          binds:
+            - address: "[::]:8081"
+    passwords:
+      enabled: false
+    account:
+      password_registration_enabled: false
+      email_change_allowed: true
+      displayname_change_allowed: true
+    matrix:
+      homeserver: "{{ .Values.serverName }}"
+      endpoint: "{{ .Values.synapseEndpoint }}"
+      secret_path: /secrets/synapse-shared-secret
+    secrets:
+      encryption_file: /secrets/encryption
+      keys:
+        - kid: rsa1
+          key_file: /secrets/rsa.pem
+        - kid: ec1
+          key_file: /secrets/ec.pem
+    upstream_oauth2:
+      providers:
+        - id: "{{ .Values.mas.googleProviderUlid }}"
+          human_name: Google
+          issuer: "https://accounts.google.com"
+          token_endpoint_auth_method: client_secret_post
+          client_id: "{{ .Values.mas.googleClientId }}"
+          client_secret_file: /secrets/google-client-secret
+          scope: "openid profile email"
+          claims_imports:
+            localpart:
+              action: ignore
+            displayname:
+              action: suggest
+              template: {{ `"{{ user.name }}"` }}
+            email:
+              action: suggest
+              template: {{ `"{{ user.email }}"` }}
+{{- end }}

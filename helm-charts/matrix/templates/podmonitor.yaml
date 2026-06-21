@@ -1,0 +1,19 @@
+{{- if .Values.monitoring.podMonitor.enabled }}
+---
+# Scrape Synapse main + workers (each exposes /_synapse/metrics on :9090).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: matrix-synapse
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: matrix-synapse
+  podMetricsEndpoints:
+    - port: metrics
+      path: /_synapse/metrics
+      interval: {{ .Values.monitoring.podMonitor.interval }}
+{{- end }}

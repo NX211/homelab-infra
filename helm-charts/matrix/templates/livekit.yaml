@@ -1,0 +1,149 @@
+{{- if .Values.rtc.enabled }}
+---
+# LiveKit API key/secret (and the key_file LiveKit loads). Also consumed by
+# lk-jwt-service. Sourced from Bitwarden via ESO.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: {{ .Values.rtc.secretName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+spec:
+  refreshInterval: {{ .Values.externalSecrets.refreshInterval }}
+  secretStoreRef:
+    name: {{ .Values.externalSecrets.storeName }}
+    kind: ClusterSecretStore
+  target:
+    name: {{ .Values.rtc.secretName }}
+    creationPolicy: Owner
+    template:
+      type: Opaque
+      data:
+        api-key: {{ `"{{ .apiKey }}"` }}
+        api-secret: {{ `"{{ .apiSecret }}"` }}
+        livekit-keys.yaml: {{ `"{{ .apiKey }}: {{ .apiSecret }}"` }}
+  data:
+    - secretKey: apiKey
+      remoteRef: { key: livekit-api-key, property: value }
+    - secretKey: apiSecret
+      remoteRef: { key: livekit-api-secret, property: value }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matrix-livekit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    port: {{ .Values.rtc.livekit.wsPort }}
+    bind_addresses:
+      - ""
+    rtc:
+      tcp_port: {{ .Values.rtc.livekit.tcpPort }}
+      udp_port: {{ .Values.rtc.livekit.udpPort }}
+      use_external_ip: true
+      enable_loopback_candidate: false
+    key_file: /secrets/livekit-keys.yaml
+    turn:
+      enabled: false
+    logging:
+      level: info
+      json: false
+    room:
+      auto_create: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-livekit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+    app.kubernetes.io/name: matrix-livekit
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  # Single muxed UDP port via hostNetwork/hostPort on the proxy node.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: matrix-livekit
+  template:
+    metadata:
+      labels:
+        {{- include "matrix.labels" . | nindent 8 }}
+        app.kubernetes.io/name: matrix-livekit
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        {{- toYaml .Values.rtc.livekit.nodeSelector | nindent 8 }}
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: livekit
+          image: {{ .Values.rtc.livekit.image }}
+          args: ["--config", "/etc/livekit/config.yaml"]
+          ports:
+            - name: ws
+              containerPort: {{ .Values.rtc.livekit.wsPort }}
+              hostPort: {{ .Values.rtc.livekit.wsPort }}
+            - name: rtc-tcp
+              containerPort: {{ .Values.rtc.livekit.tcpPort }}
+              hostPort: {{ .Values.rtc.livekit.tcpPort }}
+              protocol: TCP
+            - name: rtc-udp
+              containerPort: {{ .Values.rtc.livekit.udpPort }}
+              hostPort: {{ .Values.rtc.livekit.udpPort }}
+              protocol: UDP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.rtc.livekit.wsPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.rtc.livekit.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/livekit
+              readOnly: true
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: matrix-livekit
+        - name: secrets
+          secret:
+            secretName: {{ .Values.rtc.secretName }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-livekit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: matrix-livekit
+  ports:
+    - name: ws
+      port: {{ .Values.rtc.livekit.wsPort }}
+      targetPort: {{ .Values.rtc.livekit.wsPort }}
+{{- end }}

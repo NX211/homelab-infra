@@ -1,0 +1,460 @@
+# Matrix stack — values
+#
+# Phase 1 (foundations) uses the postgres/redis/databases/externalSecrets/tls
+# sections below. Synapse/MAS/Element/LiveKit sections are added in later phases.
+
+# --------------------------------------------------------------------------
+# Dedicated CloudNativePG cluster (isolated from default/postgres so Synapse
+# gets the required C collation without touching shared databases).
+# --------------------------------------------------------------------------
+postgres:
+  name: matrix-postgres
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+  storage:
+    size: 20Gi
+    storageClass: local-path
+  # Co-locate with the disk node, matching the shared postgres cluster.
+  nodeSelector: greytalon
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  parameters:
+    max_connections: "200"
+    shared_buffers: "256MB"
+    effective_cache_size: "1GB"
+    maintenance_work_mem: "64MB"
+    work_mem: "8MB"
+    checkpoint_completion_target: "0.9"
+    random_page_cost: "1.1"
+  monitoring:
+    # Opt-in (cluster-wide pattern). Enabled in Phase 7.
+    enablePodMonitor: false
+
+# --------------------------------------------------------------------------
+# Dedicated Redis for Synapse worker replication.
+# MUST be noeviction (a shared LRU cache would corrupt the replication stream)
+# and Synapse's redis client speaks plain host:port (no Sentinel) — hence a
+# dedicated standalone instance rather than reusing redis-ng-sentinel.
+# In-cluster only; no persistence needed (replication state is ephemeral).
+# --------------------------------------------------------------------------
+redis:
+  image: redis:7-alpine
+  maxmemory: "256mb"
+  authSecretName: matrix-redis-auth
+  passwordRemoteKey: synapse-redis-password
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 500m
+      memory: 320Mi
+
+# --------------------------------------------------------------------------
+# Databases provisioned by the db-init Job. Passwords come from Bitwarden via
+# ESO (Bitwarden key snake_case -> secrets-vault secret kebab-case -> value).
+# --------------------------------------------------------------------------
+databases:
+  synapse:
+    user: synapse
+    name: synapse
+    secretName: matrix-synapse-db
+    passwordRemoteKey: synapse-db-password
+  mas:
+    user: mas
+    name: mas
+    secretName: matrix-mas-db
+    passwordRemoteKey: mas-db-password
+
+externalSecrets:
+  storeName: kubernetes-backend
+  refreshInterval: 1h
+
+# --------------------------------------------------------------------------
+# Shared TLS cert for all staging-cluster Matrix hostnames. (The apex
+# coreyalan.com well-known is served by the prod cluster, not here.)
+# --------------------------------------------------------------------------
+tls:
+  secretName: matrix-tls
+  clusterIssuer: letsencrypt-prod
+  dnsNames:
+    - matrix.coreyalan.com
+    - auth.coreyalan.com
+    - chat.coreyalan.com
+    - call.coreyalan.com
+    - mrtc.coreyalan.com
+
+# ESO-synced signing key secret name (created by externalsecret-synapse.yaml).
+synapseSigningKeySecret: matrix-synapse-signing-key
+
+# Shared identity values referenced by multiple components.
+serverName: coreyalan.com
+synapseEndpoint: http://matrix-matrix-synapse:8008
+
+# --------------------------------------------------------------------------
+# Matrix Authentication Service (MAS) — Phase 3. Hand-rolled (no official chart).
+# Google is the only login method; registration is owned by MAS.
+#
+# Secret handling (MAS has NO env-var substitution — only file refs / merged
+# config files): the ConfigMap holds non-secret config + *_file references; an
+# ESO secret (matrix-mas) supplies encryption, signing keys, the Google client
+# secret, the Synapse shared secret, and a merged db.yaml with the DB password.
+# The Google client_id is a public OAuth identifier and is set here in git; the
+# client_secret stays in Bitwarden (google_oauth_client_secret).
+# --------------------------------------------------------------------------
+mas:
+  enabled: true
+  image: ghcr.io/element-hq/matrix-authentication-service:1.19.0
+  host: auth.coreyalan.com
+  # ULID for the Google upstream provider; the Google redirect URI is derived
+  # from it: https://auth.coreyalan.com/upstream/callback/<this>
+  googleProviderUlid: "79WE6V3GK12MP3R7NRVBXEEFM9"
+  # Public OAuth client identifier — replace with the real Google Web client_id.
+  googleClientId: "REPLACE_WITH_GOOGLE_CLIENT_ID"
+  secretName: matrix-mas
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# --------------------------------------------------------------------------
+# Element Web (Phase 5) — static client at chat.coreyalan.com.
+# Login is via MAS (OIDC-native, discovered automatically); no client config
+# needed. element_call.url points at the Element Call SPA (Phase 6).
+# --------------------------------------------------------------------------
+elementWeb:
+  enabled: true
+  # Verify/update the tag at deploy time (https://github.com/element-hq/element-web/releases).
+  image: ghcr.io/element-hq/element-web:v1.12.21
+  host: chat.coreyalan.com
+  brand: "Coreyalan Chat"
+  callUrl: https://call.coreyalan.com
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# --------------------------------------------------------------------------
+# Element Call / MatrixRTC (Phase 6): LiveKit SFU + lk-jwt-service + the
+# Element Call SPA. The SFU media path is UDP and bypasses Traefik — LiveKit
+# runs hostNetwork on the proxy node with a single muxed UDP port, which you
+# must port-forward on UniFi to the proxy node's public IP.
+#
+# Verify image tags at deploy (these are pins, not necessarily latest):
+#   livekit/livekit-server, ghcr.io/element-hq/lk-jwt-service, element-call.
+# --------------------------------------------------------------------------
+rtc:
+  enabled: true
+  rtcHost: mrtc.coreyalan.com
+  callHost: call.coreyalan.com
+  secretName: matrix-livekit
+  livekit:
+    image: livekit/livekit-server:v1.13.1
+    wsPort: 7880        # signalling, proxied via Traefik (/livekit/sfu)
+    tcpPort: 7881       # ICE/TCP fallback (hostPort)
+    udpPort: 7882       # MUXED media UDP (hostPort) — UniFi-forward this port
+    # Pin to the proxy node (public traffic ingress) for hostNetwork/hostPort.
+    nodeSelector:
+      node-role.kubernetes.io/proxy: "true"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "2"
+        memory: 1Gi
+  lkJwt:
+    image: ghcr.io/element-hq/lk-jwt-service:0.5.0
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+  elementCall:
+    image: ghcr.io/element-hq/element-call:v0.20.1
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+# --------------------------------------------------------------------------
+# ananace matrix-synapse subchart (Phase 2: monolith).
+# Workers, MAS delegation, and S3 media are layered on in later phases.
+# --------------------------------------------------------------------------
+matrix-synapse:
+  enabled: true
+  serverName: coreyalan.com
+  publicServerName: matrix.coreyalan.com
+  # Force ArgoCD compatibility (stable hooks/annotations).
+  argoCD: true
+
+  # Custom image = element-hq/synapse + synapse-s3-storage-provider (Phase 4).
+  # Build/push per helm-charts/matrix/docker/synapse-s3/Dockerfile. All workers
+  # use this image so the media worker has the S3 provider.
+  image:
+    repository: ghcr.io/nx211/synapse-s3
+    tag: "1.155.0"
+
+  signingkey:
+    # Key is generated once and stored in Bitwarden; never let the chart make one.
+    job:
+      enabled: false
+    existingSecret: matrix-synapse-signing-key
+    existingSecretKey: signing.key
+
+  config:
+    publicBaseurl: https://matrix.coreyalan.com
+    logLevel: INFO
+    reportStats: false
+    enableRegistration: false
+    # Private server: don't consult external key servers.
+    trustedKeyServers: []
+    # The ananace chart always writes registration_shared_secret and, if unset,
+    # regenerates it on every render (which would restart Synapse continuously
+    # under ArgoCD). It has no existingSecret option for this field, so it must
+    # be inlined. This deployment delegates ALL auth to MAS (see the
+    # matrix_authentication_service block), which disables Synapse-side
+    # shared-secret registration — so this is NOT a live credential, just a
+    # fixed non-secret marker to stop the churn. If MAS is ever removed, replace
+    # this with a real secret before exposing the server.
+    registrationSharedSecret: "registration-delegated-to-mas-do-not-use"
+
+  extraConfig:
+    # Closed federation — empty whitelist blocks send/receive with other servers.
+    federation_domain_whitelist: []
+    suppress_key_server_warning: true
+    url_preview_enabled: false
+    # Media upload cap (matches default; explicit for clarity).
+    max_upload_size: 50M
+    # Delegate all auth to MAS (Phase 3). secret_path reads the shared secret
+    # from a file mounted via synapse.extraVolumes below (kept out of git).
+    matrix_authentication_service:
+      enabled: true
+      endpoint: http://matrix-mas:8080/
+      secret_path: /mas/shared-secret
+    # Required under delegated auth: Synapse must not run its own password login
+    # or 3pid changes (MAS owns these). enable_registration is already false.
+    password_config:
+      enabled: false
+    enable_3pid_changes: false
+    # Worker background-task routing (Phase 4). Both target workers carry a
+    # `name` + replication listener so they appear in instance_map.
+    run_background_tasks_on: background
+    media_instance_running_background_jobs: media
+    # S3 media offload via synapse-s3-storage-provider (runs on the media
+    # worker). Credentials come from boto3 env (AWS_* in extraEnv) so they stay
+    # out of the ConfigMap; AWS_S3_ADDRESSING_STYLE=path forces SeaweedFS path
+    # style. store_synchronous uploads inline; local copies remain until the
+    # cleanup cron is added in Phase 7.
+    media_storage_providers:
+      - module: s3_storage_provider.S3StorageProviderBackend
+        store_local: true
+        store_remote: true
+        store_synchronous: true
+        config:
+          bucket: synapse-media
+          endpoint_url: http://seaweedfs-filer.seaweedfs.svc:8333
+          region_name: us-east-1
+    # Rate limiting (Phase 7). Modest limits for a small private server; login/
+    # registration limits are mostly moot under MAS but harmless.
+    rc_message:
+      per_second: 0.5
+      burst_count: 15
+    rc_joins:
+      local:
+        per_second: 0.1
+        burst_count: 10
+      remote:
+        per_second: 0.01
+        burst_count: 10
+    rc_invites:
+      per_room:
+        per_second: 0.3
+        burst_count: 10
+      per_user:
+        per_second: 0.003
+        burst_count: 5
+
+  # External CNPG Postgres (Phase 1). Synapse requires C collation (asserted by db-init).
+  postgresql:
+    enabled: false
+  externalPostgresql:
+    host: matrix-postgres-rw.matrix.svc.cluster.local
+    port: 5432
+    username: synapse
+    database: synapse
+    existingSecret: matrix-synapse-db
+    existingSecretPasswordKey: password
+
+  # External dedicated noeviction Redis (Phase 1). Passwordless, in-cluster only.
+  redis:
+    enabled: false
+  externalRedis:
+    host: matrix-redis.matrix.svc.cluster.local
+    port: 6379
+    existingSecret: matrix-redis-auth
+    existingSecretPasswordKey: redis-password
+
+  # Local media store for the monolith. Moves to a media_repository worker + S3
+  # in Phase 4 (which also switches this to RWX).
+  persistence:
+    enabled: true
+    storageClass: local-path
+    accessMode: ReadWriteOnce
+    size: 20Gi
+
+  service:
+    type: ClusterIP
+    port: 8008
+
+  # Well-known is served at the coreyalan.com apex by the prod cluster.
+  wellknown:
+    enabled: false
+
+  ingress:
+    enabled: true
+    # This cluster's Traefik handles both IngressRoute CRDs and standard Ingress.
+    traefikPaths: true
+    className: traefik
+    # The apex coreyalan.com is owned by the prod cluster — do not claim it here.
+    includeServerName: false
+    includeUnderscoreSynapse: true
+    csHosts:
+      - matrix.coreyalan.com
+    hosts:
+      - matrix.coreyalan.com
+    wkHosts: []
+    tls:
+      - secretName: matrix-tls
+        hosts:
+          - matrix.coreyalan.com
+
+  synapse:
+    strategy:
+      type: Recreate
+    # Mount the Synapse<->MAS shared secret so matrix_authentication_service.
+    # secret_path can read it (ESO-managed; never in git).
+    extraVolumes:
+      - name: mas-shared-secret
+        secret:
+          secretName: matrix-synapse-mas
+    extraVolumeMounts:
+      - name: mas-shared-secret
+        mountPath: /mas
+        readOnly: true
+    # S3 credentials for the storage provider (boto3 env). Path-style for SeaweedFS.
+    extraEnv:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: matrix-synapse-s3
+            key: access-key-id
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: matrix-synapse-s3
+            key: secret-access-key
+      - name: AWS_S3_ADDRESSING_STYLE
+        value: path
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 3Gi
+
+  # --------------------------------------------------------------------------
+  # Workers (Phase 4): generic_worker (sync/client/federation reads) +
+  # federation_sender + media_repository (runs the S3 provider) + background.
+  # Redis replication + instance_map are wired by the chart. Stream writers
+  # stay on main for now. worker_replication_secret is intentionally omitted
+  # (in-cluster only, no NetworkPolicies); add via secret_path if locked down.
+  # --------------------------------------------------------------------------
+  workers:
+    default:
+      replicaCount: 1
+      # Inherited by every worker (incl. the media worker that runs the S3 provider).
+      extraEnv:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: matrix-synapse-s3
+              key: access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: matrix-synapse-s3
+              key: secret-access-key
+        - name: AWS_S3_ADDRESSING_STYLE
+          value: path
+    generic_worker:
+      enabled: true
+    federation_sender:
+      enabled: true
+    media_repository:
+      enabled: true
+      # name + replication listener so media_instance_running_background_jobs
+      # can target it; pinned to the disk node for the RWO media PVC.
+      name: media
+      listeners: [media, replication]
+      nodeSelector:
+        kubernetes.io/hostname: greytalon
+    background:
+      enabled: true
+      generic: true
+      name: background
+      listeners: [replication]
+
+# --------------------------------------------------------------------------
+# Phase 7: hardening
+# --------------------------------------------------------------------------
+
+# Prometheus PodMonitor for Synapse (main + workers expose /metrics on :9090).
+# Opt-in, matching the cluster's ServiceMonitor convention.
+monitoring:
+  podMonitor:
+    enabled: true
+    interval: 30s
+
+# Local media cleanup: offload + delete local copies older than the cutoff so
+# the RWO media PVC doesn't grow unbounded. Uses the custom synapse-s3 image's
+# s3_media_upload tool; pinned to the media worker's node for the RWO PVC.
+mediaCleanup:
+  enabled: true
+  schedule: "30 4 * * *"
+  olderThan: "30d"
+  # Same image as Synapse (carries s3_media_upload + the S3 provider).
+  image: ghcr.io/nx211/synapse-s3:1.155.0
+
+# Draupnir moderation bot. Requires a @draupnir bot account (create via MAS)
+# and an access token in Bitwarden (draupnir_access_token), plus a management
+# room the bot is invited to (set managementRoom to its room ID/alias).
+draupnir:
+  enabled: true
+  image: gnuxie/draupnir:v2.4.0
+  managementRoom: "#moderation:coreyalan.com"
+  secretName: matrix-draupnir
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi

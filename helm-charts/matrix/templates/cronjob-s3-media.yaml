@@ -1,0 +1,76 @@
+{{- if .Values.mediaCleanup.enabled }}
+---
+# Offload media older than the cutoff to S3 and delete local copies, so the RWO
+# media PVC doesn't grow unbounded. Pinned to the media worker's node (RWO PVC).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: matrix-s3-media-cleanup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "matrix.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.mediaCleanup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app: matrix-s3-media-cleanup
+        spec:
+          restartPolicy: OnFailure
+          nodeSelector:
+            kubernetes.io/hostname: greytalon
+          containers:
+            - name: cleanup
+              image: {{ .Values.mediaCleanup.image }}
+              command: ["sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  WORK=/tmp/work
+                  mkdir -p "$WORK" && cd "$WORK"
+                  cat > database.yaml <<DBEOF
+                  postgres:
+                    user: {{ .Values.databases.synapse.user }}
+                    password: "$PGPASSWORD"
+                    database: {{ .Values.databases.synapse.name }}
+                    host: matrix-postgres-rw.{{ .Release.Namespace }}.svc.cluster.local
+                    port: 5432
+                  DBEOF
+                  echo "Indexing media older than {{ .Values.mediaCleanup.olderThan }}..."
+                  s3_media_upload update /media {{ .Values.mediaCleanup.olderThan }}
+                  echo "Uploading to S3 and deleting local copies..."
+                  s3_media_upload upload /media synapse-media --delete \
+                    --endpoint-url http://seaweedfs-filer.seaweedfs.svc:8333
+                  echo "Done."
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.databases.synapse.secretName }}
+                      key: password
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: matrix-synapse-s3
+                      key: access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: matrix-synapse-s3
+                      key: secret-access-key
+                - name: AWS_S3_ADDRESSING_STYLE
+                  value: path
+              volumeMounts:
+                - name: media
+                  mountPath: /media
+          volumes:
+            - name: media
+              persistentVolumeClaim:
+                claimName: matrix-matrix-synapse
+{{- end }}
