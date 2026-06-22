@@ -63,6 +63,11 @@ staging-app:
   env:
     - name: NODE_ENV
       value: production
+    # Runtime base URL read by getAppUrl(); NEXT_PUBLIC_* is build-inlined and
+    # ineffective at runtime, so server URLs need this non-public var.
+    - name: APP_URL
+      value: https://staging.coreyalan.com
+    # Build-time only (inlined); kept as a local-dev fallback.
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.coreyalan.com
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
