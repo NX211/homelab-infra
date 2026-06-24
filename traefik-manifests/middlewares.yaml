@@ -1,13 +1,25 @@
 ---
-# Default Headers Middleware
+# Traefik platform middlewares, referenced by IngressRoutes across the cluster.
+#
+# These used to be rendered by the helm-charts/traefik wrapper chart's
+# templates/middlewares.yaml. That wrapper is NOT what ArgoCD deploys —
+# the `traefik` Application (argocd/applications/traefik.yaml) installs the
+# upstream traefik chart directly from https://traefik.github.io/charts.
+# When that app's `prune: true` reconciled, these middlewares (which the
+# upstream chart does not ship) were deleted, dropping every IngressRoute
+# that referenced `default-headers` and 404ing ~29 apps (radarr, sonarr,
+# lidarr, jellyfin, prowlarr, ...). Owning them in their own manifests +
+# ArgoCD app keeps them managed independently of the traefik chart.
+#
+# authelia-forwardauth is intentionally NOT here — it is owned by
+# authelia-manifests/middleware.yaml.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: default-headers
-  namespace: {{ .Release.Namespace }}
+  namespace: default
   labels:
     app: traefik
-    {{- include "traefik.labels" . | nindent 4 }}
 spec:
   headers:
     referrerPolicy: "strict-origin-when-cross-origin"
@@ -21,15 +33,13 @@ spec:
       X-Forwarded-Proto: "https"
 
 ---
-# Global Rate Limit Middleware
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: global-rate-limit
-  namespace: {{ .Release.Namespace }}
+  namespace: default
   labels:
     app: traefik
-    {{- include "traefik.labels" . | nindent 4 }}
 spec:
   rateLimit:
     average: 100
@@ -37,15 +47,13 @@ spec:
     period: 1s
 
 ---
-# Compression Middleware
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: compression
-  namespace: {{ .Release.Namespace }}
+  namespace: default
   labels:
     app: traefik
-    {{- include "traefik.labels" . | nindent 4 }}
 spec:
   compress:
     excludedContentTypes:
@@ -53,15 +61,13 @@ spec:
     minResponseBodyBytes: 1024
 
 ---
-# Circuit Breaker Middleware
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: circuit-breaker
-  namespace: {{ .Release.Namespace }}
+  namespace: default
   labels:
     app: traefik
-    {{- include "traefik.labels" . | nindent 4 }}
 spec:
   circuitBreaker:
     expression: "NetworkErrorRatio() > 0.30 || ResponseCodeRatio(500, 600, 0, 600) > 0.25"
@@ -70,15 +76,13 @@ spec:
     recoveryDuration: "10s"
 
 ---
-# In-Flight Request Limit Middleware
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: inflight-limit
-  namespace: {{ .Release.Namespace }}
+  namespace: default
   labels:
     app: traefik
-    {{- include "traefik.labels" . | nindent 4 }}
 spec:
   inFlightReq:
     amount: 100
@@ -87,30 +91,26 @@ spec:
         depth: 1
 
 ---
-# Retry Middleware
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: retry
-  namespace: {{ .Release.Namespace }}
+  namespace: default
   labels:
     app: traefik
-    {{- include "traefik.labels" . | nindent 4 }}
 spec:
   retry:
     attempts: 3
     initialInterval: "100ms"
 
 ---
-# Internal Only (IP Allowlist) Middleware
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: internal-only
-  namespace: {{ .Release.Namespace }}
+  namespace: default
   labels:
     app: traefik
-    {{- include "traefik.labels" . | nindent 4 }}
 spec:
   ipAllowList:
     sourceRange:
@@ -120,15 +120,13 @@ spec:
       - "192.168.0.0/16"
 
 ---
-# Auth Rate Limit Middleware
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: auth-rate-limit
-  namespace: {{ .Release.Namespace }}
+  namespace: default
   labels:
     app: traefik
-    {{- include "traefik.labels" . | nindent 4 }}
 spec:
   rateLimit:
     average: 20

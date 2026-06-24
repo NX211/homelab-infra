@@ -33,7 +33,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/coreyalan-web
     pullPolicy: IfNotPresent
-    digest: "sha256:d6a5c35586aaa8e47c653c16ce5043a85d6cc843967883afb8a4a9d030845fac" # Updated by CI/CD
+    digest: "sha256:7cba5de400e0bed0565c03ecc780594397356af8e5d746a6386883bc3e85feeb" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-coreyalan
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
@@ -63,6 +63,11 @@ staging-app:
   env:
     - name: NODE_ENV
       value: production
+    # Runtime base URL read by getAppUrl(); NEXT_PUBLIC_* is build-inlined and
+    # ineffective at runtime, so server URLs need this non-public var.
+    - name: APP_URL
+      value: https://staging.coreyalan.com
+    # Build-time only (inlined); kept as a local-dev fallback.
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.coreyalan.com
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
