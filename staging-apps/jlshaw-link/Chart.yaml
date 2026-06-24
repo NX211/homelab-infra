@@ -3,7 +3,7 @@ name: jlshaw-link-staging
 description: JL Shaw Link - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "0.10.4"
+appVersion: "0.10.5"
 keywords:
   - jlshaw
   - nextjs
