@@ -56,6 +56,14 @@ staging-app:
         - 10.0.0.0/8
         - 172.16.0.0/12
         - 192.168.0.0/16
+      # Review-access flow: the in-cluster allowlist-reconciler manages this
+      # Middleware's sourceRange (base ∪ reviewer IPs). Renders the discovery
+      # ConfigMap the reconciler polls. Without this, a reviewer's grant is
+      # recorded in coreyalan but never applied here, so the site-access page
+      # hangs on "Setting up your access".
+      # appName MUST equal the StagingSite.infraAppName entered in the admin UI.
+      reconcilerManaged: true
+      appName: jlshaw-link
   env:
     - name: NODE_ENV
       value: production
