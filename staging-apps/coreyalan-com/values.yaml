@@ -55,11 +55,16 @@ staging-app:
     # authRateLimit; staging standardizes on the allowlist).
     ipAllowList:
       enabled: true
+      # Static BASE; the allowlist-reconciler layers reviewer IPs on top.
       sourceRange:
         - 206.225.142.166/32
         - 10.0.0.0/8
         - 172.16.0.0/12
         - 192.168.0.0/16
+      # Review-access flow: reconciler manages this Middleware's sourceRange.
+      # appName MUST equal the StagingSite.infraAppName entered in the admin UI.
+      reconcilerManaged: true
+      appName: coreyalan-com
   env:
     - name: NODE_ENV
       value: production
