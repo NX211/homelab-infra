@@ -1,0 +1,22 @@
+---
+# ClusterIP for the push webhook (POST /reconcile) + health. Reachable in-cluster
+# at allowlist-reconciler.staging.svc.cluster.local:8080. The push is an optional
+# latency cut — the 20s poll loop applies changes regardless — so this only needs
+# exposing beyond the cluster if coreyalan.com runs outside it and you want
+# instant applies.
+apiVersion: v1
+kind: Service
+metadata:
+  name: allowlist-reconciler
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: allowlist-reconciler
+    app.kubernetes.io/part-of: staging
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: allowlist-reconciler
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
