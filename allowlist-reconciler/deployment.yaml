@@ -29,6 +29,10 @@ spec:
         - name: gcr-pull-secret-coreyalan
       securityContext:
         runAsNonRoot: true
+        # Distroless declares USER "nonroot" by name; the kubelet needs a numeric
+        # UID to verify non-root. 65532 is distroless nonroot's uid/gid.
+        runAsUser: 65532
+        runAsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       containers:
