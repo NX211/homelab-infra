@@ -1,0 +1,35 @@
+---
+# Least privilege: read base ConfigMaps + read/patch Traefik Middlewares, in the
+# staging namespace only. No cluster-wide access, no secrets access via the API.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: allowlist-reconciler
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: allowlist-reconciler
+    app.kubernetes.io/part-of: staging
+rules:
+  - apiGroups: ['']
+    resources: ['configmaps']
+    verbs: ['get', 'list', 'watch']
+  - apiGroups: ['traefik.io']
+    resources: ['middlewares']
+    verbs: ['get', 'list', 'update', 'patch']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: allowlist-reconciler
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: allowlist-reconciler
+    app.kubernetes.io/part-of: staging
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: allowlist-reconciler
+subjects:
+  - kind: ServiceAccount
+    name: allowlist-reconciler
+    namespace: staging

@@ -33,7 +33,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/coreyalan-web
     pullPolicy: IfNotPresent
-    digest: "sha256:7cba5de400e0bed0565c03ecc780594397356af8e5d746a6386883bc3e85feeb" # Updated by CI/CD
+    digest: "sha256:81f80e0a3276fc55f59938450f31acb2969bade0750a1f63be7fde87bd79c2cc" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-coreyalan
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
@@ -55,11 +55,16 @@ staging-app:
     # authRateLimit; staging standardizes on the allowlist).
     ipAllowList:
       enabled: true
+      # Static BASE; the allowlist-reconciler layers reviewer IPs on top.
       sourceRange:
         - 206.225.142.166/32
         - 10.0.0.0/8
         - 172.16.0.0/12
         - 192.168.0.0/16
+      # Review-access flow: reconciler manages this Middleware's sourceRange.
+      # appName MUST equal the StagingSite.infraAppName entered in the admin UI.
+      reconcilerManaged: true
+      appName: coreyalan-com
   env:
     - name: NODE_ENV
       value: production
