@@ -3,7 +3,7 @@ name: blue-skysolutions-com-staging
 description: Blue Sky Solutions - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "0.1.12"
+appVersion: "0.1.13"
 keywords:
   - blue-skysolutions
   - nextjs
@@ -12,5 +12,5 @@ maintainers:
   - name: Homelab Admin
 dependencies:
   - name: staging-app
-    version: "0.6.1"
+    version: "0.7.0"
     repository: "file://../../charts/staging-app"
