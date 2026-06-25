@@ -1,0 +1,88 @@
+name: Build allowlist-reconciler
+
+# Builds the in-cluster staging allowlist reconciler image and pushes it to
+# GHCR, then pins the published digest into the deployment manifest so Argo
+# rolls it out. Runs on changes to the app source or this workflow, or on demand.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/allowlist-reconciler/**"
+      - ".github/workflows/build-allowlist-reconciler.yml"
+
+concurrency:
+  group: build-allowlist-reconciler
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/nx211/allowlist-reconciler
+  VERSION: "0.1.0"
+  MANIFEST: allowlist-reconciler/deployment.yaml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # Use a GitHub App token so the digest pin-back commit can push to main
+      # (and trigger no protected-branch friction), mirroring gitops-staging-update.
+      - name: Mint app token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/allowlist-reconciler
+          platforms: linux/amd64
+          push: true
+          # Single-arch, no attestation manifests — keeps a clean manifest the
+          # kubelet pulls by digest without provenance/SBOM side manifests.
+          provenance: false
+          sbom: false
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+
+      - uses: mikefarah/yq@v4
+
+      - name: Pin digest into manifest
+        env:
+          REF: ${{ env.IMAGE }}:${{ env.VERSION }}@${{ steps.push.outputs.digest }}
+        run: |
+          # Point the deployment at the immutable digest and drop the Artifact
+          # Registry pull secret (the GHCR package is public, so no secret needed).
+          yq -i '.spec.template.spec.containers[0].image = strenv(REF)
+                 | del(.spec.template.spec.imagePullSecrets)' "$MANIFEST"
+
+      - name: Commit pin-back
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- "$MANIFEST"; then
+            echo "No manifest change; digest already pinned."
+            exit 0
+          fi
+          git add "$MANIFEST"
+          git commit -m "chore(allowlist-reconciler): pin image ${{ steps.push.outputs.digest }}"
+          git push

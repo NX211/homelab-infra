@@ -2,7 +2,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: staging-capturly-web
+  name: allowlist-reconciler
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -11,20 +11,10 @@ spec:
   source:
     repoURL: https://github.com/NX211/homelab-infra.git
     targetRevision: HEAD
-    path: staging-apps/capturly-web
+    path: allowlist-reconciler
   destination:
     server: https://kubernetes.default.svc
     namespace: staging
-  # The allowlist-reconciler owns this Middleware's sourceRange (base ∪ reviewer
-  # IPs). Tell Argo to ignore that field so selfHeal won't revert runtime writes;
-  # base ranges still live in git via the chart values.
-  ignoreDifferences:
-    - group: traefik.io
-      kind: Middleware
-      name: capturly-web-staging-ipallowlist
-      namespace: staging
-      jsonPointers:
-        - /spec/ipAllowList/sourceRange
   syncPolicy:
     automated:
       prune: true

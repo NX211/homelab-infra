@@ -3,7 +3,7 @@ name: jlshaw-link-staging
 description: JL Shaw Link - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "0.10.2"
+appVersion: "0.10.5"
 keywords:
   - jlshaw
   - nextjs
@@ -12,5 +12,5 @@ maintainers:
   - name: Homelab Admin
 dependencies:
   - name: staging-app
-    version: "0.6.1"
+    version: "0.7.0"
     repository: "file://../../charts/staging-app"

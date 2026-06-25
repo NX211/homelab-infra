@@ -1,0 +1,73 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: allowlist-reconciler
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: allowlist-reconciler
+    app.kubernetes.io/part-of: staging
+spec:
+  replicas: 1
+  # Single writer — avoid two replicas racing to patch the same Middleware.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: allowlist-reconciler
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: allowlist-reconciler
+        app.kubernetes.io/part-of: staging
+    spec:
+      serviceAccountName: allowlist-reconciler
+      securityContext:
+        runAsNonRoot: true
+        # Distroless declares USER "nonroot" by name; the kubelet needs a numeric
+        # UID to verify non-root. 65532 is distroless nonroot's uid/gid.
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: reconciler
+          # Built from apps/allowlist-reconciler and pinned by digest (the tag
+          # is kept for readability). Rebuild + repush + re-pin to update.
+          image: ghcr.io/nx211/allowlist-reconciler:0.1.0@sha256:759b6a0582183c398b71fc6c854eb3ef52135c6f5cd24cace1f112cc0ea13f6c
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: COREYALAN_BASE_URL
+              value: https://coreyalan.com
+            - name: NAMESPACE
+              value: staging
+          envFrom:
+            - secretRef:
+                name: allowlist-reconciler-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10

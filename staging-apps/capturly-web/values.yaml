@@ -31,7 +31,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
     pullPolicy: IfNotPresent
-    digest: "sha256:9aaf10250ae832cf925b8c3b4249b77a5ceab01c5bee0c044971d758d7cb663e" # Updated by CI/CD
+    digest: "sha256:a703be86a6874c2eae0157ff91aa24c0240cf469e32b061886e752901408df70" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-capturly-web
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
@@ -45,6 +45,23 @@ staging-app:
     enabled: true
     host: staging.capturly.app
     clusterIssuer: letsencrypt-prod
+    # Restrict access to the homelab WAN + on-LAN sources. CoreDNS resolves
+    # this host to the internal LB for cluster/LAN clients, so the RFC1918
+    # ranges cover internal traffic; the /32 covers external traffic that
+    # egresses through the static ISP IP.
+    ipAllowList:
+      enabled: true
+      sourceRange:
+        - 206.225.142.166/32
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+      # Review-access flow: the in-cluster allowlist-reconciler manages this
+      # Middleware's sourceRange (base ∪ reviewer IPs). Renders the discovery
+      # ConfigMap the reconciler polls.
+      # appName MUST equal the StagingSite.infraAppName entered in the admin UI.
+      reconcilerManaged: true
+      appName: capturly-web
   env:
     - name: NODE_ENV
       value: production
