@@ -22,15 +22,20 @@ spec:
         app.kubernetes.io/part-of: staging
     spec:
       serviceAccountName: allowlist-reconciler
+      # The image lives in the private corey-alan-prod Artifact Registry; reuse
+      # the dockerconfigjson the coreyalan-com staging release syncs from
+      # Bitwarden (GCR_SERVICE_ACCOUNT_KEY) into this namespace.
+      imagePullSecrets:
+        - name: gcr-pull-secret-coreyalan
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: reconciler
-          # TODO: build + push (see apps/allowlist-reconciler/README.md), then
-          # pin a digest the way the staging apps do.
-          image: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/allowlist-reconciler:0.1.0
+          # Built from apps/allowlist-reconciler and pinned by digest (the tag
+          # is kept for readability). Rebuild + repush + re-pin to update.
+          image: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/allowlist-reconciler:0.1.0@sha256:d4e46b7ae2eccacb30d129f8d8d46e3576425b2bec1d98f75780b4f7836d051b
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
