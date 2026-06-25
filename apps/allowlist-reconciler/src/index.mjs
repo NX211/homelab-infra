@@ -155,8 +155,8 @@ function isPublicHostCidr(cidr) {
   if (ip.includes(':')) {
     if (bits !== '128') return false;
     const v = ip.toLowerCase();
-    if (v === '::' || v === '::1' || v.startsWith('fe8') || v.startsWith('fe9') || v.startsWith('fea') ||
-        v.startsWith('feb') || v.startsWith('fc') || v.startsWith('fd')) return false;
+    // Reject loopback, link-local (fe80::/10), and unique-local (fc00::/7).
+    if (v === '::' || v === '::1' || /^fe[89ab]/.test(v) || /^f[cd]/.test(v)) return false;
     return /^[0-9a-f:]+$/.test(v);
   }
   if (bits !== '32') return false;
@@ -214,7 +214,7 @@ async function reconcileConfigMap(cm) {
   const appliedHash = crypto.createHash('sha256').update(merged.join(',')).digest('hex');
 
   try {
-    const current = (await getMiddlewareSourceRange(middleware)).slice().sort();
+    const current = (await getMiddlewareSourceRange(middleware)).sort();
     if (JSON.stringify(current) === JSON.stringify(merged)) {
       // Already in sync; still ack so coreyalan records the confirmed version.
       await ack(app, desired.version, appliedHash, 'ok');
