@@ -24,7 +24,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/blue-skysolutions/blue-skysolutions/blue-skysolutions-web
     pullPolicy: IfNotPresent
-    digest: "sha256:768563831267012ca8b1c89bce7fff0d061546e17fb5c3d89e5ab69f14b2cd63" # Updated by CI/CD via gitops-staging-update.yml — seeded from prod for first deploy
+    digest: "sha256:ae4827feaf0a856f02d25f78b15efda235220362ad4c91738a25faad07b665ad" # Updated by CI/CD via gitops-staging-update.yml — seeded from prod for first deploy
   imagePullSecrets:
     - name: gcr-pull-secret-blue-sky
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
@@ -49,6 +49,12 @@ staging-app:
         - 10.0.0.0/8
         - 172.16.0.0/12
         - 192.168.0.0/16
+      # Review-access flow: the in-cluster allowlist-reconciler manages this
+      # Middleware's sourceRange (base ∪ reviewer IPs). Renders the discovery
+      # ConfigMap the reconciler polls.
+      # appName MUST equal the StagingSite.infraAppName entered in the admin UI.
+      reconcilerManaged: true
+      appName: blue-skysolutions-com
   env:
     - name: NODE_ENV
       value: production
