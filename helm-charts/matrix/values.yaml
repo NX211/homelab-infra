@@ -138,7 +138,7 @@ mas:
 elementWeb:
   enabled: true
   # Verify/update the tag at deploy time (https://github.com/element-hq/element-web/releases).
-  image: ghcr.io/element-hq/element-web:v1.12.21
+  image: ghcr.io/element-hq/element-web:v1.12.22
   host: chat.coreyalan.com
   brand: "Coreyalan Chat"
   callUrl: https://call.coreyalan.com
@@ -206,7 +206,7 @@ rtc:
         cpu: 200m
         memory: 128Mi
   elementCall:
-    image: ghcr.io/element-hq/element-call:v0.20.1
+    image: ghcr.io/element-hq/element-call:v0.20.2
     resources:
       requests:
         cpu: 10m
