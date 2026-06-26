@@ -19,6 +19,16 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: staging
+  # The allowlist-reconciler owns this Middleware's sourceRange (base ∪ reviewer
+  # IPs). Tell Argo to ignore that field so selfHeal won't revert runtime writes;
+  # base ranges still live in git via the chart values.
+  ignoreDifferences:
+    - group: traefik.io
+      kind: Middleware
+      name: jlshaw-link-staging-ipallowlist
+      namespace: staging
+      jsonPointers:
+        - /spec/ipAllowList/sourceRange
   syncPolicy:
     automated:
       prune: true

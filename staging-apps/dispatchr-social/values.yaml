@@ -27,11 +27,11 @@ staging-app:
   migration:
     enabled: true # was false — staging DB had no schema (P2021); runs prisma migrate deploy
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web-migrate
-    digest: "sha256:1869cdd4d5b1d11b03b664b62705e3190f0013576b3472ead117c4d302b39f20" # Updated by CI/CD
+    digest: "sha256:7d3d6991b7a4b3ff70cc852202eb9cd1c9905b55985c1b37c205b81925ebc490" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
     pullPolicy: IfNotPresent
-    digest: "sha256:c74adb5782bd007aa68dc208c1da2dad3deb596e4319e80234d242310c833865" # Updated by CI/CD
+    digest: "sha256:27d37e1076ef87bc4c062c9614a0a1d7e9037f5184c27088491479240b1248fd" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-dispatchr
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
@@ -45,6 +45,23 @@ staging-app:
     enabled: true
     host: staging.dispatchr.social
     clusterIssuer: letsencrypt-prod
+    # Restrict access to the homelab WAN + on-LAN sources. CoreDNS resolves
+    # this host to the internal LB for cluster/LAN clients, so the RFC1918
+    # ranges cover internal traffic; the /32 covers external traffic that
+    # egresses through the static ISP IP.
+    ipAllowList:
+      enabled: true
+      sourceRange:
+        - 206.225.142.166/32
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+      # Review-access flow: the in-cluster allowlist-reconciler manages this
+      # Middleware's sourceRange (base ∪ reviewer IPs). Renders the discovery
+      # ConfigMap the reconciler polls.
+      # appName MUST equal the StagingSite.infraAppName entered in the admin UI.
+      reconcilerManaged: true
+      appName: dispatchr-social
   env:
     - name: NODE_ENV
       value: production
