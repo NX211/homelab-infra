@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: sportarr/sportarr
-  tag: "4.0.1011.1091"
+  tag: "4.0.1012.1092"
   pullPolicy: IfNotPresent
 
 # Service configuration
