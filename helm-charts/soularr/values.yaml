@@ -43,14 +43,16 @@ persistence:
 config:
   lidarr:
     hostUrl: http://lidarr:8686
-    # Path to the completed-downloads dir AS LIDARR SEES IT.
-    downloadDir: /media/downloads/music
+    # slskd's completed-downloads dir AS LIDARR SEES IT. Lidarr mounts
+    # /blacktalon/media/downloads/music at /media/downloads/music, and slskd
+    # writes completed albums into the soulseek/ subfolder (SLSKD_DOWNLOADS_DIR).
+    downloadDir: /media/downloads/music/soulseek
   slskd:
     hostUrl: http://slskd:5030
     urlBase: /
-    # Path to slskd's completed downloads AS SOULARR SEES IT. Kept identical to
-    # lidarr.downloadDir by mounting the same hostPath at the same path above.
-    downloadDir: /media/downloads/music
+    # Same physical dir AS SOULARR SEES IT — kept identical to lidarr.downloadDir
+    # by mounting the same hostPath at the same path below.
+    downloadDir: /media/downloads/music/soulseek
     deleteSearches: false
     stalledTimeout: 3600
   release:
@@ -74,18 +76,18 @@ config:
   logging:
     level: INFO
 
-# External Secrets (Bitwarden Secrets Manager).
-# ACTION REQUIRED: create these two secrets in Bitwarden and paste their UUIDs.
-#   lidarr_api_key : Lidarr -> Settings -> General -> API Key
-#   slskd_api_key  : an API key you add to slskd (see companion change in PR)
+# External Secrets (Bitwarden Secrets Manager, Workbench project).
+#   lidarr_api_key : Lidarr's API key (Settings -> General -> API Key)
+#   slskd_api_key  : the API key slskd is configured to accept (same secret is
+#                    consumed by the slskd chart to register the key)
 externalSecrets:
   enabled: true
   refreshInterval: 1h
   secrets:
     - name: LIDARR_API_KEY
-      key: REPLACE_WITH_BITWARDEN_UUID_lidarr_api_key
+      key: b8e9a29f-4dec-4a57-91a7-b47e00f78c13  # lidarr_api_key
     - name: SLSKD_API_KEY
-      key: REPLACE_WITH_BITWARDEN_UUID_slskd_api_key
+      key: 7dde21f3-7fd8-4153-b6a3-b47e00f78c43  # slskd_api_key
 
 resources:
   requests:
