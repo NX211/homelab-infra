@@ -70,7 +70,11 @@ lidatube:
   env:
     lidarr_address: "http://lidarr:8686"
     preferred_codec: "flac"
-    thread_limit: "6"
+    # Concurrent download/convert threads. Each yt-dlp+ffmpeg FLAC conversion
+    # spikes RAM; 6 blew past the 1Gi limit and got OOMKilled mid-download
+    # (which resets LidaTube since it has no resumable queue). 3 keeps peak
+    # memory in check.
+    thread_limit: "3"
     # Run as the media user so downloaded files are owned by 8675309 and Lidarr
     # (same uid) can move them into the library during import.
     PUID: "8675309"
@@ -104,7 +108,9 @@ lidatube:
       memory: 256Mi
     limits:
       cpu: 2000m
-      memory: 1Gi
+      # Raised 1Gi -> 3Gi: FLAC conversion spikes past 1Gi and the OOM kill
+      # restarts the pod, wiping in-progress downloads.
+      memory: 3Gi
 
 # External Secrets (optional - if using ESO)
 externalSecrets:
