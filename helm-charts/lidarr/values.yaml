@@ -97,7 +97,7 @@ lidatube:
     importMode: Move
     image:
       repository: curlimages/curl
-      tag: "8.11.1"
+      tag: "8.21.0"
   resources:
     requests:
       cpu: 100m
