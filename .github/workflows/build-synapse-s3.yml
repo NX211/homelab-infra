@@ -28,7 +28,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: helm-charts/matrix/docker/synapse-s3
           build-args: SYNAPSE_VERSION=${{ env.SYNAPSE_VERSION }}
