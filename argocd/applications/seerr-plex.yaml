@@ -24,7 +24,7 @@ spec:
       releaseName: seerr-plex
       valuesObject:
         ingress:
-          host: seerr-plex.authoritah.tv
+          host: request.authoritah.com
   destination:
     server: https://kubernetes.default.svc
     namespace: default

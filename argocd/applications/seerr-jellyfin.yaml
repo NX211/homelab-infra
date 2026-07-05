@@ -16,7 +16,7 @@ spec:
       releaseName: seerr-jellyfin
       valuesObject:
         ingress:
-          host: seerr-jellyfin.authoritah.tv
+          host: request.authoritah.tv
   destination:
     server: https://kubernetes.default.svc
     namespace: default
