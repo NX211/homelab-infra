@@ -65,6 +65,10 @@ spec:
           mountPath: {{ .Values.persistence.media.downloadsMusic.mountPath }}
         - name: downloads-music-videos
           mountPath: {{ .Values.persistence.media.downloadsMusicVideos.mountPath }}
+        {{- if .Values.persistence.media.downloadsLidatube }}
+        - name: downloads-lidatube
+          mountPath: {{ .Values.persistence.media.downloadsLidatube.mountPath }}
+        {{- end }}
         {{- end }}
         livenessProbe:
           httpGet:
@@ -105,4 +109,10 @@ spec:
         hostPath:
           path: {{ .Values.persistence.media.downloadsMusicVideos.hostPath }}
           type: Directory
+      {{- if .Values.persistence.media.downloadsLidatube }}
+      - name: downloads-lidatube
+        hostPath:
+          path: {{ .Values.persistence.media.downloadsLidatube.hostPath }}
+          type: DirectoryOrCreate
+      {{- end }}
       {{- end }}

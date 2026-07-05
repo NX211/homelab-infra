@@ -34,6 +34,10 @@ spec:
           containerPort: {{ .Values.lidatube.service.port }}
           protocol: TCP
         env:
+        - name: PUID
+          value: {{ .Values.lidatube.env.PUID | default "1000" | quote }}
+        - name: PGID
+          value: {{ .Values.lidatube.env.PGID | default "1000" | quote }}
         - name: lidarr_address
           value: {{ .Values.lidatube.env.lidarr_address | quote }}
         - name: preferred_codec

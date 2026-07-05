@@ -1,0 +1,51 @@
+---
+{{- if and .Values.lidatube.enabled .Values.lidatube.import.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "lidarr.fullname" . }}-lidatube-import
+  labels:
+    {{- include "lidarr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: lidatube-import
+spec:
+  schedule: {{ .Values.lidatube.import.schedule | quote }}
+  # Never overlap runs; a scan can outlast the interval on a large batch.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "lidarr.labels" . | nindent 12 }}
+            app.kubernetes.io/component: lidatube-import
+        spec:
+          restartPolicy: OnFailure
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+          - name: trigger-import
+            image: "{{ .Values.lidatube.import.image.repository }}:{{ .Values.lidatube.import.image.tag }}"
+            env:
+            - name: LIDARR_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "lidarr.fullname" .)) }}
+                  key: LIDARR_API_KEY
+            command:
+            - sh
+            - -c
+            - |
+              set -eu
+              # Ask Lidarr to scan LidaTube's download folder and import (match,
+              # rename, and move) any completed albums into the library.
+              curl -fsS -X POST \
+                -H "X-Api-Key: ${LIDARR_API_KEY}" \
+                -H "Content-Type: application/json" \
+                -d '{"name":"DownloadedAlbumsScan","path":"{{ .Values.lidatube.import.path }}","importMode":"{{ .Values.lidatube.import.importMode }}"}' \
+                {{ .Values.lidatube.env.lidarr_address }}/api/v1/command
+{{- end }}

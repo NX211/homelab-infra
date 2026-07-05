@@ -85,7 +85,7 @@ externalSecrets:
   refreshInterval: 1h
   secrets:
     - name: LIDARR_API_KEY
-      key: b8e9a29f-4dec-4a57-91a7-b47e00f78c13  # lidarr_api_key
+      key: 1ee9bd9f-911c-4ef0-be32-b3d000f652e9  # lidarr_api_key
     - name: SLSKD_API_KEY
       key: 7dde21f3-7fd8-4153-b6a3-b47e00f78c43  # slskd_api_key
 

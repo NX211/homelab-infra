@@ -42,6 +42,12 @@ persistence:
     downloadsMusicVideos:
       hostPath: /blacktalon/media/downloads/music-videos
       mountPath: /media/downloads/music-videos
+    # LidaTube's completed YouTube downloads. Lidarr imports from here via the
+    # lidatube-import CronJob (DownloadedAlbumsScan). Separate from the ~2yr
+    # backlog in /blacktalon/media/downloads/lidatube, which is left untouched.
+    downloadsLidatube:
+      hostPath: /blacktalon/media/downloads/lidatube-import
+      mountPath: /media/downloads/lidatube-import
 
 # Environment variables
 env:
@@ -65,13 +71,33 @@ lidatube:
     lidarr_address: "http://lidarr:8686"
     preferred_codec: "flac"
     thread_limit: "6"
+    # Run as the media user so downloaded files are owned by 8675309 and Lidarr
+    # (same uid) can move them into the library during import.
+    PUID: "8675309"
+    PGID: "8675309"
   persistence:
     config:
       hostPath: /blacktalon/apps/lidatube
       mountPath: /lidatube/config
     downloads:
-      hostPath: /blacktalon/media/downloads/lidatube
+      # Fresh folder for the automated import pipeline. The old
+      # /blacktalon/media/downloads/lidatube backlog is intentionally NOT reused
+      # so it stays untouched for manual triage.
+      hostPath: /blacktalon/media/downloads/lidatube-import
       mountPath: /lidatube/downloads
+  # Lidarr import of LidaTube's completed downloads. LidaTube downloads but never
+  # imports (it only calls RescanFolders on the library root, where its files
+  # never land). This CronJob triggers Lidarr's DownloadedAlbumsScan on the
+  # download folder so Lidarr matches, renames, and moves them into the library.
+  import:
+    enabled: true
+    schedule: "*/15 * * * *"
+    # Path AS LIDARR SEES IT — matches persistence.media.downloadsLidatube.mountPath.
+    path: /media/downloads/lidatube-import
+    importMode: Move
+    image:
+      repository: curlimages/curl
+      tag: "8.11.1"
   resources:
     requests:
       cpu: 100m
@@ -82,12 +108,13 @@ lidatube:
 
 # External Secrets (optional - if using ESO)
 externalSecrets:
-  enabled: false
-  # secretName: lidarr-secrets
-  # refreshInterval: 1h
-  # secrets:
-  #   - name: LIDARR_API_KEY
-  #     key: lidarr-api-key
+  enabled: true
+  refreshInterval: 1h
+  secrets:
+    # Lidarr's API key. Consumed by the LidaTube companion (to read the wanted
+    # list) and by the lidatube-import CronJob (to trigger DownloadedAlbumsScan).
+    - name: LIDARR_API_KEY
+      key: 1ee9bd9f-911c-4ef0-be32-b3d000f652e9  # lidarr_api_key
 
 # Resource limits
 resources:
