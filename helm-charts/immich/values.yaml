@@ -3,7 +3,7 @@
 # Main server image
 image:
   repository: ghcr.io/immich-app/immich-server
-  tag: "v2.7.5"
+  tag: "v3.0.1"
   pullPolicy: IfNotPresent
 
 # Service configuration
@@ -100,7 +100,7 @@ machineLearning:
   enabled: true
   image:
     repository: ghcr.io/immich-app/immich-machine-learning
-    tag: "v2.7.5"
+    tag: "v3.0.1"
     pullPolicy: IfNotPresent
   service:
     port: 3003

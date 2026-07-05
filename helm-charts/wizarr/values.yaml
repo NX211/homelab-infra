@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: ghcr.io/wizarrrr/wizarr
-  tag: "v2026.4.0"
+  tag: "v2026.7.0"
   pullPolicy: IfNotPresent
 
 # Service configuration
