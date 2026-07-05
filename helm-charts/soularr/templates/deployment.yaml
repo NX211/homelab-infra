@@ -1,0 +1,78 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "soularr.fullname" . }}
+  labels:
+    {{- include "soularr.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # Single instance only — Soularr is not safe to run concurrently.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "soularr.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # Roll the pod when config.ini content changes.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "soularr.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+      # Inject the secret API keys into config.ini (kept out of git) and write
+      # the rendered file to the shared /data volume that Soularr reads.
+      - name: render-config
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          sed -e "s|__LIDARR_API_KEY__|${LIDARR_API_KEY}|g" \
+              -e "s|__SLSKD_API_KEY__|${SLSKD_API_KEY}|g" \
+              /tmpl/config.ini.tmpl > /data/config.ini
+        envFrom:
+        - secretRef:
+            name: {{ .Values.externalSecrets.secretName | default (printf "%s-secrets" (include "soularr.fullname" .)) }}
+        volumeMounts:
+        - name: config-tmpl
+          mountPath: /tmpl
+        - name: data
+          mountPath: /data
+      containers:
+      - name: soularr
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: SCRIPT_INTERVAL
+          value: {{ .Values.env.SCRIPT_INTERVAL | quote }}
+        volumeMounts:
+        # Soularr reads /data/config.ini and writes run state alongside it.
+        - name: data
+          mountPath: /data
+        # Shared downloads tree so Soularr can see slskd's completed files and
+        # hand Lidarr a path it can import from.
+        - name: downloads
+          mountPath: {{ .Values.persistence.downloads.mountPath }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: config-tmpl
+        configMap:
+          name: {{ include "soularr.fullname" . }}-config
+      - name: data
+        emptyDir: {}
+      - name: downloads
+        hostPath:
+          path: {{ .Values.persistence.downloads.hostPath }}
+          type: Directory
