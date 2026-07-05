@@ -1,0 +1,47 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "soularr.fullname" . }}-config
+  labels:
+    {{- include "soularr.labels" . | nindent 4 }}
+data:
+  # Template only — the two api_key placeholders are substituted with values
+  # from the ExternalSecret by the render-config init container at pod start,
+  # so real secrets never live in git. Rendered to /data/config.ini.
+  config.ini.tmpl: |
+    [Lidarr]
+    api_key = __LIDARR_API_KEY__
+    download_dir = {{ .Values.config.lidarr.downloadDir }}
+    host_url = {{ .Values.config.lidarr.hostUrl }}
+
+    [Slskd]
+    api_key = __SLSKD_API_KEY__
+    download_dir = {{ .Values.config.slskd.downloadDir }}
+    host_url = {{ .Values.config.slskd.hostUrl }}
+    url_base = {{ .Values.config.slskd.urlBase }}
+    delete_searches = {{ ternary "True" "False" .Values.config.slskd.deleteSearches }}
+    stalled_timeout = {{ .Values.config.slskd.stalledTimeout }}
+
+    [Release Settings]
+    use_most_common_tracknum = {{ ternary "True" "False" .Values.config.release.useMostCommonTracknum }}
+    allow_multi_disc = {{ ternary "True" "False" .Values.config.release.allowMultiDisc }}
+    accepted_countries = {{ .Values.config.release.acceptedCountries }}
+    accepted_formats = {{ .Values.config.release.acceptedFormats }}
+
+    [Search Settings]
+    search_timeout = {{ .Values.config.search.searchTimeout }}
+    maximum_peer_queue = {{ .Values.config.search.maximumPeerQueue }}
+    minimum_peer_upload_speed = {{ .Values.config.search.minimumPeerUploadSpeed }}
+    minimum_filename_match_ratio = {{ .Values.config.search.minimumFilenameMatchRatio }}
+    allowed_filetypes = {{ .Values.config.search.allowedFiletypes }}
+    search_for_tracks = {{ ternary "True" "False" .Values.config.search.searchForTracks }}
+    album_prepend_artist = {{ ternary "True" "False" .Values.config.search.albumPrependArtist }}
+    number_of_albums_to_grab = {{ .Values.config.search.numberOfAlbumsToGrab }}
+    remove_wanted_on_failure = {{ ternary "True" "False" .Values.config.search.removeWantedOnFailure }}
+    search_type = {{ .Values.config.search.searchType }}
+
+    [Logging]
+    level = {{ .Values.config.logging.level }}
+    format = [%(levelname)s|%(module)s|L%(lineno)d] %(asctime)s: %(message)s
+    datefmt = %Y-%m-%dT%H:%M:%S%z
