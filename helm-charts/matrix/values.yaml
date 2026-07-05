@@ -182,7 +182,7 @@ rtc:
   callHost: call.coreyalan.com
   secretName: matrix-livekit
   livekit:
-    image: livekit/livekit-server:v1.13.1
+    image: livekit/livekit-server:v1.13.3
     wsPort: 7880        # signalling, proxied via Traefik (/livekit/sfu)
     tcpPort: 7881       # ICE/TCP fallback (hostPort)
     udpPort: 7882       # MUXED media UDP (hostPort) — UniFi-forward this port
@@ -206,7 +206,7 @@ rtc:
         cpu: 200m
         memory: 128Mi
   elementCall:
-    image: ghcr.io/element-hq/element-call:v0.20.2
+    image: ghcr.io/element-hq/element-call:v0.20.3
     resources:
       requests:
         cpu: 10m
