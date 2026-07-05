@@ -1,0 +1,17 @@
+apiVersion: v2
+name: soularr
+description: Soularr - bridges Lidarr's wanted list to slskd (Soulseek) as an extra music source
+type: application
+version: 1.0.0
+# Upstream publishes a rolling :latest image rather than semver tags.
+appVersion: "latest"
+
+keywords:
+  - soularr
+  - lidarr
+  - slskd
+  - soulseek
+  - music
+
+maintainers:
+  - name: Homelab Admin

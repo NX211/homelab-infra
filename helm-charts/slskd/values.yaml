@@ -39,8 +39,10 @@ persistence:
 # Environment variables (slskd reads SLSKD_* env to override slskd.yml at runtime)
 env:
   TZ: America/New_York
-  # Where slskd writes finished files (subdir of mounted /downloads)
-  SLSKD_DOWNLOADS_DIR: "/downloads/soulseek"
+  # Where slskd writes finished files. Kept UNDER Lidarr's importable music
+  # downloads tree (/blacktalon/media/downloads/music) so Soularr can hand
+  # Lidarr a path it can import from. = /blacktalon/media/downloads/music/soulseek
+  SLSKD_DOWNLOADS_DIR: "/downloads/music/soulseek"
   # In-progress downloads (subdir of mounted /downloads)
   SLSKD_INCOMPLETE_DIR: "/downloads/incomplete/soulseek"
   # Comma-separated list of dirs to share with peers
@@ -68,6 +70,12 @@ externalSecrets:
       key: d3bcd21e-e9be-42c8-9fb0-b43d00f5b49a  # slskd_web_username
     - name: SLSKD_PASSWORD
       key: 391a7ea7-9e98-4a24-918e-b43d00f5b4cf  # slskd_web_password
+    # Primary API key so Soularr can authenticate to slskd's REST API. A bare
+    # key defaults to Administrator role + any CIDR (slskd behaviour), which is
+    # what Soularr needs to initiate downloads. Same secret is consumed by the
+    # soularr chart, so both sides present the identical key.
+    - name: SLSKD_API_KEY
+      key: 7dde21f3-7fd8-4153-b6a3-b47e00f78c43  # slskd_api_key
 
 resources:
   requests:
