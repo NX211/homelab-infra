@@ -1,0 +1,96 @@
+# Soularr Helm Chart Values
+#
+# Soularr polls Lidarr's Missing / Cutoff-Unmet lists, searches slskd (Soulseek),
+# downloads matches, and triggers Lidarr to import them. It ADDS Soulseek as an
+# extra source alongside your existing usenet/torrent workflow — nothing about
+# Prowlarr / sabnzbd / transmission / autobrr changes. Soularr requires Lidarr;
+# it is not a replacement for it.
+
+image:
+  repository: mrusse08/soularr
+  # No upstream semver tags; :latest is the published image. Pin a digest here
+  # if you want reproducible deploys.
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Pin to blacktalon — that's where /blacktalon/media/downloads lives and where
+# lidarr + slskd run.
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+env:
+  TZ: America/New_York
+  # Soularr runs on its own internal loop; seconds to wait between runs.
+  SCRIPT_INTERVAL: "300"
+
+# Shared downloads hostPath. This MUST expose the same physical directory that
+# slskd writes completed files into AND that Lidarr imports from, mounted at the
+# SAME in-container path Lidarr uses (see config.lidarr.downloadDir).
+#
+# NB: Lidarr mounts /blacktalon/media/downloads/music at /media/downloads/music.
+# For the hand-off to work, slskd must write its completed Soulseek downloads
+# somewhere UNDER that tree (see the companion slskd change in the PR notes):
+#   slskd: SLSKD_DOWNLOADS_DIR=/downloads/music/soulseek
+#          (= /blacktalon/media/downloads/music/soulseek)
+persistence:
+  downloads:
+    hostPath: /blacktalon/media/downloads/music
+    mountPath: /media/downloads/music
+
+# config.ini values. Rendered to /data/config.ini at pod start; the two API keys
+# are injected from the ExternalSecret by an init container so they never live in
+# git (see templates/configmap.yaml + templates/deployment.yaml).
+config:
+  lidarr:
+    hostUrl: http://lidarr:8686
+    # Path to the completed-downloads dir AS LIDARR SEES IT.
+    downloadDir: /media/downloads/music
+  slskd:
+    hostUrl: http://slskd:5030
+    urlBase: /
+    # Path to slskd's completed downloads AS SOULARR SEES IT. Kept identical to
+    # lidarr.downloadDir by mounting the same hostPath at the same path above.
+    downloadDir: /media/downloads/music
+    deleteSearches: false
+    stalledTimeout: 3600
+  release:
+    useMostCommonTracknum: true
+    allowMultiDisc: true
+    acceptedCountries: "Europe,Japan,United Kingdom,United States,[Worldwide],Australia,Canada"
+    acceptedFormats: "CD,Digital Media,Vinyl"
+  search:
+    searchTimeout: 5000
+    maximumPeerQueue: 50
+    minimumPeerUploadSpeed: 0
+    minimumFilenameMatchRatio: 0.5
+    allowedFiletypes: "flac,mp3"
+    searchForTracks: true
+    albumPrependArtist: false
+    numberOfAlbumsToGrab: 10
+    # Keep Soulseek as a FALLBACK source: do NOT unmonitor the album in Lidarr
+    # when a Soulseek grab fails, so your usenet/torrent grabbers still get it.
+    removeWantedOnFailure: false
+    searchType: incrementing_page
+  logging:
+    level: INFO
+
+# External Secrets (Bitwarden Secrets Manager).
+# ACTION REQUIRED: create these two secrets in Bitwarden and paste their UUIDs.
+#   lidarr_api_key : Lidarr -> Settings -> General -> API Key
+#   slskd_api_key  : an API key you add to slskd (see companion change in PR)
+externalSecrets:
+  enabled: true
+  refreshInterval: 1h
+  secrets:
+    - name: LIDARR_API_KEY
+      key: REPLACE_WITH_BITWARDEN_UUID_lidarr_api_key
+    - name: SLSKD_API_KEY
+      key: REPLACE_WITH_BITWARDEN_UUID_slskd_api_key
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
