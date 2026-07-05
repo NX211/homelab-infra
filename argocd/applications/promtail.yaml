@@ -110,6 +110,15 @@ spec:
                     - __meta_kubernetes_pod_container_name
                     target_label: __path__
 
+        # Loosen the readiness probe. The default 1s timeout flaps to NotReady
+        # on high-churn nodes (many short-lived pods rotating log files), where
+        # /ready occasionally answers slower than 1s. A perpetually NotReady pod
+        # keeps the DaemonSet from reaching full availability, which pins the
+        # Argo app in Progressing even though promtail is shipping logs fine.
+        readinessProbe:
+          timeoutSeconds: 5
+          failureThreshold: 10
+
         # ServiceMonitor for Prometheus metrics
         serviceMonitor:
           enabled: true
