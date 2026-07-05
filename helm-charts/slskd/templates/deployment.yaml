@@ -90,6 +90,17 @@ spec:
         - name: music
           mountPath: {{ .Values.persistence.music.mountPath }}
           readOnly: {{ .Values.persistence.music.readOnly }}
+        startupProbe:
+          # The initial cold share scan blocks slskd's HTTP listener and can
+          # take 20-30 min. Without this, liveness kills the container mid-scan
+          # before the share cache is ever persisted, forcing a rescan on every
+          # boot (a self-perpetuating crash loop). Suppress liveness until the
+          # first scan completes; subsequent restarts are fast from cache.
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 30
+          failureThreshold: 60
         livenessProbe:
           httpGet:
             path: /health
