@@ -32,23 +32,40 @@ data:
         networks:
         - 10.0.0.0/8
       rules:
-      - domain: "*.authoritah.tv"
-        policy: bypass
-        resources:
-          - "^/api/.*$"
-          - "^/identity/.*$"
-          - "^/triggers/.*$"
-      - domain: "*.authoritah.com"
+      # Media/app APIs only. Mobile + integration clients (Prowlarr sync,
+      # Jellyseerr, nzb360/LunaSea, etc.) authenticate with the app's own API
+      # key, so Authelia is bypassed on API paths. Scoped to specific hosts —
+      # NOT a wildcard — so infra hosts (grafana/metrics/alerts/cd/pve/…) keep
+      # full two_factor on their /api surface.
+      - domain:
+        - sonarr.authoritah.com
+        - sonarr2.authoritah.com
+        - sonarr3.authoritah.com
+        - radarr.authoritah.com
+        - radarr2.authoritah.com
+        - lidarr.authoritah.com
+        - listenarr.authoritah.com
+        - lidatube.authoritah.com
+        - prowlarr.authoritah.com
+        - sabnzbd.authoritah.com
+        - transmission.authoritah.com
+        - bazarr.authoritah.com
+        - tdarr.authoritah.com
+        - watchstate.authoritah.com
+        - suggestarr.authoritah.com
+        - autobrr.authoritah.com
+        - sportarr.authoritah.com
+        - slskd.authoritah.com
+        - jellyfin.authoritah.com
+        - request.authoritah.com
+        - request.authoritah.tv
+        - join.authoritah.tv
+        - stats.authoritah.tv
         policy: bypass
         resources:
         - "^/api/.*$"
         - "^/identity/.*$"
         - "^/triggers/.*$"
-        - "^/meshagents.*$"
-        - "^/meshsettings.*$"
-        - "^/agent.*$"
-        - "^/control.*$"
-        - "^/meshrelay.*$"
       - domain: api.authoritah.com
         policy: two_factor
         subject:

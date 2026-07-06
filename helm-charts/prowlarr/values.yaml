@@ -38,7 +38,10 @@ byparr:
   enabled: true
   image:
     repository: ghcr.io/thephaseless/byparr
+    # Upstream publishes only :latest (no semver tags), so pin by digest for
+    # reproducible deploys. digest takes precedence over tag in the template.
     tag: "latest"
+    digest: "sha256:01a46a2865d9a6db5eb8ead04ec0dd33b8fbe233e8565ae70b50d4cc0af4cfb0"
     pullPolicy: IfNotPresent
   service:
     port: 8191

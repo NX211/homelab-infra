@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
       - name: byparr
-        image: "{{ .Values.byparr.image.repository }}:{{ .Values.byparr.image.tag }}"
+        image: "{{ .Values.byparr.image.repository }}{{ if .Values.byparr.image.digest }}@{{ .Values.byparr.image.digest }}{{ else }}:{{ .Values.byparr.image.tag }}{{ end }}"
         imagePullPolicy: {{ .Values.byparr.image.pullPolicy }}
         ports:
         - name: http
