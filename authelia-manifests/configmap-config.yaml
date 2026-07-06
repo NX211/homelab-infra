@@ -1,0 +1,335 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authelia-configuration
+  namespace: default
+  labels:
+    app: authelia
+data:
+  configuration.yml: |
+    server:
+      address: tcp://0.0.0.0:9091/
+      disable_healthcheck: false
+      asset_path: /config/assets/
+      buffers:
+        read: 8192
+        write: 8192
+      timeouts:
+        read: 6s
+        write: 6s
+        idle: 30s
+    
+    telemetry:
+      metrics:
+        enabled: true
+        address: tcp://0.0.0.0:9959/
+    
+    access_control:
+      default_policy: two_factor
+      networks:
+      - name: internal
+        networks:
+        - 10.0.0.0/8
+      rules:
+      - domain: "*.authoritah.tv"
+        policy: bypass
+        resources:
+          - "^/api/.*$"
+          - "^/identity/.*$"
+          - "^/triggers/.*$"
+      - domain: "*.authoritah.com"
+        policy: bypass
+        resources:
+        - "^/api/.*$"
+        - "^/identity/.*$"
+        - "^/triggers/.*$"
+        - "^/meshagents.*$"
+        - "^/meshsettings.*$"
+        - "^/agent.*$"
+        - "^/control.*$"
+        - "^/meshrelay.*$"
+      - domain: api.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:admin"
+      - domain: sonarr.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: sonarr2.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: sonarr3.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: radarr.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: radarr2.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: lidarr.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: listenarr.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: prowlarr.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: sabnzbd.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: transmission.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: bazarr.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: tdarr.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: watchstate.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: suggestarr.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+      - domain: autobrr.authoritah.com
+        policy: two_factor
+        subject:
+        - "group:media"
+    
+    identity_validation:
+      reset_password:
+        jwt_secret: '{{ secret "/secrets/core/jwt-secret" }}'
+    
+    authentication_backend:
+      password_reset:
+        disable: false
+      file:
+        path: /config/users.yml
+        password:
+          algorithm: argon2id
+          iterations: 1
+          salt_length: 16
+          parallelism: 8
+          memory: 64
+    
+    storage:
+      encryption_key: '{{ secret "/secrets/core/encryption-key" }}'
+      postgres:
+        address: 'tcp://postgres-rw:5432'
+        database: 'authelia'
+        schema: public
+        username: 'authelia'
+        password: '{{ secret "/secrets/database/database-password" }}'
+    
+    session:
+      secret: '{{ secret "/secrets/core/session-secret" }}'
+      cookies:
+        - name: 'authoritah_com_auth'
+          domain: 'authoritah.com'
+          authelia_url: 'https://login.authoritah.com'
+          same_site: 'lax'
+          inactivity: '5 minutes'
+          expiration: '1 hour'
+          remember_me: '1 month'
+        - name: 'authoritah_tv_auth'
+          domain: 'authoritah.tv'
+          authelia_url: 'https://login.authoritah.tv'
+          same_site: 'lax'
+          inactivity: '5 minutes'
+          expiration: '1 hour'
+          remember_me: '1 month'
+      name: 'authoritah_auth'
+      same_site: 'lax'
+      inactivity: '5m'
+      expiration: '1h'
+      remember_me: '1M'
+      redis:
+        host: 'redis'
+        port: 6379
+        database_index: 1
+        maximum_active_connections: 8
+        minimum_idle_connections: 0
+    
+    webauthn:
+      disable: false
+      display_name: 'Authoritah'
+      attestation_conveyance_preference: 'indirect'
+      timeout: '60s'
+    
+    notifier:
+      disable_startup_check: true
+      smtp:
+        address: 'submission://{{ secret "/secrets/smtp/host" }}:{{ secret "/secrets/smtp/port" }}'
+        timeout: 5s
+        username: '{{ secret "/secrets/smtp/user" }}'
+        password: '{{ secret "/secrets/smtp/password" }}'
+        sender: 'Authoritah Login <{{ secret "/secrets/smtp/user" }}>'
+        subject: '[Authoritah] {title}'
+        disable_require_tls: false
+        disable_html_emails: false
+    regulation:
+      max_retries: 3
+      find_time: 2m
+      ban_time: 5m
+    
+    ntp:
+      address: "time.cloudflare.com:123"
+      version: 3
+      max_desync: 3s
+      disable_startup_check: false
+      disable_failure: false
+    
+    totp:
+      issuer: authelia.com
+      algorithm: sha1
+      digits: 6
+      period: 30
+      skew: 1
+    
+    identity_providers:
+      oidc:
+        hmac_secret: '{{ secret "/secrets/oidc/oidc-hmac-secret" }}'
+        jwks:
+          - key_id: 'authoritah'
+            algorithm: 'RS256'
+            use: 'sig'
+            key: |
+              {{- fileContent "/secrets/oidc-keys/jwks-key.pem" | nindent 10 }}
+        enable_client_debug_messages: false
+        minimum_parameter_entropy: 8
+        enforce_pkce: 'public_clients_only'
+        enable_pkce_plain_challenge: false
+        enable_jwt_access_token_stateless_introspection: false
+        discovery_signed_response_alg: 'none'
+        discovery_signed_response_key_id: ''
+        require_pushed_authorization_requests: false
+        authorization_policies:
+          policy_name:
+            default_policy: 'two_factor'
+            rules:
+              - policy: 'deny'
+                subject: 'group:services'
+        lifespans:
+          access_token: '1h'
+          authorize_code: '1m'
+          id_token: '1h'
+          refresh_token: '90m'
+        cors:
+          endpoints:
+            - 'authorization'
+            - 'token'
+            - 'revocation'
+            - 'introspection'
+          allowed_origins:
+            - 'https://authoritah.com'
+          allowed_origins_from_client_redirect_uris: false
+        claims_policies:
+          karakeep:
+            id_token:
+              - 'email'
+              - 'email_verified'
+              - 'name'
+              - 'preferred_username'
+        clients:
+          - client_id: 'gitea'
+            client_name: 'Gitea'
+            client_secret: '{{ secret "/secrets/oidc-clients/gitea" }}'
+            public: false
+            authorization_policy: 'two_factor'
+            redirect_uris:
+              - 'https://authoritah.io/user/oauth2/Authoritah/callback'
+            scopes:
+              - 'openid'
+              - 'email'
+              - 'profile'
+            userinfo_signed_response_alg: 'none'
+            token_endpoint_auth_method: 'client_secret_basic'
+          - client_id: 'proxmox'
+            client_name: 'Proxmox'
+            client_secret: '{{ secret "/secrets/oidc-clients/proxmox" }}'
+            public: false
+            authorization_policy: 'two_factor'
+            require_pkce: true
+            pkce_challenge_method: 'S256'
+            redirect_uris:
+              - 'https://pve.authoritah.com'
+            scopes:
+              - 'openid'
+              - 'profile'
+              - 'email'
+            userinfo_signed_response_alg: 'none'
+          - client_id: 'immich'
+            client_name: 'Immich'
+            client_secret: '{{ secret "/secrets/oidc-clients/immich" }}'
+            public: false
+            authorization_policy: 'two_factor'
+            redirect_uris:
+              - 'https://authoritah.photo/auth/login'
+              - 'https://authoritah.photo/user-settings'
+              - 'app.immich:///oauth-callback'
+            scopes:
+              - 'openid'
+              - 'profile'
+              - 'email'
+            userinfo_signed_response_alg: 'none'
+            token_endpoint_auth_method: 'client_secret_post'
+          - client_id: 'paperless'
+            client_name: 'Paperless'
+            client_secret: '{{ secret "/secrets/oidc-clients/paperless" }}'
+            public: false
+            authorization_policy: 'two_factor'
+            require_pkce: true
+            pkce_challenge_method: 'S256'
+            scopes:
+              - 'openid'
+              - 'profile'
+              - 'email'
+              - 'groups'
+            redirect_uris:
+              - 'https://docs.authoritah.com/accounts/openid_connect/authelia/login/callback/'
+            grant_types:
+              - 'authorization_code'
+            response_types:
+              - 'code'
+            userinfo_signed_response_alg: 'none'
+            token_endpoint_auth_method: 'client_secret_basic'
+          - client_id: 'karakeeper'
+            client_name: 'karakeep'
+            client_secret: '{{ secret "/secrets/oidc-clients/karakeeper" }}'
+            public: false
+            authorization_policy: 'two_factor'
+            claims_policy: 'karakeep'
+            require_pkce: true
+            pkce_challenge_method: 'S256'
+            redirect_uris:
+              - 'https://authoritah.click/api/auth/callback/custom'
+            scopes:
+              - 'openid'
+              - 'profile'
+              - 'email'
+            grant_types:
+              - 'authorization_code'
+            response_types:
+              - 'code'
+            userinfo_signed_response_alg: 'none'
+            token_endpoint_auth_method: 'client_secret_basic'
+    
+    theme: dark

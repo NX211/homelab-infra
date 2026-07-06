@@ -48,6 +48,10 @@ spec:
         env:
         - name: TZ
           value: America/Chicago
+        # Enable the config template filter so {{ secret }} / {{ fileContent }}
+        # in configuration.yml resolve from the mounted /secrets/* files.
+        - name: X_AUTHELIA_CONFIG_FILTERS
+          value: template
 
         ports:
         - name: http
@@ -71,6 +75,22 @@ spec:
           readOnly: true
         - name: oidc-keys
           mountPath: /secrets/oidc-keys
+          readOnly: true
+        # ESO-backed secret mounts consumed by the config's {{ secret }} refs
+        - name: core-secrets
+          mountPath: /secrets/core
+          readOnly: true
+        - name: oidc-secrets
+          mountPath: /secrets/oidc
+          readOnly: true
+        - name: database-secrets
+          mountPath: /secrets/database
+          readOnly: true
+        - name: smtp-secrets
+          mountPath: /secrets/smtp
+          readOnly: true
+        - name: oidc-client-secrets
+          mountPath: /secrets/oidc-clients
           readOnly: true
         - name: tmp
           mountPath: /tmp
@@ -104,9 +124,31 @@ spec:
             memory: 1Gi
 
       volumes:
+      # configuration.yml now comes from a ConfigMap (git-managed); secrets are
+      # injected at load time by the template filter from the /secrets/* mounts.
       - name: config
+        configMap:
+          name: authelia-configuration
+          defaultMode: 0400
+      - name: core-secrets
         secret:
-          secretName: authelia-config
+          secretName: authelia-secrets
+          defaultMode: 0400
+      - name: oidc-secrets
+        secret:
+          secretName: authelia-oidc
+          defaultMode: 0400
+      - name: database-secrets
+        secret:
+          secretName: authelia-database
+          defaultMode: 0400
+      - name: smtp-secrets
+        secret:
+          secretName: authelia-smtp
+          defaultMode: 0400
+      - name: oidc-client-secrets
+        secret:
+          secretName: authelia-oidc-clients
           defaultMode: 0400
       - name: users
         secret:
