@@ -38,7 +38,7 @@ staging-app:
     - name: gcr-pull-secret-coreyalan
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
   gcrPullSecret:
-    bitwardenKey: 21c119f6-2790-43b0-bcbb-b43501628908 # GCR_SERVICE_ACCOUNT_KEY
+    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO no longer manages this pull secret
     secretName: gcr-pull-secret-coreyalan
   service:
     type: ClusterIP
