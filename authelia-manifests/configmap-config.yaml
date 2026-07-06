@@ -1,0 +1,26 @@
+---
+# Authelia configuration, GitOps-managed.
+#
+# ============================ DO NOT MERGE AS-IS ============================
+# The `configuration.yml` body below is a PLACEHOLDER. Before merging, replace
+# the placeholder with your real configuration.yml AFTER applying the migration
+# transform (see MIGRATION-RUNBOOK.md). No raw secrets go here — they are
+# injected at load time by the `template` config filter from the /secrets/*
+# mounts via `{{ secret "..." }}` / `{{ fileContent "..." }}`.
+#
+# Merging the placeholder will break Authelia. The runbook has you paste the
+# transformed config, `authelia validate-config` it, THEN merge.
+# ===========================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: authelia-configuration
+  namespace: default
+  labels:
+    app: authelia
+data:
+  configuration.yml: |
+    # <<< REPLACE THIS ENTIRE BLOCK with your transformed configuration.yml >>>
+    # See MIGRATION-RUNBOOK.md. Placeholder kept intentionally invalid so a
+    # premature merge fails loudly instead of shipping a broken auth config.
+    __REPLACE_WITH_TRANSFORMED_CONFIGURATION_YML__
