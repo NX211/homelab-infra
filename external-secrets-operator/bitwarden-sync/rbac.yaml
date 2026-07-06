@@ -13,9 +13,11 @@ metadata:
   name: bitwarden-sync
   namespace: secrets-vault
 rules:
+  # No "delete": the sync only ever creates/updates secrets (kubectl apply), so
+  # a compromised job cannot wipe the secret store.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "create", "update", "patch", "delete"]
+    verbs: ["get", "list", "create", "update", "patch"]
 ---
 # RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
