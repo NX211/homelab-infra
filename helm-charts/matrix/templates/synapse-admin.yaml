@@ -97,6 +97,12 @@ spec:
   routes:
     - match: Host(`{{ .Values.synapseAdmin.host }}`)
       kind: Rule
+      middlewares:
+        # Restrict the admin UI to trusted internal networks (RFC1918). The
+        # coreyalan.com domain has no Authelia session cookie / login portal, so
+        # an IP allowlist is the right gate here rather than forward-auth.
+        - name: internal-only
+          namespace: default
       services:
         - name: matrix-synapse-admin
           port: 80
