@@ -1,0 +1,36 @@
+# The refresher's k8s identity. Its projected token (audience = the GCP WIF
+# provider) is federated to impersonate homelab-ar-puller@platform-infra-prod.
+# The GCP side (pool/provider/SA/bindings) is in platform-infra:
+# terraform/environments/prod/homelab-wif.tf — the subject
+# `system:serviceaccount:ar-pull-system:ar-token-refresher` must match there.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ar-token-refresher
+  namespace: ar-pull-system
+---
+# Least privilege: the refresher only writes the image-pull secrets, only in the
+# staging namespace where the apps run.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ar-pull-secret-writer
+  namespace: staging
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ar-token-refresher
+  namespace: staging
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ar-pull-secret-writer
+subjects:
+  - kind: ServiceAccount
+    name: ar-token-refresher
+    namespace: ar-pull-system
