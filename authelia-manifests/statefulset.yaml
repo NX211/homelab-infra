@@ -89,6 +89,9 @@ spec:
         - name: smtp-secrets
           mountPath: /secrets/smtp
           readOnly: true
+        - name: oidc-client-secrets
+          mountPath: /secrets/oidc-clients
+          readOnly: true
         - name: tmp
           mountPath: /tmp
 
@@ -142,6 +145,10 @@ spec:
       - name: smtp-secrets
         secret:
           secretName: authelia-smtp
+          defaultMode: 0400
+      - name: oidc-client-secrets
+        secret:
+          secretName: authelia-oidc-clients
           defaultMode: 0400
       - name: users
         secret:

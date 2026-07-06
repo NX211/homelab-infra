@@ -1,5 +1,13 @@
 # Authelia config → GitOps (template-filter) migration runbook
 
+> **STATUS (done in this PR):** the config has already been transformed,
+> `authelia validate-config`-verified **clean**, and committed into
+> `configmap-config.yaml`. All 6 core secrets + the 5 OIDC client-secret hashes
+> are externalized to ESO-mounted `/secrets/*` files (no secret material in the
+> public repo). SMTP uses `submission://` (port 587). **Your only remaining
+> steps are the backup + merge + verify below (Steps 6–7).** Steps 1–5 are the
+> record of how the body was produced.
+
 Brings the out-of-band `authelia-config` **Secret** under GitOps as a
 `ConfigMap` (`authelia-configuration`), with all secrets injected at load time
 by Authelia's `template` filter from the ESO-mounted `/secrets/*` files. Also
