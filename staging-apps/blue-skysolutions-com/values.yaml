@@ -29,7 +29,7 @@ staging-app:
     - name: gcr-pull-secret-blue-sky
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
   gcrPullSecret:
-    bitwardenKey: 1b39f4bd-9517-4177-bf36-b4570146ef86
+    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO no longer manages this pull secret
     secretName: gcr-pull-secret-blue-sky
   service:
     type: ClusterIP

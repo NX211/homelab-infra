@@ -36,7 +36,7 @@ staging-app:
     - name: gcr-pull-secret-capturly-web
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
   gcrPullSecret:
-    bitwardenKey: e0f8ecb7-a120-479d-9957-b436011e97c8 # Populated by scripts/populate-capturly-web-staging-secrets.sh
+    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO no longer manages this pull secret
     secretName: gcr-pull-secret-capturly-web
   service:
     type: ClusterIP
