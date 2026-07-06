@@ -45,14 +45,12 @@ staging-app:
     enabled: true
     host: staging.dispatchr.social
     clusterIssuer: letsencrypt-prod
-    # Restrict access to the homelab WAN + on-LAN sources. CoreDNS resolves
-    # this host to the internal LB for cluster/LAN clients, so the RFC1918
-    # ranges cover internal traffic; the /32 covers external traffic that
-    # egresses through the static ISP IP.
+    # Restrict access to on-LAN/in-cluster sources (RFC1918). The external base
+    # CIDR is injected at runtime by the allowlist-reconciler from Bitwarden
+    # (STAGING_BASE_ALLOWLIST_CIDR), so it stays out of this public repo.
     ipAllowList:
       enabled: true
       sourceRange:
-        - 206.225.142.166/32
         - 10.0.0.0/8
         - 172.16.0.0/12
         - 192.168.0.0/16
