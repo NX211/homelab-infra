@@ -8,9 +8,11 @@
 
 image:
   repository: mrusse08/soularr
-  # No upstream semver tags; :latest is the published image. Pin a digest here
-  # if you want reproducible deploys.
+  # No upstream semver tags; :latest is the only published tag, so the image is
+  # pinned by digest for reproducible deploys. tag is kept for readability but
+  # digest takes precedence in the template. Refresh the digest to update.
   tag: "latest"
+  digest: "sha256:a46d4b0af667e54e816e2058ec574a03337519ee74476e17875d4c5cb3a3c288"
   pullPolicy: IfNotPresent
 
 # Pin to blacktalon — that's where /blacktalon/media/downloads lives and where
