@@ -7,6 +7,11 @@ metadata:
   labels:
     app.kubernetes.io/name: allowlist-reconciler
     app.kubernetes.io/part-of: staging
+  annotations:
+    # Restart when its ESO secret changes so new/rotated values (incl. the
+    # STAGING_BASE_ALLOWLIST_CIDR base) are picked up — envFrom is read only at
+    # container start.
+    reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
   # Single writer — avoid two replicas racing to patch the same Middleware.
