@@ -1,0 +1,35 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ar-token-refresher
+  namespace: argocd
+  annotations:
+    # Comes up before the staging apps so the pull secrets it writes exist by
+    # the time apps pull. (First write still happens on the CronJob's first run —
+    # trigger it once manually at cutover; see ar-token-refresher/README.md.)
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    path: ar-token-refresher
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ar-pull-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
