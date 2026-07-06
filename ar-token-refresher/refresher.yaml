@@ -17,7 +17,7 @@ data:
     #!/bin/sh
     set -eu
 
-    AUDIENCE="//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s"
+    AUDIENCE="//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc"
     PULLER_SA="homelab-ar-puller@platform-infra-prod.iam.gserviceaccount.com"
     REGISTRY="us-central1-docker.pkg.dev"
     NS="staging"
@@ -130,7 +130,7 @@ spec:
               projected:
                 sources:
                   - serviceAccountToken:
-                      audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s
+                      audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
                       expirationSeconds: 3600
                       path: token
             - name: script
