@@ -179,11 +179,8 @@ staging-app:
         key: 4cdc219d-df58-4ae1-9d1d-b44e012680e7
       - name: S3_SECRET_ACCESS_KEY
         key: 427dcc21-f195-4b10-a330-b44e0126811a
-      # GCP SA key for the off-cluster worker to auth to the ISOLATED staging
-      # Pub/Sub (job-queue-staging / worker-sub-staging). Scoped to staging only
-      # — see platform-infra pubsub-staging.tf. Mounted as a file by the worker.
-      - name: GCP_WORKER_SA_KEY
-        key: 01ccff5d-8bed-477d-b8e4-b46f015e8c84
+      # GCP_WORKER_SA_KEY retired — the worker now auths to the ISOLATED staging
+      # Pub/Sub keyless via Workload Identity (see worker.gcpWorkloadIdentity).
   resources:
     requests:
       cpu: 250m
@@ -221,7 +218,14 @@ staging-app:
     healthPort: 8080
     healthPath: /healthz
     gcpServiceAccountKey:
-      enabled: true # mounts GCP_WORKER_SA_KEY (externalSecrets) as the ADC file
+      enabled: false
+    # Keyless: the worker + crons impersonate dispatchr-social-worker-stg@ via
+    # Workload Identity (platform-infra homelab-wif.tf) — no SA key mounted.
+    gcpWorkloadIdentity:
+      enabled: true
+      ksaName: dispatchr-worker
+      audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+      impersonateServiceAccount: dispatchr-social-worker-stg@dispatchr-social.iam.gserviceaccount.com
     env:
       - name: GCP_PROJECT_ID
         value: dispatchr-social
