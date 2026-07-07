@@ -102,6 +102,32 @@ staging-app:
     # if/when it has a separate host; otherwise leave at prod.
     - name: COREYALAN_API_URL
       value: https://coreyalan.com
+    # Object storage. Prod uses native GCS (Workload Identity) for the member
+    # resource library, course resources and certificates; staging has no GCP
+    # identity, so it uses the in-cluster SeaweedFS S3 gateway instead. The
+    # `jlshaw` SeaweedFS identity is scoped to the two env-suffixed buckets
+    # below; the mirror seed rewrites prod's GCS file URLs onto the resources
+    # bucket host (see prisma/seeds/staging-mirror MIRROR_RESOURCES_BASE).
+    - name: STORAGE_PROVIDER
+      value: s3
+    # External endpoint (not the in-cluster Service) so the presigned URLs the
+    # app mints for members are reachable from their browsers. Same gateway the
+    # other staging apps use.
+    - name: S3_ENDPOINT
+      value: https://s3.authoritah.com
+    - name: S3_PUBLIC_URL
+      value: https://s3.authoritah.com
+    - name: S3_REGION
+      value: us-east-1
+    - name: S3_FORCE_PATH_STYLE
+      value: "true"
+    # Separate resources/certificates buckets on staging (prod collapses both
+    # into jlshaw-certificates). Member templates + course resources live in the
+    # resources bucket; issued certificates in the certificates bucket.
+    - name: S3_RESOURCES_BUCKET
+      value: jlshaw-link-resources-staging
+    - name: S3_CERTIFICATES_BUCKET
+      value: jlshaw-link-certificates-staging
   envFrom:
     - secretRef:
         name: jlshaw-staging-secrets
@@ -144,6 +170,13 @@ staging-app:
         key: 2e25370f-cab8-45ae-9a4d-b4640121f477
       - name: COREYALAN_WEBHOOK_SECRET
         key: a0f2b1c1-415b-472c-a421-b4640121ff7d
+      # SeaweedFS S3 credentials for STORAGE_PROVIDER=s3 above. The `jlshaw`
+      # identity in the seaweedfs-s3-config-json blob (Read/Write/List on the two
+      # jlshaw-link-*-staging buckets) shares these exact values.
+      - name: S3_ACCESS_KEY_ID
+        key: 191ad962-e794-4454-bd3f-b46401642956
+      - name: S3_SECRET_ACCESS_KEY
+        key: b94e5662-0a44-43b0-aff6-b46401642996
   resources:
     requests:
       cpu: 100m
