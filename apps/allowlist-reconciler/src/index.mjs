@@ -27,6 +27,12 @@ const CONFIG = {
   labelSelector: process.env.LABEL_SELECTOR || 'allowlist.coreyalan.com/managed=true',
   pollIntervalMs: Number(process.env.POLL_INTERVAL_MS) || 20000,
   port: Number(process.env.PORT) || 8080,
+  // Base CIDR(s) unioned into every managed app's allowlist, sourced from the
+  // ESO secret (Bitwarden) instead of committed values so the homelab WAN IP
+  // stays out of the public repo. Accepts a JSON array or comma-separated list.
+  // Unset ⇒ empty ⇒ behaviour unchanged (the per-app baseSourceRange still
+  // applies), so this is safe to ship before the secret exists.
+  globalBaseSourceRange: parseCidrList(process.env.STAGING_BASE_ALLOWLIST_CIDR),
 };
 
 const SA_DIR = '/var/run/secrets/kubernetes.io/serviceaccount';
@@ -41,6 +47,22 @@ function requireEnv(name) {
     process.exit(1);
   }
   return value;
+}
+
+// Parse a CIDR list from either a JSON array (`["a/32","b/32"]`) or a
+// comma-separated string (`a/32, b/32`). Empty/unset ⇒ [].
+function parseCidrList(raw) {
+  if (!raw) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const arr = JSON.parse(trimmed);
+      if (Array.isArray(arr)) return arr.map(String).map(s => s.trim()).filter(Boolean);
+    } catch {
+      // fall through to comma-split
+    }
+  }
+  return trimmed.split(',').map(s => s.trim()).filter(Boolean);
 }
 
 function log(level, msg, extra = {}) {
@@ -210,7 +232,7 @@ async function reconcileConfigMap(cm) {
     return ok;
   });
 
-  const merged = Array.from(new Set([...base, ...reviewers])).sort();
+  const merged = Array.from(new Set([...CONFIG.globalBaseSourceRange, ...base, ...reviewers])).sort();
   const appliedHash = crypto.createHash('sha256').update(merged.join(',')).digest('hex');
 
   try {

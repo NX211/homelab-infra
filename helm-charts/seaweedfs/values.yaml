@@ -94,6 +94,12 @@ buckets:
   # on synapse-media only) must be added to the seaweedfs-s3-config-json blob in
   # Bitwarden — see the example shape above.
   - synapse-media
+  # jlshaw-link staging object storage: member resource library + course
+  # resources (resources bucket) and issued certificates (certificates bucket).
+  # The scoped `jlshaw` S3 identity in the seaweedfs-s3-config-json blob already
+  # grants Read/Write/List on both.
+  - jlshaw-link-resources-staging
+  - jlshaw-link-certificates-staging
 
 # ---------------------------------------------------------------------------
 # Ingress: external S3 endpoint via Traefik + cert-manager

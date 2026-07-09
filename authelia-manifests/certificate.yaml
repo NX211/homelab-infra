@@ -11,3 +11,4 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - login.authoritah.com
+    - login.authoritah.tv

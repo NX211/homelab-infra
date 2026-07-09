@@ -27,16 +27,16 @@ staging-app:
   migration:
     enabled: true # was false — staging DB had no schema (P2021); runs prisma migrate deploy
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web-migrate
-    digest: "sha256:1fb5f660ac3364c7b03b8470fc68f7a7b9a7e9e2281e5ae6bc4c72c71e968325" # Updated by CI/CD
+    digest: "sha256:2e31210e1b71dae00e745dc87da62f86598696654eb703f82725fe0b905a7f87" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
     pullPolicy: IfNotPresent
-    digest: "sha256:3a7b827c3f6f3f7ea5972187556858d8e6b245cd15ae7bd5a365c6124f4b3e67" # Updated by CI/CD
+    digest: "sha256:05a1876ba1237b84f2a5b2d6c713e914746883ab5fe6c0456fbba0a5858e6c87" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-dispatchr
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
   gcrPullSecret:
-    bitwardenKey: 55ca8398-e8f1-442c-a64d-b42400fc91fa
+    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO no longer manages this pull secret
     secretName: gcr-pull-secret-dispatchr
   service:
     type: ClusterIP
@@ -45,14 +45,12 @@ staging-app:
     enabled: true
     host: staging.dispatchr.social
     clusterIssuer: letsencrypt-prod
-    # Restrict access to the homelab WAN + on-LAN sources. CoreDNS resolves
-    # this host to the internal LB for cluster/LAN clients, so the RFC1918
-    # ranges cover internal traffic; the /32 covers external traffic that
-    # egresses through the static ISP IP.
+    # Restrict access to on-LAN/in-cluster sources (RFC1918). The external base
+    # CIDR is injected at runtime by the allowlist-reconciler from Bitwarden
+    # (STAGING_BASE_ALLOWLIST_CIDR), so it stays out of this public repo.
     ipAllowList:
       enabled: true
       sourceRange:
-        - 206.225.142.166/32
         - 10.0.0.0/8
         - 172.16.0.0/12
         - 192.168.0.0/16
@@ -179,11 +177,8 @@ staging-app:
         key: 4cdc219d-df58-4ae1-9d1d-b44e012680e7
       - name: S3_SECRET_ACCESS_KEY
         key: 427dcc21-f195-4b10-a330-b44e0126811a
-      # GCP SA key for the off-cluster worker to auth to the ISOLATED staging
-      # Pub/Sub (job-queue-staging / worker-sub-staging). Scoped to staging only
-      # — see platform-infra pubsub-staging.tf. Mounted as a file by the worker.
-      - name: GCP_WORKER_SA_KEY
-        key: 01ccff5d-8bed-477d-b8e4-b46f015e8c84
+        # GCP_WORKER_SA_KEY retired — the worker now auths to the ISOLATED staging
+        # Pub/Sub keyless via Workload Identity (see worker.gcpWorkloadIdentity).
   resources:
     requests:
       cpu: 250m
@@ -221,7 +216,14 @@ staging-app:
     healthPort: 8080
     healthPath: /healthz
     gcpServiceAccountKey:
-      enabled: true # mounts GCP_WORKER_SA_KEY (externalSecrets) as the ADC file
+      enabled: false
+    # Keyless: the worker + crons impersonate dispatchr-social-worker-stg@ via
+    # Workload Identity (platform-infra homelab-wif.tf) — no SA key mounted.
+    gcpWorkloadIdentity:
+      enabled: true
+      ksaName: dispatchr-worker
+      audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+      impersonateServiceAccount: dispatchr-social-worker-stg@dispatchr-social.iam.gserviceaccount.com
     env:
       - name: GCP_PROJECT_ID
         value: dispatchr-social

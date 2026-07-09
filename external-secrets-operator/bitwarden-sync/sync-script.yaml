@@ -8,13 +8,20 @@ metadata:
 data:
   sync.sh: |
     #!/bin/bash
-    set -e
+    set -euo pipefail
+
+    # Pinned tooling. Downloads are verified against these checksums and the job
+    # fails closed on mismatch, so a tampered/compromised artifact cannot run.
+    KUBECTL_VERSION="v1.32.1"
+    KUBECTL_SHA256="e16c80f1a9f94db31063477eb9e61a2e24c1a4eee09ba776b029048f5369db0c"
+    BWS_VERSION="0.4.0"
+    BWS_SHA256="3b9514050e680c0bb2497f8bc6d1cd90e6a00c81db69867af251fab6c142814d"
 
     echo "=== Bitwarden to Kubernetes Secret Sync ==="
     echo "Starting sync at $(date)"
 
     # Check if BWS_ACCESS_TOKEN is set
-    if [ -z "$BWS_ACCESS_TOKEN" ]; then
+    if [ -z "${BWS_ACCESS_TOKEN:-}" ]; then
       echo "ERROR: BWS_ACCESS_TOKEN not set"
       exit 1
     fi
@@ -25,24 +32,26 @@ data:
       apt-get update -qq > /dev/null 2>&1
       apt-get install -y -qq curl unzip jq > /dev/null 2>&1
 
-      # Install kubectl
-      curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" > /dev/null 2>&1
+      # Install kubectl (version-pinned + checksum-verified)
+      curl -fsSLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+      echo "${KUBECTL_SHA256}  kubectl" | sha256sum -c -
       chmod +x kubectl
       mv kubectl /usr/local/bin/
-      echo "✓ Dependencies installed"
+      echo "✓ kubectl ${KUBECTL_VERSION} installed"
     fi
 
-    # Install bws CLI if not present
+    # Install bws CLI if not present (version-pinned + checksum-verified)
     if ! command -v bws &> /dev/null; then
       echo "Installing Bitwarden Secrets CLI..."
       cd /tmp
-      curl -LO https://github.com/bitwarden/sdk/releases/download/bws-v0.4.0/bws-x86_64-unknown-linux-gnu-0.4.0.zip
-      unzip -o bws-x86_64-unknown-linux-gnu-0.4.0.zip
+      curl -fsSLO "https://github.com/bitwarden/sdk/releases/download/bws-v${BWS_VERSION}/bws-x86_64-unknown-linux-gnu-${BWS_VERSION}.zip"
+      echo "${BWS_SHA256}  bws-x86_64-unknown-linux-gnu-${BWS_VERSION}.zip" | sha256sum -c -
+      unzip -o "bws-x86_64-unknown-linux-gnu-${BWS_VERSION}.zip"
       chmod +x bws
       mv bws /usr/local/bin/
-      rm bws-x86_64-unknown-linux-gnu-0.4.0.zip
+      rm "bws-x86_64-unknown-linux-gnu-${BWS_VERSION}.zip"
       cd -
-      echo "✓ bws CLI installed"
+      echo "✓ bws ${BWS_VERSION} installed"
     fi
 
     # List all secrets from Bitwarden

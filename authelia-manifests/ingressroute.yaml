@@ -15,5 +15,12 @@ spec:
     services:
     - name: authelia
       port: 9091
+  # Second portal host for multi-domain SSO — services on authoritah.tv redirect
+  # here so their .tv session cookie is issued by a same-domain portal.
+  - match: Host(`login.authoritah.tv`)
+    kind: Rule
+    services:
+    - name: authelia
+      port: 9091
   tls:
     secretName: authelia-manifests-tls
