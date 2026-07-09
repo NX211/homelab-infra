@@ -138,7 +138,7 @@ mas:
 elementWeb:
   enabled: true
   # Verify/update the tag at deploy time (https://github.com/element-hq/element-web/releases).
-  image: ghcr.io/element-hq/element-web:v1.12.22
+  image: ghcr.io/element-hq/element-web:v1.12.23
   host: chat.coreyalan.com
   brand: "Coreyalan Chat"
   callUrl: https://call.coreyalan.com
