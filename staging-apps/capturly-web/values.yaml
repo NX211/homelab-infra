@@ -114,6 +114,15 @@ staging-app:
         key: 2d3c2e7a-ca46-4dad-9a38-b436011e6b6d
       - name: GOOGLE_CLIENT_SECRET
         key: 9e1d77cf-da1a-4511-96b1-b436011e6e36
+      # Sign in with Apple (Auth.js). AUTH_APPLE_SECRET is a ~6-month ES256 JWT —
+      # rotate with apps/web/scripts/generate-apple-client-secret.mjs (capturly repo).
+      - name: AUTH_APPLE_ID
+        key: 0670e723-74b9-4f30-8587-b48001674110
+      - name: AUTH_APPLE_SECRET
+        key: 0cb95310-0d30-442a-9856-b48001674165
+      # Abuse-report notifications (App Store guideline 1.2) land here.
+      - name: SUPPORT_EMAIL
+        key: 2cc4c3a0-5d38-4267-be75-b4810019561f
       # Stripe
       - name: STRIPE_SECRET_KEY
         key: 31b126ea-fe87-4bf0-94f6-b436011e70d1
