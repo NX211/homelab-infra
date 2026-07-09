@@ -27,7 +27,9 @@ spec:
       - name: vpn-cluster-routes
         image: nicolaka/netshoot:v0.13
         securityContext:
+          allowPrivilegeEscalation: false
           capabilities:
+            drop: ["ALL"]
             add: ["NET_ADMIN"]
         command:
         - sh

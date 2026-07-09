@@ -3,7 +3,7 @@ name: capturly-web-staging
 description: Capturly Web - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "2.3.4"
+appVersion: "2.7.0"
 keywords:
   - capturly
   - nextjs
@@ -12,5 +12,5 @@ maintainers:
   - name: Homelab Admin
 dependencies:
   - name: staging-app
-    version: "0.7.0"
+    version: "0.7.1"
     repository: "file://../../charts/staging-app"

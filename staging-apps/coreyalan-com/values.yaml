@@ -38,7 +38,7 @@ staging-app:
     - name: gcr-pull-secret-coreyalan
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
   gcrPullSecret:
-    bitwardenKey: 21c119f6-2790-43b0-bcbb-b43501628908 # GCR_SERVICE_ACCOUNT_KEY
+    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO no longer manages this pull secret
     secretName: gcr-pull-secret-coreyalan
   service:
     type: ClusterIP
@@ -47,17 +47,17 @@ staging-app:
     enabled: true
     host: staging.coreyalan.com
     clusterIssuer: letsencrypt-prod
-    # Restrict to the homelab WAN + on-LAN/in-cluster sources (matches jlshaw &
-    # blue-sky staging). In-cluster callers (capturly/dispatchr/jlshaw → this
-    # host via split-horizon DNS) and the worker land in 10.42.x (RFC1918); the
-    # /32 is the static ISP egress IP. Webhooks here are outbound, so this
+    # Restrict to on-LAN/in-cluster sources (RFC1918). In-cluster callers
+    # (capturly/dispatchr/jlshaw → this host via split-horizon DNS) and the
+    # worker land in 10.42.x. Webhooks here are outbound, so the allowlist
     # doesn't break integrations. Closes the public-exposure gap (prod uses
     # authRateLimit; staging standardizes on the allowlist).
     ipAllowList:
       enabled: true
-      # Static BASE; the allowlist-reconciler layers reviewer IPs on top.
+      # Base = RFC1918 here + the external CIDR injected by the
+      # allowlist-reconciler from Bitwarden (STAGING_BASE_ALLOWLIST_CIDR), kept
+      # out of this public repo; reviewer IPs are layered on top too.
       sourceRange:
-        - 206.225.142.166/32
         - 10.0.0.0/8
         - 172.16.0.0/12
         - 192.168.0.0/16

@@ -48,6 +48,7 @@ static policy declarative and auditable.
 | `LABEL_SELECTOR` | default `allowlist.coreyalan.com/managed=true` |
 | `POLL_INTERVAL_MS` | default `20000` |
 | `PORT` | default `8080` |
+| `STAGING_BASE_ALLOWLIST_CIDR` | optional base CIDR(s) unioned into **every** managed app's allowlist (JSON array or comma-separated). Sourced from Bitwarden so the homelab WAN IP stays out of the repo. Unset ⇒ per-app `baseSourceRange` only. |
 
 Secrets come from Bitwarden via External Secrets (see
 `../../allowlist-reconciler/externalsecret.yaml`). RBAC is least-privilege:

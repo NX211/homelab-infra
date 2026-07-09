@@ -21,7 +21,8 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: sync
-              image: debian:bookworm-slim
+              # Pinned by digest so the base image can't change under us.
+              image: debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df
               command: ["/bin/bash"]
               args: ["/scripts/sync.sh"]
               env:
@@ -30,6 +31,17 @@ spec:
                     secretKeyRef:
                       name: bitwarden-credentials
                       key: token
+              securityContext:
+                allowPrivilegeEscalation: false
+                seccompProfile:
+                  type: RuntimeDefault
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
               volumeMounts:
                 - name: sync-script
                   mountPath: /scripts

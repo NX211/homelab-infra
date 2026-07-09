@@ -27,16 +27,16 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web-migrate
-    digest: "sha256:403a6606934ffdf296488a312ec00ff5f3a9453e8b36da633ffda373b18315eb" # Updated by CI/CD
+    digest: "sha256:0edc32d8b909447454ec44f7de059a253294fdcc32306713f637aea0ed51703f" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
     pullPolicy: IfNotPresent
-    digest: "sha256:7e8f1aec3edb2dd8a37caf184aeca199af471f4b961c3c05fe23b7efd5a36f4c" # Updated by CI/CD
+    digest: "sha256:fc608ca33e1013885cb11bfc1b335fb70b3fc13dfdc1215d6b76415a10c9cabd" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-capturly-web
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
   gcrPullSecret:
-    bitwardenKey: e0f8ecb7-a120-479d-9957-b436011e97c8 # Populated by scripts/populate-capturly-web-staging-secrets.sh
+    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO no longer manages this pull secret
     secretName: gcr-pull-secret-capturly-web
   service:
     type: ClusterIP
@@ -45,14 +45,12 @@ staging-app:
     enabled: true
     host: staging.capturly.app
     clusterIssuer: letsencrypt-prod
-    # Restrict access to the homelab WAN + on-LAN sources. CoreDNS resolves
-    # this host to the internal LB for cluster/LAN clients, so the RFC1918
-    # ranges cover internal traffic; the /32 covers external traffic that
-    # egresses through the static ISP IP.
+    # Restrict access to on-LAN/in-cluster sources (RFC1918). The external base
+    # CIDR is injected at runtime by the allowlist-reconciler from Bitwarden
+    # (STAGING_BASE_ALLOWLIST_CIDR), so it stays out of this public repo.
     ipAllowList:
       enabled: true
       sourceRange:
-        - 206.225.142.166/32
         - 10.0.0.0/8
         - 172.16.0.0/12
         - 192.168.0.0/16
@@ -116,6 +114,15 @@ staging-app:
         key: 2d3c2e7a-ca46-4dad-9a38-b436011e6b6d
       - name: GOOGLE_CLIENT_SECRET
         key: 9e1d77cf-da1a-4511-96b1-b436011e6e36
+      # Sign in with Apple (Auth.js). AUTH_APPLE_SECRET is a ~6-month ES256 JWT —
+      # rotate with apps/web/scripts/generate-apple-client-secret.mjs (capturly repo).
+      - name: AUTH_APPLE_ID
+        key: 0670e723-74b9-4f30-8587-b48001674110
+      - name: AUTH_APPLE_SECRET
+        key: 0cb95310-0d30-442a-9856-b48001674165
+      # Abuse-report notifications (App Store guideline 1.2) land here.
+      - name: SUPPORT_EMAIL
+        key: 2cc4c3a0-5d38-4267-be75-b4810019561f
       # Stripe
       - name: STRIPE_SECRET_KEY
         key: 31b126ea-fe87-4bf0-94f6-b436011e70d1
