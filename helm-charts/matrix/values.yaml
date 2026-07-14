@@ -110,7 +110,7 @@ synapseEndpoint: http://matrix-matrix-synapse:8008
 # --------------------------------------------------------------------------
 mas:
   enabled: true
-  image: ghcr.io/element-hq/matrix-authentication-service:1.19.0
+  image: ghcr.io/element-hq/matrix-authentication-service:1.20.0
   host: auth.coreyalan.com
   # ULID for the Google upstream provider; the Google redirect URI is derived
   # from it: https://auth.coreyalan.com/upstream/callback/<this>
@@ -138,7 +138,7 @@ mas:
 elementWeb:
   enabled: true
   # Verify/update the tag at deploy time (https://github.com/element-hq/element-web/releases).
-  image: ghcr.io/element-hq/element-web:v1.12.22
+  image: ghcr.io/element-hq/element-web:v1.12.23
   host: chat.coreyalan.com
   brand: "Coreyalan Chat"
   callUrl: https://call.coreyalan.com
@@ -206,7 +206,7 @@ rtc:
         cpu: 200m
         memory: 128Mi
   elementCall:
-    image: ghcr.io/element-hq/element-call:v0.20.3
+    image: ghcr.io/element-hq/element-call:v0.21.0
     resources:
       requests:
         cpu: 10m
