@@ -151,13 +151,16 @@ elementWeb:
       memory: 128Mi
 
 # --------------------------------------------------------------------------
-# synapse-admin (etke.cc fork) — admin web UI at admin.coreyalan.com.
+# ketesa (etke.cc) — admin web UI at admin.coreyalan.com. Formerly the etke.cc
+# synapse-admin fork (ghcr.io/etkecc/synapse-admin), renamed to ketesa and
+# renumbered to v1.x; a drop-in replacement (same static-web-server image,
+# port, config layout, and restrictBaseUrl key).
 # Static SPA; pinned to our homeserver via restrictBaseUrl. Log in with an
 # admin access token (password login is disabled under MAS).
 # --------------------------------------------------------------------------
 synapseAdmin:
   enabled: true
-  image: ghcr.io/etkecc/synapse-admin:v0.11.4-etke54
+  image: ghcr.io/etkecc/ketesa:v1.3.0
   host: admin.coreyalan.com
   resources:
     requests:
