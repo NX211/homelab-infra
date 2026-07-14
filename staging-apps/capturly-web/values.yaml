@@ -152,6 +152,13 @@ staging-app:
         key: fd98d9bf-a76e-4fdb-b402-b456015c3211
       - name: STUDIO_GUEST_INVITES_ENABLED
         key: a792bedc-b944-4c98-a33f-b456015c34b0
+      # Scheduled sessions — HMAC secret for calendar-invite join links
+      # (rotating invalidates outstanding links) + AES-256-GCM key for
+      # Google Calendar OAuth tokens at rest (lib/crypto/tokenVault.ts)
+      - name: SCHEDULE_JOIN_KEY_SECRET
+        key: 948b44b3-783b-4988-9e02-b48601755ec6
+      - name: CALENDAR_TOKEN_ENC_KEY
+        key: 75967583-1a02-4c71-96bb-b48601755f05
       # Desktop license signing (Ed25519 keypair, distinct from prod)
       - name: LICENSE_PRIVATE_KEY
         key: 5b2ce9b6-1332-479d-a239-b456015c3743
