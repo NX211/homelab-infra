@@ -43,11 +43,12 @@ spec:
           image: {{ .Values.synapseAdmin.image }}
           ports:
             - name: http
-              # etke.cc image runs static-web-server on 8080 (SERVER_PORT=8080)
+              # ketesa image runs static-web-server on 8080 (SERVER_PORT=8080)
               containerPort: 8080
           readinessProbe:
             httpGet:
-              path: /config.json
+              # static-web-server health endpoint (SERVER_HEALTH=true)
+              path: /health
               port: http
             initialDelaySeconds: 3
             periodSeconds: 10
@@ -59,7 +60,8 @@ spec:
               drop: ["ALL"]
           volumeMounts:
             - name: config
-              # static-web-server web root (SERVER_FALLBACK_PAGE=/var/public/index.html)
+              # static-web-server web root: /var/public is symlinked to the
+              # image web root (/home/sws/public), so config.json is served here.
               mountPath: /var/public/config.json
               subPath: config.json
               readOnly: true

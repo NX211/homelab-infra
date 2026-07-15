@@ -23,6 +23,12 @@ data:
             - name: compat
             - name: graphql
             - name: assets
+            # MAS admin API — required by the ketesa admin UI (sessions,
+            # registration tokens, email management) which calls it from the
+            # browser. Guarded by the urn:mas:admin scope, granted only to
+            # policy.data.admin_users below, so exposure on the public listener
+            # is authenticated rather than open.
+            - name: adminapi
           binds:
             - address: "[::]:8080"
         - name: internal
@@ -71,6 +77,16 @@ data:
     # suffix. Applies to Google signups too (email is required above).
     policy:
       data:
+        {{- with .Values.mas.adminUsers }}
+        # Usernames (MAS localparts) allowed to request admin scopes. MAS grants
+        # these accounts both urn:mas:admin (MAS admin API) and urn:synapse:admin:*
+        # (Synapse admin API), so this is the single authorization gate for the
+        # ketesa admin UI. Empty list = no admin access.
+        admin_users:
+          {{- range . }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- end }}
         emails:
           allowed_addresses:
             suffixes:
