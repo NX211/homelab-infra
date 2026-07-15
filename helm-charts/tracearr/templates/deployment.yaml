@@ -1,0 +1,174 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tracearr.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tracearr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.tracearr.replicaCount }}
+  strategy:
+    type: Recreate  # singleton poller
+  selector:
+    matchLabels:
+      {{- include "tracearr.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "tracearr.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+        {{- with .Values.tracearr.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.tracearr.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "tracearr.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tracearr.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 60
+      initContainers:
+        {{- if .Values.timescale.enabled }}
+        - name: wait-db
+          image: busybox:1.37
+          command: ["sh", "-c", "i=0; until nc -z {{ include "tracearr.timescale.fullname" . }} {{ .Values.timescale.service.port }}; do i=$((i+1)); [ $i -ge 60 ] && exit 1; sleep 2; done"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+          securityContext:
+            runAsUser: 1001
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+        {{- end }}
+        {{- if .Values.redis.enabled }}
+        - name: wait-redis
+          image: busybox:1.37
+          command: ["sh", "-c", "i=0; until nc -z {{ include "tracearr.redis.fullname" . }} {{ .Values.redis.service.port }}; do i=$((i+1)); [ $i -ge 60 ] && exit 1; sleep 2; done"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+          securityContext:
+            runAsUser: 1001
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+        {{- end }}
+      containers:
+        - name: tracearr
+          image: {{ include "tracearr.image" . }}
+          imagePullPolicy: {{ .Values.tracearr.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            {{- range $key, $val := .Values.tracearr.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "tracearr.secretName" . }}
+                  key: JWT_SECRET
+            - name: COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "tracearr.secretName" . }}
+                  key: COOKIE_SECRET
+            # DB_PASSWORD before DATABASE_URL so $(DB_PASSWORD) resolves
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "tracearr.secretName" . }}
+                  key: DB_PASSWORD
+            - name: DATABASE_URL
+              value: {{ include "tracearr.databaseUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "tracearr.redisUrl" . | quote }}
+            {{- with .Values.tracearr.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.tracearr.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tracearr.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tracearr.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tracearr.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tracearr.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.tracearr.backups.enabled }}
+            - name: backups
+              mountPath: /data/backup
+            {{- end }}
+            {{- if .Values.tracearr.imageCache.enabled }}
+            - name: image-cache
+              mountPath: /app/data/image-cache
+            {{- end }}
+      volumes:
+        {{- if .Values.tracearr.backups.enabled }}
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ include "tracearr.fullname" . }}-backups
+        {{- end }}
+        {{- if .Values.tracearr.imageCache.enabled }}
+        - name: image-cache
+          persistentVolumeClaim:
+            claimName: {{ include "tracearr.fullname" . }}-image-cache
+        {{- end }}
+      {{- with .Values.tracearr.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tracearr.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tracearr.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tracearr.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -48,14 +48,14 @@ data:
     10.43.5.100 grafana.authoritah.com
     10.43.5.100 metrics.authoritah.com
     10.43.5.100 alerts.authoritah.com
-    10.43.5.100 sonarr.authoritah.com
-    10.43.5.100 radarr.authoritah.com
-    10.43.5.100 prowlarr.authoritah.com
-    10.43.5.100 listenarr.authoritah.com
-    10.43.5.100 sportarr.authoritah.com
-    10.43.5.100 lidarr.authoritah.com
-    10.43.5.100 lidatube.authoritah.com
-    10.43.5.100 slskd.authoritah.com
+    10.43.5.100 sonarr.authoritah.tv
+    10.43.5.100 radarr.authoritah.tv
+    10.43.5.100 prowlarr.authoritah.tv
+    10.43.5.100 listenarr.authoritah.tv
+    10.43.5.100 sportarr.authoritah.tv
+    10.43.5.100 lidarr.authoritah.tv
+    10.43.5.100 lidatube.authoritah.tv
+    10.43.5.100 slskd.authoritah.tv
     10.43.5.100 s3.authoritah.com
     10.43.5.100 staging.coreyalan.com
     10.43.5.100 staging.jlshawconsulting.com
@@ -69,8 +69,8 @@ data:
     10.43.5.100 call.coreyalan.com
     10.43.5.100 mrtc.coreyalan.com
     10.43.5.100 admin.coreyalan.com
-    10.43.5.100 sabnzbd.authoritah.com
-    10.43.5.100 jellyfin.authoritah.com
+    10.43.5.100 sabnzbd.authoritah.tv
+    10.43.5.100 jellyfin.authoritah.tv
     10.43.5.100 docs.authoritah.com
     10.43.5.100 ai.authoritah.com
     10.43.5.100 request.authoritah.com
@@ -79,17 +79,17 @@ data:
     10.43.5.100 authoritah.io
     10.43.5.100 authoritah.click
     10.43.5.100 authoritah.photo
-    10.43.5.100 kavita.authoritah.com
-    10.43.5.100 watchstate.authoritah.com
-    10.43.5.100 bazarr.authoritah.com
+    10.43.5.100 kavita.authoritah.tv
+    10.43.5.100 watchstate.authoritah.tv
+    10.43.5.100 bazarr.authoritah.tv
     10.43.5.100 stats.authoritah.tv
     10.43.5.100 join.authoritah.tv
-    10.43.5.100 suggestarr.authoritah.com
-    10.43.5.100 tdarr.authoritah.com
-    10.43.5.100 sonarr2.authoritah.com
-    10.43.5.100 sonarr3.authoritah.com
-    10.43.5.100 radarr2.authoritah.com
-    10.43.5.100 autobrr.authoritah.com
+    10.43.5.100 suggestarr.authoritah.tv
+    10.43.5.100 tdarr.authoritah.tv
+    10.43.5.100 sonarr2.authoritah.tv
+    10.43.5.100 sonarr3.authoritah.tv
+    10.43.5.100 radarr2.authoritah.tv
+    10.43.5.100 autobrr.authoritah.tv
     10.43.5.100 tools.authoritah.com
-    10.43.5.100 transmission.authoritah.com
+    10.43.5.100 transmission.authoritah.tv
     10.43.5.100 13ft.authoritah.link

@@ -1,0 +1,18 @@
+{{- if .Values.timescale.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "tracearr.timescale.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tracearr.timescale.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  ports:
+    - name: postgresql
+      port: {{ .Values.timescale.service.port }}
+      targetPort: postgresql
+      protocol: TCP
+  selector:
+    {{- include "tracearr.timescale.selectorLabels" . | nindent 4 }}
+{{- end }}

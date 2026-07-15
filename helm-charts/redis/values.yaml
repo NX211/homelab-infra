@@ -19,9 +19,13 @@ operatorRedis:
   maxmemory: "384mb"
 
 # redis-shared: persistent store for the homelab infra apps. No prod equivalent.
+# Consumers: authelia sessions (db 1), gitea sessions+cache (db 0), tracearr
+# BullMQ queue (db 3). maxmemory bumped to 512mb (limit 2Gi in the template) so a
+# tracearr queue backlog has headroom before noeviction starts refusing writes —
+# which, being instance-wide, would otherwise break authelia/gitea session writes.
 redisShared:
   enabled: true
-  maxmemory: "256mb"
+  maxmemory: "512mb"
   storage:
     size: "1Gi"
     storageClass: "local-path"

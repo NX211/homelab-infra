@@ -3,11 +3,12 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ include "tautulli.fullname" . }}-tls
+  name: {{ include "tracearr.fullname" . }}-tls
+  namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "tautulli.labels" . | nindent 4 }}
+    {{- include "tracearr.labels" . | nindent 4 }}
 spec:
-  secretName: {{ include "tautulli.fullname" . }}-tls
+  secretName: {{ include "tracearr.fullname" . }}-tls
   issuerRef:
     name: {{ .Values.ingress.clusterIssuer }}
     kind: ClusterIssuer

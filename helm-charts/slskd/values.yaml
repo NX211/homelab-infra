@@ -10,7 +10,7 @@ service:
 
 ingress:
   enabled: true
-  host: slskd.authoritah.com
+  host: slskd.authoritah.tv
   clusterIssuer: letsencrypt-prod
 
 # Pin to blacktalon — that's where /blacktalon/media/downloads/ lives

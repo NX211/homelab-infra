@@ -13,7 +13,7 @@ service:
 # Ingress configuration
 ingress:
   enabled: true
-  host: autobrr.authoritah.com
+  host: autobrr.authoritah.tv
   clusterIssuer: letsencrypt-prod
 
 # Node selection

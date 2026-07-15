@@ -6,7 +6,9 @@ metadata:
   namespace: argocd
   annotations:
     argocd-image-updater.argoproj.io/image-list: sonarr=lscr.io/linuxserver/sonarr
-    argocd-image-updater.argoproj.io/sonarr.update-strategy: semver
+    # LinuxServer tags are not valid semver (4-part + -lsNNN). Track by build date.
+    argocd-image-updater.argoproj.io/sonarr.update-strategy: newest-build
+    argocd-image-updater.argoproj.io/sonarr.allow-tags: regexp:^[\d.]+-ls\d+$
     argocd-image-updater.argoproj.io/sonarr.helm.image-name: image.repository
     argocd-image-updater.argoproj.io/sonarr.helm.image-tag: image.tag
     argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-creds
