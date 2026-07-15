@@ -13,7 +13,7 @@ service:
 # Ingress configuration
 ingress:
   enabled: true
-  host: jellyfin.authoritah.com
+  host: jellyfin.authoritah.tv
   clusterIssuer: letsencrypt-prod
 
 # Node selection
@@ -35,7 +35,7 @@ persistence:
 # Environment variables
 env:
   TZ: America/New_York
-  JELLYFIN_PublishedServerUrl: "https://jellyfin.authoritah.com"
+  JELLYFIN_PublishedServerUrl: "https://jellyfin.authoritah.tv"
 
 # Resource limits
 resources:
@@ -57,7 +57,7 @@ watchstate:
     port: 8080
   ingress:
     enabled: true
-    host: watchstate.authoritah.com
+    host: watchstate.authoritah.tv
   nodeSelector:
     kubernetes.io/hostname: yellowtalon
   env:
