@@ -6,7 +6,10 @@ metadata:
   namespace: argocd
   annotations:
     argocd-image-updater.argoproj.io/image-list: transmission=lscr.io/linuxserver/transmission
-    argocd-image-updater.argoproj.io/transmission.update-strategy: semver
+    # LinuxServer transmission tags carry an -rN revision (e.g. 4.1.2-r0-ls348),
+    # not valid semver. Track by build date, restricted to clean release tags.
+    argocd-image-updater.argoproj.io/transmission.update-strategy: newest-build
+    argocd-image-updater.argoproj.io/transmission.allow-tags: regexp:^[\d.]+-r\d+-ls\d+$
     argocd-image-updater.argoproj.io/transmission.helm.image-name: image.repository
     argocd-image-updater.argoproj.io/transmission.helm.image-tag: image.tag
     argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-creds
