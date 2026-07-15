@@ -13,7 +13,7 @@ service:
 # Ingress configuration
 ingress:
   enabled: true
-  host: kavita.authoritah.com
+  host: kavita.authoritah.tv
   clusterIssuer: letsencrypt-prod
 
 # Node selection

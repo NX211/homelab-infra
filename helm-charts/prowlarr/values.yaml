@@ -13,7 +13,7 @@ service:
 # Ingress configuration
 ingress:
   enabled: true
-  host: prowlarr.authoritah.com
+  host: prowlarr.authoritah.tv
   clusterIssuer: letsencrypt-prod
 
 # Node selection

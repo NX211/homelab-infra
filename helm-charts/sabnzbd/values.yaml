@@ -13,7 +13,7 @@ service:
 # Ingress configuration
 ingress:
   enabled: true
-  host: sabnzbd.authoritah.com
+  host: sabnzbd.authoritah.tv
   clusterIssuer: letsencrypt-prod
 
 # Node selection

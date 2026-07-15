@@ -13,7 +13,7 @@ service:
 # Ingress configuration
 ingress:
   enabled: true
-  host: suggestarr.authoritah.com
+  host: suggestarr.authoritah.tv
   clusterIssuer: letsencrypt-prod
 
 # Node selection

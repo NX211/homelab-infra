@@ -13,7 +13,7 @@ service:
 # Ingress configuration
 ingress:
   enabled: true
-  host: radarr2.authoritah.com
+  host: radarr2.authoritah.tv
   clusterIssuer: letsencrypt-prod
 
 # Node selection

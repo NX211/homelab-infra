@@ -14,7 +14,7 @@ service:
 # Ingress configuration
 ingress:
   enabled: true
-  host: tdarr.authoritah.com
+  host: tdarr.authoritah.tv
   clusterIssuer: letsencrypt-prod
 
 # Node selection
