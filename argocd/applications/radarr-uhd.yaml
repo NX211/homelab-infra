@@ -6,7 +6,9 @@ metadata:
   namespace: argocd
   annotations:
     argocd-image-updater.argoproj.io/image-list: radarr=lscr.io/linuxserver/radarr
-    argocd-image-updater.argoproj.io/radarr.update-strategy: semver
+    # LinuxServer tags are not valid semver (4-part + -lsNNN). Track by build date.
+    argocd-image-updater.argoproj.io/radarr.update-strategy: newest-build
+    argocd-image-updater.argoproj.io/radarr.allow-tags: regexp:^[\d.]+-ls\d+$
     argocd-image-updater.argoproj.io/radarr.helm.image-name: image.repository
     argocd-image-updater.argoproj.io/radarr.helm.image-tag: image.tag
     argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-creds
