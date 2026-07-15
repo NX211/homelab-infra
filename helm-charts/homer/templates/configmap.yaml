@@ -80,7 +80,7 @@ data:
             url: "https://stats.{{ .Values.media_tld }}/"
             tag: "Monitoring"
           - name: "Watchstate"
-            logo: "assets/tools/png/jellyfin.png"
+            logo: "assets/tools/png/watchstate.png"
             subtitle: "Sync Watch State Across Media Servers"
             url: "https://watchstate.authoritah.tv/"
             tag: "Sync"
