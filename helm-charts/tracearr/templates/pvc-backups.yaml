@@ -1,0 +1,19 @@
+{{- if .Values.tracearr.backups.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "tracearr.fullname" . }}-backups
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tracearr.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.tracearr.backups.storageClass }}
+  storageClassName: {{ .Values.tracearr.backups.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.tracearr.backups.size }}
+{{- end }}

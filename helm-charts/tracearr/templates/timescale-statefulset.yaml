@@ -1,0 +1,118 @@
+{{- if .Values.timescale.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "tracearr.timescale.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "tracearr.timescale.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "tracearr.timescale.fullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "tracearr.timescale.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tracearr.timescale.selectorLabels" . | nindent 8 }}
+        {{- with .Values.timescale.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.timescale.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.timescale.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: timescale
+          image: "{{ .Values.timescale.image.repository }}:{{ .Values.timescale.image.tag }}"
+          imagePullPolicy: {{ .Values.timescale.image.pullPolicy }}
+          args:
+            - postgres
+            {{- range .Values.timescale.postgresArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              value: tracearr
+            - name: POSTGRES_DB
+              value: tracearr
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "tracearr.secretName" . }}
+                  key: DB_PASSWORD
+            - name: PGDATA
+              value: /home/postgres/pgdata/data
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "tracearr"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "tracearr"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- with .Values.timescale.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.timescale.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /home/postgres/pgdata
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.timescale.shmSize }}
+      {{- with .Values.timescale.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.timescale.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.timescale.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "tracearr.timescale.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- if .Values.timescale.persistence.storageClass }}
+        storageClassName: {{ .Values.timescale.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.timescale.persistence.size }}
+{{- end }}

@@ -31,7 +31,8 @@ spec:
         memory: 256Mi
       limits:
         cpu: "1"
-        memory: 1Gi
+        # Above maxmemory (512mb) for redis overhead + AOF buffers.
+        memory: 2Gi
   storage:
     volumeClaimTemplate:
       spec:
