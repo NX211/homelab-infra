@@ -100,7 +100,7 @@ machineLearning:
   enabled: true
   image:
     repository: ghcr.io/immich-app/immich-machine-learning
-    tag: "v3.0.2"
+    tag: "v3.0.3"
     pullPolicy: IfNotPresent
   service:
     port: 3003
