@@ -9,7 +9,9 @@ metadata:
     app: authelia
 spec:
   forwardAuth:
-    address: http://authelia:{{ .Values.service.httpPort }}/api/verify?rd=https://{{ .Values.domain }}
+    # Domain-aware endpoint — Authelia picks the portal per request domain from
+    # session.cookies[]. Do not hardcode ?rd= (breaks multi-domain SSO).
+    address: http://authelia:{{ .Values.service.httpPort }}/api/authz/forward-auth
     trustForwardHeader: true
     authResponseHeaders:
       - Remote-User

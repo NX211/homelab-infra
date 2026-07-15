@@ -8,7 +8,11 @@ metadata:
     app: authelia
 spec:
   forwardAuth:
-    address: http://authelia:9091/api/verify?rd=https://login.authoritah.com
+    # Domain-aware endpoint: Authelia selects the login portal per the request's
+    # domain (authoritah.com → login.authoritah.com, authoritah.tv →
+    # login.authoritah.tv) from session.cookies[]. A hardcoded ?rd= would pin
+    # every app to one portal and break multi-domain SSO (.tv redirect loop).
+    address: http://authelia:9091/api/authz/forward-auth
     trustForwardHeader: true
     authResponseHeaders:
       - Remote-User
