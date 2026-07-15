@@ -38,29 +38,28 @@ data:
       # NOT a wildcard — so infra hosts (grafana/metrics/alerts/cd/pve/…) keep
       # full two_factor on their /api surface.
       - domain:
-        - sonarr.authoritah.com
-        - sonarr2.authoritah.com
-        - sonarr3.authoritah.com
-        - radarr.authoritah.com
-        - radarr2.authoritah.com
-        - lidarr.authoritah.com
-        - listenarr.authoritah.com
-        - lidatube.authoritah.com
-        - prowlarr.authoritah.com
-        - sabnzbd.authoritah.com
-        - transmission.authoritah.com
-        - bazarr.authoritah.com
-        - tdarr.authoritah.com
-        - watchstate.authoritah.com
-        - suggestarr.authoritah.com
-        - autobrr.authoritah.com
-        - sportarr.authoritah.com
-        - slskd.authoritah.com
-        - jellyfin.authoritah.com
+        - sonarr.authoritah.tv
+        - sonarr2.authoritah.tv
+        - sonarr3.authoritah.tv
+        - radarr.authoritah.tv
+        - radarr2.authoritah.tv
+        - lidarr.authoritah.tv
+        - listenarr.authoritah.tv
+        - lidatube.authoritah.tv
+        - prowlarr.authoritah.tv
+        - sabnzbd.authoritah.tv
+        - transmission.authoritah.tv
+        - bazarr.authoritah.tv
+        - tdarr.authoritah.tv
+        - watchstate.authoritah.tv
+        - suggestarr.authoritah.tv
+        - autobrr.authoritah.tv
+        - sportarr.authoritah.tv
+        - slskd.authoritah.tv
+        - jellyfin.authoritah.tv
         - request.authoritah.com
         - request.authoritah.tv
         - join.authoritah.tv
-        - stats.authoritah.tv
         policy: bypass
         resources:
         - "^/api/.*$"
@@ -70,63 +69,63 @@ data:
         policy: two_factor
         subject:
         - "group:admin"
-      - domain: sonarr.authoritah.com
+      - domain: sonarr.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: sonarr2.authoritah.com
+      - domain: sonarr2.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: sonarr3.authoritah.com
+      - domain: sonarr3.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: radarr.authoritah.com
+      - domain: radarr.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: radarr2.authoritah.com
+      - domain: radarr2.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: lidarr.authoritah.com
+      - domain: lidarr.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: listenarr.authoritah.com
+      - domain: listenarr.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: prowlarr.authoritah.com
+      - domain: prowlarr.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: sabnzbd.authoritah.com
+      - domain: sabnzbd.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: transmission.authoritah.com
+      - domain: transmission.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: bazarr.authoritah.com
+      - domain: bazarr.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: tdarr.authoritah.com
+      - domain: tdarr.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: watchstate.authoritah.com
+      - domain: watchstate.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: suggestarr.authoritah.com
+      - domain: suggestarr.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"
-      - domain: autobrr.authoritah.com
+      - domain: autobrr.authoritah.tv
         policy: two_factor
         subject:
         - "group:media"

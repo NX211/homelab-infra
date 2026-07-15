@@ -13,7 +13,7 @@ service:
 # Ingress configuration
 ingress:
   enabled: true
-  host: sportarr.authoritah.com
+  host: sportarr.authoritah.tv
   clusterIssuer: letsencrypt-prod
 
 # Node selection

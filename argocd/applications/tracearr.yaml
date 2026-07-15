@@ -2,13 +2,13 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: tautulli
+  name: tracearr
   namespace: argocd
   annotations:
-    argocd-image-updater.argoproj.io/image-list: tautulli=lscr.io/linuxserver/tautulli
-    argocd-image-updater.argoproj.io/tautulli.update-strategy: semver
-    argocd-image-updater.argoproj.io/tautulli.helm.image-name: image.repository
-    argocd-image-updater.argoproj.io/tautulli.helm.image-tag: image.tag
+    argocd-image-updater.argoproj.io/image-list: tracearr=ghcr.io/connorgallopo/tracearr
+    argocd-image-updater.argoproj.io/tracearr.update-strategy: semver
+    argocd-image-updater.argoproj.io/tracearr.helm.image-name: tracearr.image.repository
+    argocd-image-updater.argoproj.io/tracearr.helm.image-tag: tracearr.image.tag
     argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-creds
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -17,7 +17,7 @@ spec:
   source:
     repoURL: https://github.com/NX211/homelab-infra.git
     targetRevision: HEAD
-    path: helm-charts/tautulli
+    path: helm-charts/tracearr
   destination:
     server: https://kubernetes.default.svc
     namespace: default
