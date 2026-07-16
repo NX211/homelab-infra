@@ -375,4 +375,21 @@ data:
               - 'profile'
               - 'email'
             userinfo_signed_response_alg: 'none'
+          - client_id: 'jellyfin'
+            client_name: 'Jellyfin'
+            client_secret: '{{ secret "/secrets/oidc-clients/jellyfin" }}'
+            public: false
+            authorization_policy: 'two_factor'
+            redirect_uris:
+              - 'https://jellyfin.authoritah.tv/sso/OID/redirect/authelia'
+            scopes:
+              - 'openid'
+              - 'profile'
+              - 'groups'
+            grant_types:
+              - 'authorization_code'
+            response_types:
+              - 'code'
+            userinfo_signed_response_alg: 'none'
+            token_endpoint_auth_method: 'client_secret_post'
     theme: dark
