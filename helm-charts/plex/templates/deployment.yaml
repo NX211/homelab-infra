@@ -73,6 +73,9 @@ spec:
         - name: tv-uhd
           mountPath: /tv-uhd
           readOnly: true
+        - name: sports
+          mountPath: /sports
+          readOnly: true
         - name: kids
           mountPath: /kids
           readOnly: true
@@ -121,6 +124,10 @@ spec:
       - name: tv-uhd
         hostPath:
           path: {{ .Values.persistence.media.tvUhd.hostPath }}
+          type: Directory
+      - name: sports
+        hostPath:
+          path: {{ .Values.persistence.media.sports.hostPath }}
           type: Directory
       - name: kids
         hostPath:
