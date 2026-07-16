@@ -27,11 +27,11 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web-migrate
-    digest: "sha256:6b67eec814802e053091484d52b1aaea73ec9fe9c3408b7486297760c0d97b12" # Updated by CI/CD
+    digest: "sha256:eff86beb2931ad8cb79044138f26ee08a0ae655f8c396f0ae64ed0c715ca7054" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
     pullPolicy: IfNotPresent
-    digest: "sha256:74733abf32f9a83e71f9492bdc024a0de6b83ea7a0b533f08f5b4c23280965ea" # Updated by CI/CD
+    digest: "sha256:b6377de1fe2ceef1d0ec2071fa205c27302c4f85a930945e035f7b4fb9f4b918" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-capturly-web
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
