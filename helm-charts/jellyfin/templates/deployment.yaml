@@ -22,6 +22,29 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.ssoAutoRedirect.enabled }}
+      initContainers:
+      - name: inject-sso-autoredirect
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          cp -a /jellyfin/jellyfin-web/. /web/
+          # index.html is minified onto one line, so insert the snippet at the
+          # </body> position within the line (substr is metacharacter-safe).
+          awk 'BEGIN{while((getline l < "/inject/inject.html")>0)s=s l "\n"}
+          {p=index($0,"</body>"); if(p>0){printf "%s",substr($0,1,p-1); printf "%s",s; print substr($0,p)} else print}' \
+            /jellyfin/jellyfin-web/index.html > /web/index.html
+        volumeMounts:
+        - name: web
+          mountPath: /web
+        - name: sso-inject
+          mountPath: /inject
+          readOnly: true
+      {{- end }}
       containers:
       - name: jellyfin
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -61,6 +84,10 @@ spec:
           mountPath: /media
           readOnly: true
         {{- end }}
+        {{- if .Values.ssoAutoRedirect.enabled }}
+        - name: web
+          mountPath: /jellyfin/jellyfin-web
+        {{- end }}
         resources:
           {{- toYaml .Values.resources | nindent 10 }}
       volumes:
@@ -69,6 +96,13 @@ spec:
           claimName: {{ include "jellyfin.fullname" . }}-config
       - name: cache
         emptyDir: {}
+      {{- if .Values.ssoAutoRedirect.enabled }}
+      - name: web
+        emptyDir: {}
+      - name: sso-inject
+        configMap:
+          name: {{ include "jellyfin.fullname" . }}-sso-autoredirect
+      {{- end }}
       {{- if .Values.persistence.media.enabled }}
       - name: media
         hostPath:

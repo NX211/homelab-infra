@@ -37,6 +37,14 @@ env:
   TZ: America/New_York
   JELLYFIN_PublishedServerUrl: "https://jellyfin.authoritah.tv"
 
+# Auto-redirect the web login page to the SSO provider. An initContainer
+# injects a small script into jellyfin-web/index.html at startup. Load a login
+# URL containing "local" (e.g. .../web/index.html#/login.html?local=1) to reach
+# the native username/password form as an admin fallback.
+ssoAutoRedirect:
+  enabled: true
+  startPath: /sso/OID/start/authelia
+
 # Resource limits
 resources:
   requests:
