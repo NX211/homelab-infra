@@ -39,6 +39,8 @@ persistence:
       hostPath: /blacktalon/media/tv
     tvUhd:
       hostPath: /blacktalon/media/tv-uhd
+    sports:
+      hostPath: /blacktalon/media/sports
     kids:
       hostPath: /blacktalon/media/kids
     anime:
