@@ -1,0 +1,32 @@
+{{- if .Values.ssoAutoRedirect.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "jellyfin.fullname" . }}-sso-autoredirect
+  labels:
+    {{- include "jellyfin.labels" . | nindent 4 }}
+data:
+  # Injected verbatim into jellyfin-web/index.html (before </body>) by the
+  # inject-sso-autoredirect initContainer. Auto-redirects the web login page
+  # to the SSO provider. Escape hatch: load a login URL containing "local"
+  # (e.g. .../web/index.html#/login.html?local=1) to reach the native form.
+  inject.html: |
+    <script>
+    (function () {
+      'use strict';
+      var START = {{ .Values.ssoAutoRedirect.startPath | quote }};
+      function href() { return (window.location.href || '').toLowerCase(); }
+      function onLoginPage() { return href().indexOf('login') !== -1; }
+      function bypassed() { return href().indexOf('local') !== -1; }
+      function go() {
+        if (window.__ssoRedirecting || bypassed() || !onLoginPage()) return;
+        window.__ssoRedirecting = true;
+        window.location.replace(START);
+      }
+      window.addEventListener('hashchange', go);
+      document.addEventListener('DOMContentLoaded', go);
+      go();
+    })();
+    </script>
+{{- end }}
