@@ -24,8 +24,21 @@ data:
         window.__ssoRedirecting = true;
         window.location.replace(START);
       }
+      // The SPA routes to the login page client-side. pushState fires no
+      // event, and replaceState fires none either, so wrap both to catch it.
+      ['pushState', 'replaceState'].forEach(function (m) {
+        var orig = history[m];
+        history[m] = function () { var r = orig.apply(this, arguments); go(); return r; };
+      });
       window.addEventListener('hashchange', go);
+      window.addEventListener('popstate', go);
       document.addEventListener('DOMContentLoaded', go);
+      // Fallback: poll briefly after boot to catch the initial async route to
+      // /login before the history hooks are guaranteed to be in place.
+      var n = 0, t = setInterval(function () {
+        go();
+        if (++n > 40 || window.__ssoRedirecting) clearInterval(t);
+      }, 250);
       go();
     })();
     </script>
