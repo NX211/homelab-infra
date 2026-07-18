@@ -18,7 +18,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: business
   source:
     repoURL: ghcr.io/actions/actions-runner-controller-charts
     chart: gha-runner-scale-set
@@ -44,6 +44,8 @@ spec:
         # Runner runs the job steps in its own pod — the image IS the build env.
         template:
           spec:
+            # Outrank personal services under contention (business-plane app).
+            priorityClassName: business-critical
             securityContext:
               # runner uid/gid so the job can write the mounted cache PVC.
               fsGroup: 1001
