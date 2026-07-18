@@ -26,3 +26,11 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+  # Kyverno mutates its own policies (defaults + autogen) via its SSA field
+  # manager, which ArgoCD would otherwise flag as perpetual drift. Ignore the
+  # fields Kyverno owns; we still manage everything we set.
+  ignoreDifferences:
+    - group: kyverno.io
+      kind: ClusterPolicy
+      managedFieldsManagers:
+        - kyverno
