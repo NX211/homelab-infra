@@ -14,7 +14,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: business
   source:
     repoURL: https://github.com/NX211/homelab-infra.git
     targetRevision: main
