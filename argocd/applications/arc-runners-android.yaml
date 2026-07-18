@@ -1,0 +1,89 @@
+---
+# Capturly Android release runner scale set. Ephemeral, repo-scoped, scale-to-zero
+# GitHub Actions runners that build + sign the release AAB on homelab compute.
+# Only the TRUSTED release-android workflow (tag / workflow_dispatch) targets
+# `runs-on: homelab-android`; untrusted PR builds stay on GitHub-hosted runners.
+#
+# Auth to GitHub is via a repo-scoped GitHub App whose credentials ESO syncs from
+# Bitwarden into the `arc-github-app` secret (see arc-runners-android/). WIF to
+# GCP/Play stays keyless from the workflow — no cloud key here.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-runners-android
+  namespace: argocd
+  annotations:
+    # Sync after the controller/CRDs (wave -2) and the config app (wave -1).
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set
+    targetRevision: 0.14.2
+    helm:
+      # The scale set name is what workflows reference as `runs-on`.
+      releaseName: homelab-android
+      valuesObject:
+        githubConfigUrl: https://github.com/Corey-Alan-Consulting/capturly.app
+        # Pre-created by ESO (arc-runners-android/externalsecret-github-app.yaml).
+        githubConfigSecret: arc-github-app
+        # Point at the controller SA explicitly instead of relying on the chart's
+        # in-cluster label discovery (name derives from the arc-controller app's
+        # release name; namespace is the controller app's destination).
+        controllerServiceAccount:
+          namespace: arc-systems
+          name: arc-controller-gha-rs-controller
+        runnerScaleSetName: homelab-android
+        # Releases are infrequent and serialized; one runner keeps a single
+        # ReadWriteOnce build-cache PVC conflict-free.
+        minRunners: 0
+        maxRunners: 1
+        # Runner runs the job steps in its own pod — the image IS the build env.
+        template:
+          spec:
+            # Outrank personal services under contention (business-plane app).
+            priorityClassName: business-critical
+            securityContext:
+              # runner uid/gid so the job can write the mounted cache PVC.
+              fsGroup: 1001
+            containers:
+              - name: runner
+                image: ghcr.io/nx211/capturly-android-runner:0.1.0
+                command: ["/home/runner/run.sh"]
+                resources:
+                  requests:
+                    cpu: "2"
+                    memory: 6Gi
+                  limits:
+                    cpu: "6"
+                    memory: 12Gi
+                volumeMounts:
+                  - name: build-cache
+                    mountPath: /home/runner/.gradle
+                    subPath: gradle
+                  - name: build-cache
+                    mountPath: /home/runner/.cache/ccache
+                    subPath: ccache
+            volumes:
+              - name: build-cache
+                persistentVolumeClaim:
+                  claimName: arc-android-build-cache
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-runners
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

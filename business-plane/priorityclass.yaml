@@ -1,0 +1,14 @@
+---
+# Business workloads outrank personal self-hosted services under resource
+# pressure: a noisy media job can never preempt or starve a release build. Set
+# `priorityClassName: business-critical` on business workloads (the ARC scale set,
+# controller). Below system-critical; not the global default, so personal
+# services stay at priority 0.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: business-critical
+value: 1000000
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: "SOC-2 in-scope business workloads (build fleet). Preempts personal services under contention."

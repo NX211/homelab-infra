@@ -1,0 +1,26 @@
+---
+# The "business plane" — namespaces that carry SOC-2-in-scope workloads (the build
+# fleet today; extend the label to other business namespaces later). Labeling them
+# `plane: business` is what the NetworkPolicies and namespace-scoped Kyverno
+# policies select on, so the personal self-hosted services (media stack, etc.)
+# stay outside the boundary and cannot reach in.
+#
+# Pod Security is set to AUDIT/WARN restricted (observe) — not enforce — so we can
+# see violations before turning the gate on.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arc-systems
+  labels:
+    plane: business
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arc-runners
+  labels:
+    plane: business
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

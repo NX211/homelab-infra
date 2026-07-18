@@ -1,0 +1,45 @@
+---
+# Pod Security Standards + best-practice baseline (Kyverno's maintained bundle),
+# cluster-wide in AUDIT. This surfaces every gap (including the many personal
+# self-hosted services that run privileged / as root / with hostPath) without
+# breaking anything. Review PolicyReports in policy-reporter, then graduate
+# individual policies to Enforce — starting with the business namespaces.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno-policies
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kyverno.github.io/kyverno/
+    chart: kyverno-policies
+    targetRevision: 3.8.2
+    helm:
+      valuesObject:
+        # AUDIT everywhere first (see doc: graduate to Enforce per namespace).
+        # Baseline cluster-wide; the business namespaces additionally carry PSA
+        # `restricted` audit/warn labels, so restricted is covered where it matters.
+        validationFailureAction: Audit
+        podSecurityStandard: baseline
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+  # Kyverno mutates its own policies (defaults + autogen) via its SSA field
+  # manager, which ArgoCD would otherwise flag as perpetual drift. Ignore the
+  # fields Kyverno owns; we still manage everything we set.
+  ignoreDifferences:
+    - group: kyverno.io
+      kind: ClusterPolicy
+      managedFieldsManagers:
+        - kyverno
