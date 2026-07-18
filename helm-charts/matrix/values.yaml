@@ -191,7 +191,7 @@ rtc:
   callHost: call.coreyalan.com
   secretName: matrix-livekit
   livekit:
-    image: livekit/livekit-server:v1.13.3
+    image: livekit/livekit-server:v1.13.4
     wsPort: 7880        # signalling, proxied via Traefik (/livekit/sfu)
     tcpPort: 7881       # ICE/TCP fallback (hostPort)
     udpPort: 7882       # MUXED media UDP (hostPort) — UniFi-forward this port
