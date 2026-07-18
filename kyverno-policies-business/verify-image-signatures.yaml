@@ -32,6 +32,10 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/nx211/*"
+          # Audit mode can't rewrite the image to its digest, so mutation must be
+          # off (Kyverno rejects mutateDigest: true with Audit). Flip to true when
+          # this policy graduates to Enforce.
+          mutateDigest: false
           attestors:
             - entries:
                 - keyless:
