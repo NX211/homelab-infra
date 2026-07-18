@@ -19,7 +19,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: business
   source:
     repoURL: ghcr.io/actions/actions-runner-controller-charts
     chart: gha-runner-scale-set-controller
@@ -27,6 +27,8 @@ spec:
     helm:
       valuesObject:
         replicaCount: 1
+        # Outrank personal services under contention (business-plane app).
+        priorityClassName: business-critical
         resources:
           requests:
             cpu: 25m

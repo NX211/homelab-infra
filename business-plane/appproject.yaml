@@ -1,0 +1,36 @@
+---
+# ArgoCD project that fences the business/build apps off from the personal ones.
+# Apps in this project may deploy ONLY into the business namespaces from the
+# homelab-infra repo + the pinned upstream charts — so a personal app manifest
+# can never land in a business namespace, and vice versa. Move the build-fleet
+# Applications to `project: business` (arc-controller, arc-runners-android[-config]).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: business
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: SOC-2 in-scope business / build-fleet workloads
+  sourceRepos:
+    - https://github.com/NX211/homelab-infra.git
+    - ghcr.io/actions/actions-runner-controller-charts
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: arc-systems
+    - server: https://kubernetes.default.svc
+      namespace: arc-runners
+  # ARC installs its own cluster-scoped CRDs/RBAC; allow the kinds it needs.
+  clusterResourceWhitelist:
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

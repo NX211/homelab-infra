@@ -1,0 +1,37 @@
+---
+# Business-plane images may only come from our GHCR namespace or the ARC upstream
+# charts. Mirrors prod's restrict-image-registries, scoped by the `plane: business`
+# namespace label so the personal services are untouched. AUDIT for now.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries-business
+  annotations:
+    policies.kyverno.io/title: Restrict Image Registries (business plane)
+    policies.kyverno.io/category: Supply Chain
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: validate-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchLabels:
+                  plane: business
+      validate:
+        message: >-
+          Business-plane images must come from ghcr.io/nx211/* or
+          ghcr.io/actions/* (ARC). Found a disallowed registry.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - image: "ghcr.io/nx211/* | ghcr.io/actions/*"
+            =(initContainers):
+              - image: "ghcr.io/nx211/* | ghcr.io/actions/*"
+            containers:
+              - image: "ghcr.io/nx211/* | ghcr.io/actions/*"
