@@ -1,0 +1,56 @@
+---
+# Personal ⇒ business isolation. K3s ships a NetworkPolicy controller, so these
+# ENFORCE (unlike the other Phase 1 controls, which are audit/observe). Each
+# business namespace denies all ingress by default, then re-allows only what it
+# needs. Nothing in the personal plane can open a connection into a business
+# namespace. (Egress from the runners is governed separately by the runner's own
+# policy; tightening that to the API server + FQDN is a fine-tune item — see the
+# runbook.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: arc-systems
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  # no ingress rules ⇒ deny all inbound
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: arc-runners
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# Allow Prometheus to scrape metrics from the business namespaces. Adjust the
+# namespace name if the monitoring stack lives elsewhere.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-ingress
+  namespace: arc-systems
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-ingress
+  namespace: arc-runners
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring

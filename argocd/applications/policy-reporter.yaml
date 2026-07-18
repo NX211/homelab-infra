@@ -1,0 +1,41 @@
+---
+# Policy Reporter — the audit surface for Kyverno PolicyReports. This is how you
+# "audit the actual cluster and fine-tune before enforcing": the UI aggregates
+# every Audit-mode violation so you can see what would break under Enforce, per
+# namespace, before graduating any policy. Mirrors prod (kyverno-policy-reporter).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: policy-reporter
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kyverno.github.io/policy-reporter
+    chart: policy-reporter
+    targetRevision: 3.8.1
+    helm:
+      valuesObject:
+        # Kyverno plugin + the read-only UI (reachable in-cluster / via Tailscale;
+        # not publicly exposed — staging is internal only).
+        kyverno:
+          enabled: true
+        ui:
+          enabled: true
+        plugin:
+          kyverno:
+            enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: policy-reporter
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
