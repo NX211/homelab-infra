@@ -1,0 +1,57 @@
+---
+# Actions Runner Controller (ARC) — the operator that manages self-hosted GitHub
+# Actions runner scale sets. Installs the controller + AutoscalingRunnerSet CRDs
+# only; the runner scale set CR lives in the `arc-runners-android` app. Follows
+# the third-party-operator pattern (see external-secrets-operator, redis-operator).
+#
+# PREREQ: the chart is published to an OCI registry. Register it once so Argo can
+# pull it (public, no creds):
+#   argocd repo add ghcr.io/actions/actions-runner-controller-charts \
+#     --type helm --enable-oci
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-controller
+  namespace: argocd
+  annotations:
+    # Controller + CRDs must exist before any AutoscalingRunnerSet CR syncs.
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set-controller
+    targetRevision: 0.14.2
+    helm:
+      valuesObject:
+        replicaCount: 1
+        resources:
+          requests:
+            cpu: 25m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-systems
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # AutoscalingRunnerSet CRDs are large; SSA avoids the client-side
+      # last-applied-configuration annotation size limit.
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
