@@ -8,7 +8,7 @@
 #
 # Verify the base tag against the current runner release before bumping:
 #   https://github.com/actions/runner/releases
-FROM ghcr.io/actions/actions-runner:2.328.0
+FROM ghcr.io/actions/actions-runner:2.335.1
 
 USER root
 
