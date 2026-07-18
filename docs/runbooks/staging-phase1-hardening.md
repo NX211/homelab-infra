@@ -70,15 +70,17 @@ The policy's keyless `subject` already matches this repo's workflow identity.
 
 ## Fine-tunes to do against the live cluster (before Enforce)
 
-- **Monitoring namespace name** in `business-plane/networkpolicies.yaml`
-  (`allow-monitoring-ingress`) — set it to wherever kube-prometheus-stack runs, or
-  metrics scraping of the business namespaces will be denied.
-- **Runner egress** (the policy from #557) currently allows DNS + public 443 but
-  blocks RFC1918 — the ARC listener also needs the **Kubernetes API**. Add an egress
-  allow for the API server's address/port (control-plane IP or the service CIDR) or
-  the listener can't create runner pods. Tighten to FQDN egress only if you add
-  Cilium (K3s' built-in controller does not do FQDN policies).
+- **Monitoring namespace** — *confirmed* `monitoring` on the live cluster, which is
+  what `business-plane/networkpolicies.yaml` (`allow-monitoring-ingress`) already
+  targets. No change needed.
+- **Runner egress → Kubernetes API** — *fixed* on #557: the runner egress policy now
+  allows the API server (control-plane `10.20.0.250:6443` + `kubernetes` ClusterIP
+  `10.43.0.1:443`). FQDN egress still needs Cilium (K3s' built-in kube-router
+  controller does IP/namespace policies only, confirmed on the cluster).
 - **PriorityClass / project** wiring on the ARC apps (see isolation model).
+- **Node isolation (optional)** — nodes are role-labeled (`redtalon`=apps,compute;
+  `blacktalon`=control-plane,storage). Pin the fleet to a node via nodeSelector, or
+  taint one `plane=business:NoSchedule` + toleration, for hardware isolation.
 
 ## SOC 2 control map (Phase 1)
 
