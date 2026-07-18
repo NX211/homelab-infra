@@ -25,6 +25,23 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    # Kubernetes API server. Required so the runner can create workflow-job pods
+    # under containerMode: kubernetes (and harmless for containerMode: none). The
+    # control-plane node (blacktalon 10.20.0.250:6443) is the post-DNAT endpoint;
+    # the `kubernetes` ClusterIP (10.43.0.1:443) covers pre-DNAT. Both are inside
+    # the RFC1918 block denied below, so they must be allowed explicitly.
+    - to:
+        - ipBlock:
+            cidr: 10.20.0.250/32
+      ports:
+        - protocol: TCP
+          port: 6443
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+      ports:
+        - protocol: TCP
+          port: 443
     # Outbound HTTPS to the public internet only — private ranges (cluster
     # services, other namespaces, homelab hosts) are excluded to block lateral
     # movement.
