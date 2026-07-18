@@ -81,6 +81,23 @@ iOS is **not** covered (needs macOS hardware; stays cloud). Rationale:
 - **Audit scope:** self-hosting brings this cluster's physical/network/patching
   controls in-scope. Keep the rack access-controlled and the nodes patched.
 
+## Reusing this for another app
+
+The ARC **controller is cluster-shared** — a second app does not redeploy it. Give
+each app its **own** repo-scoped, scale-to-zero scale set on that controller
+(per-app isolation beats one shared org runner). To onboard app `foo`:
+
+1. Copy `apps/capturly-android-runner/` → build `foo`'s toolchain image (a Node/
+   container app needs a **dind-capable** image; iOS needs a Mac — not here).
+2. Copy `argocd/applications/arc-runners-android.yaml` + the `arc-runners-android/`
+   directory → new names/namespace, set `runnerScaleSetName: foo-staging`,
+   `githubConfigUrl` to `foo`'s repo, and the `capturly-arc-github-app-*` Bitwarden
+   keys to `foo`'s App.
+3. In `foo`'s CI: for a **container** build, call `deploy-workflows`'
+   `build-push-generic` with `runner: foo-staging`; for a bespoke build, set
+   `runs-on: foo-staging` directly. GitHub-hosted (`ubuntu-latest`) stays the
+   default and the break-glass fallback.
+
 ## FQDN egress (optional hardening)
 
 Plain k8s NetworkPolicy can't allowlist by hostname. If the cluster CNI is Cilium,
