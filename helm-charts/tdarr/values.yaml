@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: ghcr.io/haveagitgat/tdarr
-  tag: "2.83.01"
+  tag: "2.84.01"
   pullPolicy: IfNotPresent
 
 # Service configuration
