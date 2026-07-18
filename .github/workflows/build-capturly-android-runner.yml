@@ -26,6 +26,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # keyless Cosign signing via Sigstore/OIDC
     steps:
       - uses: actions/checkout@v7
 
@@ -38,6 +39,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: apps/capturly-android-runner
@@ -49,3 +51,14 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ env.VERSION }}
             ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless)
+        # Sign by digest (immutable). Verified in-cluster by the business-plane
+        # Kyverno policy verify-image-signatures-business (keyless, Sigstore/OIDC).
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          DIGEST: ${{ steps.build.outputs.digest }}
