@@ -1,0 +1,39 @@
+---
+# Tetragon — eBPF runtime security/observability (staging). Mirrors prod
+# (platform-infra/argocd/applications/tetragon.yaml, helm.cilium.io 1.7.0).
+# Deployed in OBSERVE mode: it records process/exec/network events but enforces
+# nothing yet. Highest-value runtime control here because the build runners
+# execute third-party build code — this is the eyes on that surface (CC6.6/6.8).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tetragon
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://helm.cilium.io
+    chart: tetragon
+    targetRevision: 1.7.0
+    helm:
+      valuesObject:
+        # Observe only — no enforcement TracingPolicies in Phase 1.
+        tetragon:
+          enablePolicyFilter: true
+        # Ship process/network events to stdout → promtail → Loki (retention per
+        # logging-monitoring-policy). Export tuning is a fine-tune item.
+        exportDirectory: /var/run/cilium/tetragon
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tetragon
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

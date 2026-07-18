@@ -1,0 +1,50 @@
+---
+# Kyverno admission engine (staging). Mirrors the prod control (platform-infra)
+# so staging can validate policy compliance, not just app behavior. Policies are
+# rolled out in AUDIT first (kyverno-policies + kyverno-policies-business apps);
+# nothing is rejected until each policy is deliberately graduated to Enforce.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno
+  namespace: argocd
+  annotations:
+    # Engine + CRDs before any policy app that references them.
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kyverno.github.io/kyverno/
+    chart: kyverno
+    targetRevision: 3.8.2
+    helm:
+      valuesObject:
+        # Single replica per controller — staging is resource-constrained. The
+        # admission webhook uses failurePolicy per policy; Audit policies never
+        # block, so a brief controller blip cannot wedge deploys.
+        admissionController:
+          replicas: 1
+        backgroundController:
+          replicas: 1
+        reportsController:
+          replicas: 1
+        cleanupController:
+          replicas: 1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

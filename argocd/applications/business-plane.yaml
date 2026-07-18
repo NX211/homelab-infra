@@ -1,0 +1,29 @@
+---
+# Business-plane isolation primitives: labeled namespaces, default-deny ingress,
+# the `business` ArgoCD project, and the business-critical PriorityClass. Kept in
+# the `default` project because it bootstraps the `business` project itself.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: business-plane
+  namespace: argocd
+  annotations:
+    # Earliest — namespaces/labels/priorityclass must exist before the build fleet.
+    argocd.argoproj.io/sync-wave: "-6"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: business-plane
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
