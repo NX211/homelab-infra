@@ -1,0 +1,166 @@
+# Atlas (infrastructure control plane) - Staging Values
+# Build once, deploy many: same image as prod, different config
+
+staging-app:
+  appName: atlas
+  appLabel: Atlas
+  fullnameOverride: atlas-staging
+  replicaCount: 1
+  # Reloader watches every Secret + ConfigMap this Deployment references and
+  # rolls the pods when any value changes (same opt-in as the other staging apps).
+  deploymentAnnotations:
+    reloader.stakater.com/auto: "true"
+  # Per-app Bitwarden secret store (least privilege)
+  bitwarden:
+    projectID: "8466d46d-9ede-4a74-9cbf-b48801422a88"
+    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+    credentialsSecret: bitwarden-staging-atlas-credentials
+  # Database provisioning
+  database:
+    enabled: true
+    superuser:
+      create: false # jlshaw owns the shared postgres-superuser-staging secret
+    userKey: 7577e8eb-1c73-46ea-8bbe-b48c015d2fd6 # ATLAS_STAGING_DB_USER
+    passwordKey: 9dbeea3b-a54c-41cb-8e23-b48c015d3016 # ATLAS_STAGING_DB_PASSWORD
+    nameKey: 3d69a34b-13d6-48e3-947e-b48c015d304a # ATLAS_STAGING_DB_NAME
+  # Migration image (built by CI alongside the app image). The migrate Job
+  # requires a pinned digest, so this stays disabled until the first
+  # atlas@X.Y.Z release publishes images and CI writes the digest below —
+  # then flip enabled to true (same bootstrap as dispatchr-social).
+  migration:
+    enabled: false
+    repository: us-central1-docker.pkg.dev/coreyalan-atlas/atlas/atlas-web-migrate
+    digest: "" # Updated by CI/CD
+  image:
+    repository: us-central1-docker.pkg.dev/coreyalan-atlas/atlas/atlas-web
+    pullPolicy: IfNotPresent
+    digest: "" # Updated by CI/CD (falls back to :latest until the first release)
+  imagePullSecrets:
+    - name: gcr-pull-secret-atlas
+  # AR pull token minted keyless via WIF (ar-token-refresher); ESO does not
+  # manage this pull secret.
+  gcrPullSecret:
+    bitwardenKey: ""
+    secretName: gcr-pull-secret-atlas
+  service:
+    type: ClusterIP
+    port: 3000
+  ingress:
+    enabled: true
+    host: staging.atlas.coreyalan.com
+    clusterIssuer: letsencrypt-prod
+    # Restrict to on-LAN/in-cluster sources (RFC1918). Atlas is the org
+    # control plane — never public ingress; the external base CIDR is
+    # injected at runtime by the allowlist-reconciler from Bitwarden
+    # (STAGING_BASE_ALLOWLIST_CIDR), so it stays out of this public repo.
+    ipAllowList:
+      enabled: true
+      sourceRange:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+      # Review-access flow: reconciler manages this Middleware's sourceRange.
+      # appName MUST equal the StagingSite.infraAppName entered in the admin UI.
+      reconcilerManaged: true
+      appName: atlas
+  env:
+    - name: NODE_ENV
+      value: production
+    # Required in production by @atlas/shared env validation (auth callbacks,
+    # absolute URLs). Not a secret, so it lives here instead of Bitwarden.
+    - name: NEXTAUTH_URL
+      value: https://staging.atlas.coreyalan.com
+    - name: NEXT_PUBLIC_APP_URL
+      value: https://staging.atlas.coreyalan.com
+    - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
+      value: staging
+    - name: SENTRY_ENVIRONMENT
+      value: staging
+    # No Redis vars: atlas supports the no-Redis mode (rate limiting falls
+    # back to in-memory and notifies Sentry). Add the redis-ng Sentinel trio
+    # + REDIS_PASSWORD here later for prod parity.
+  envFrom:
+    - secretRef:
+        name: atlas-staging-secrets
+  # External Secrets (Bitwarden "Staging - Atlas" project)
+  externalSecrets:
+    enabled: true
+    secretName: atlas-staging-secrets
+    refreshInterval: 1h
+    secrets:
+      # Auth & Core
+      - name: DATABASE_URL
+        key: 893b2060-7c40-41b6-9303-b48c015d308e
+      - name: NEXTAUTH_SECRET
+        key: 0ab1f395-f543-4566-a479-b48c015d30d1
+      # Cron bearer auth (src/lib/cron-auth.ts) + dev/service API key
+      - name: ADMIN_API_KEY
+        key: e0ee5543-2a30-44d6-8d38-b48c015d310e
+      # Master secret for per-tenant credential encryption (createFieldCipher)
+      - name: STAGING_ACCESS_SECRET
+        key: d2429d70-3b01-46ea-afea-b48c015d3154
+      # Worker/server-side Sentry (web build inlines NEXT_PUBLIC_SENTRY_DSN)
+      - name: SENTRY_DSN
+        key: 54f14bfb-d1cc-4f71-af3e-b48c015d3199
+      # Google OAuth (human operator sign-in) — values are placeholders in
+      # Bitwarden until the staging OAuth client is created; redirect URI:
+      # https://staging.atlas.coreyalan.com/api/auth/callback/google
+      - name: GOOGLE_CLIENT_ID
+        key: 054652fd-61c2-4df1-bebe-b48c015d31d1
+      - name: GOOGLE_CLIENT_SECRET
+        key: 7afa0bd1-47d9-44a2-8d08-b48c015d3210
+      # Integration creds (Cloudflare/Name.com/Mailgun-admin/GitHub-App) and
+      # console endpoints (ARGOCD_*/TRAEFIK_API_URL/KYVERNO_POLICY_REPORTER_URL)
+      # are optional in the env schema — add them here as the corresponding
+      # staging integrations are stood up.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1024Mi
+  # /api/health is dependency-free (no DB/Redis) — safe for both probes.
+  livenessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 10
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  # Scheduled work: HTTP-curl CronJobs hitting the auth-gated /api/cron/*
+  # routes (mirrors apps/web/cron-manifest.json in the atlas repo; the
+  # cron-drift test there is the schedule source of truth). In-cluster
+  # endpoints so cron health isn't coupled to ingress.
+  httpCronJobs:
+    - name: reconcile-provisioning
+      schedule: "*/15 * * * *"
+      endpoint: http://atlas-staging.staging.svc.cluster.local:3000/api/cron/reconcile-provisioning
+      secretKey: ADMIN_API_KEY
+    - name: expire-staging-grants
+      schedule: "0 * * * *"
+      endpoint: http://atlas-staging.staging.svc.cluster.local:3000/api/cron/expire-staging-grants
+      secretKey: ADMIN_API_KEY
+    - name: verify-email-domains
+      schedule: "30 * * * *"
+      endpoint: http://atlas-staging.staging.svc.cluster.local:3000/api/cron/verify-email-domains
+      secretKey: ADMIN_API_KEY
+    - name: sync-namecom-domains
+      schedule: "15 3 * * *"
+      endpoint: http://atlas-staging.staging.svc.cluster.local:3000/api/cron/sync-namecom-domains
+      secretKey: ADMIN_API_KEY
+  # Pub/Sub worker (packages/core/src/jobs/worker.ts). Disabled until the
+  # GCP side exists: isolated staging queue (job-queue-staging/worker-sub-staging)
+  # + atlas worker SA and homelab-staging WIF bindings in platform-infra
+  # (homelab-wif.tf) — then mirror dispatchr-social's worker block here.
+  worker:
+    enabled: false

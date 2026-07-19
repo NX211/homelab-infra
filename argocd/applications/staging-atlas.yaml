@@ -1,0 +1,39 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: staging-atlas
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: HEAD
+    path: staging-apps/atlas
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  # The allowlist-reconciler owns this Middleware's sourceRange (base ∪ reviewer
+  # IPs). Tell Argo to ignore that field so selfHeal won't revert runtime writes;
+  # base ranges still live in git via the chart values.
+  ignoreDifferences:
+    - group: traefik.io
+      kind: Middleware
+      name: atlas-staging-ipallowlist
+      namespace: staging
+      jsonPointers:
+        - /spec/ipAllowList/sourceRange
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
