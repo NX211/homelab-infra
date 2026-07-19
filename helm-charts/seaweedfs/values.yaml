@@ -100,6 +100,10 @@ buckets:
   # grants Read/Write/List on both.
   - jlshaw-link-resources-staging
   - jlshaw-link-certificates-staging
+  # Executed e-signature PDFs (SignWell) — private; the `jlshaw` identity needs
+  # Read/Write/List on this bucket added to the seaweedfs-s3-config-json blob
+  # in Bitwarden.
+  - jlshaw-link-signed-documents-staging
 
 # ---------------------------------------------------------------------------
 # Ingress: external S3 endpoint via Traefik + cert-manager
