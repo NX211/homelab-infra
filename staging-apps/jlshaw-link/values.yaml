@@ -128,6 +128,12 @@ staging-app:
       value: jlshaw-link-resources-staging
     - name: S3_CERTIFICATES_BUCKET
       value: jlshaw-link-certificates-staging
+    # Private bucket for executed e-signature PDFs (SignWell). Required for
+    # document-completed processing; the app fails loudly without it. The
+    # `jlshaw` S3 identity needs Read/Write/List on this bucket in the
+    # seaweedfs-s3-config-json Bitwarden blob.
+    - name: S3_SIGNED_DOCUMENTS_BUCKET
+      value: jlshaw-link-signed-documents-staging
   envFrom:
     - secretRef:
         name: jlshaw-staging-secrets
