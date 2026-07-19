@@ -2,7 +2,7 @@
 
 image:
   repository: slskd/slskd
-  tag: "0.25.1"
+  tag: "0.26.0"
   pullPolicy: IfNotPresent
 
 service:
