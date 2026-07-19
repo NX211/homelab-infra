@@ -62,6 +62,7 @@ data:
     10.43.5.100 staging.dispatchr.social
     10.43.5.100 staging.capturly.app
     10.43.5.100 staging.blue-skysolutions.com
+    10.43.5.100 staging.atlas.coreyalan.com
     # Matrix stack (server_name coreyalan.com; apex served by prod cluster).
     10.43.5.100 matrix.coreyalan.com
     10.43.5.100 auth.coreyalan.com
