@@ -134,6 +134,11 @@ staging-app:
     # seaweedfs-s3-config-json Bitwarden blob.
     - name: S3_SIGNED_DOCUMENTS_BUCKET
       value: jlshaw-link-signed-documents-staging
+    # MUST be explicit on staging: the app's fallback is test-mode only when
+    # NODE_ENV != production, and staging runs NODE_ENV=production — without
+    # this, staging would create LIVE SignWell signature documents.
+    - name: SIGNWELL_TEST_MODE
+      value: "true"
   envFrom:
     - secretRef:
         name: jlshaw-staging-secrets
@@ -183,6 +188,16 @@ staging-app:
         key: 191ad962-e794-4454-bd3f-b46401642956
       - name: S3_SECRET_ACCESS_KEY
         key: b94e5662-0a44-43b0-aff6-b46401642996
+      # SignWell e-signature. Both created as placeholders — edit the secret
+      # VALUES in Bitwarden (no chart change needed): the API key from the
+      # SignWell dashboard; the webhook id from registering
+      # https://<staging-host>/api/webhooks/signwell after deploy (it is the
+      # webhook's HMAC verification key). SIGNWELL_TEST_MODE is plain env above;
+      # template-id env vars stay unset until the client templates exist.
+      - name: SIGNWELL_API_KEY
+        key: 20ec28f3-7431-495f-aa61-b48d00ea8432
+      - name: SIGNWELL_WEBHOOK_ID
+        key: 67b640b6-0692-4a7a-b459-b48d00ea846c
   resources:
     requests:
       cpu: 100m
