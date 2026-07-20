@@ -22,7 +22,7 @@ spec:
     # drop ALL capabilities, disallow privilege escalation, seccomp RuntimeDefault.
     # Defense-in-depth on top of gVisor. Validated non-root with a smoke run of the
     # (tools-pre-baked) web + android images before enabling (3b-1).
-    set-security-context: "true"
+    set-security-context: true
   chain:
     # Chains controller runs now; keyless Sigstore signing (Fulcio/Rekor) + SLSA
     # provenance config is wired in Phase 1 with the trusted Android pipeline
