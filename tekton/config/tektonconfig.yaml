@@ -24,3 +24,9 @@ spec:
     # (design §5, ADR-0005). Left at install defaults here so Phase 0 only stands
     # the controller up.
     disabled: false
+  result:
+    # Disabled: the operator creates the Results postgres PVC with
+    # storageClassName="" (opts out of dynamic provisioning), so it never binds
+    # on this cluster and keeps TektonConfig from going Ready. Run history +
+    # evidence come from Loki + `tkn` + Chains->Rekor instead (design §3).
+    disabled: true
