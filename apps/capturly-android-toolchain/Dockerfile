@@ -7,7 +7,7 @@
 # to apps/mobile/android/build.gradle: compileSdk 36 · buildToolsVersion 36.0.0 ·
 # ndkVersion 28.2.13676358 · JDK 17. Gradle comes from the repo wrapper (cached
 # on a PVC). Node/pnpm match the repo's packageManager.
-FROM eclipse-temurin:17-jdk-jammy
+FROM eclipse-temurin:26-jdk-jammy
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
