@@ -1,0 +1,15 @@
+{{- if and (eq .Values.tier "trusted") .Values.gradleCache.enabled }}
+---
+# Persistent Gradle/ccache store for the native build. RWO is fine — releases are
+# serialized (one at a time), so no concurrent-writer conflict.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.project }}-gradle-cache
+  namespace: {{ include "bn.namespace" . }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.gradleCache.size }}
+{{- end }}

@@ -1,0 +1,30 @@
+{{- include "bn.validate" . -}}
+---
+# Build namespace, isolated per tier so untrusted PR code can never reach the
+# signing keys / cloud identity that live in a trusted namespace (design §1). The
+# `build.capturly/tier` label is what the per-tier Verdaccio ingress netpol keys on.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "bn.namespace" . }}
+  labels:
+    build.capturly/tier: {{ .Values.tier }}
+    build.capturly/project: {{ .Values.project }}
+    build.capturly/channel: {{ .Values.channel }}
+---
+# Per-(project,channel,tier) pipeline ServiceAccount.
+{{- if eq .Values.tier "trusted" }}
+# Its projected OIDC token is the per-build identity federated to GCP WIF
+# (design §5) — no static cloud key. The GCP-side pool/provider trusting this SA
+# subject is a platform-infra Terraform prereq. No linked git secret: the clone
+# mints a short-lived GitHub App token at build time.
+{{- else }}
+# Zero-secret SA: no WIF binding, no cloud audience, no linked secret. PaC injects
+# a short-lived, repo-scoped git token per run for the clone — the only credential
+# in the tier, and it is ephemeral.
+{{- end }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "bn.pipelineSA" . }}
+  namespace: {{ include "bn.namespace" . }}

@@ -42,7 +42,7 @@ go-live gates handled once, cluster-wide.
 
 ## Part B — Generalization: ApplicationSet + inventory + chart
 
-### B1. Reusable chart `charts/build-namespace/`
+### B1. Reusable chart `helm-charts/build-namespace/`
 One Helm chart renders a project's tier bundle from values, **hardened by default**.
 Conditioned on `tier`:
 
@@ -80,7 +80,7 @@ runtimeClass: gvisor
 
 ### B3. `ApplicationSet`
 A git-files generator over `build-targets/**/*.yaml` templates one Argo
-`Application` per entry (project `business`), sourcing `charts/build-namespace`
+`Application` per entry (project `business`), sourcing `helm-charts/build-namespace`
 with the entry as values. Adding an app = adding a file.
 
 ### B4. Migrate + prove
@@ -111,7 +111,7 @@ checklist.
 | Step | Work | Verify |
 |---|---|---|
 | **3a — Split egress (H2)** | Split the untrusted egress by task (clone gets internet; the arbitrary-code `checks` step gets Verdaccio only) | untrusted `checks` pod has no public egress; a test exfil fails |
-| **3b — Chart + non-root images + ApplicationSet** | Non-root toolchain images (tools pre-baked) so **H1 `set-security-context`** can be enabled cluster-wide; `charts/build-namespace` + ApplicationSet + inventory; migrate capturly | steps run non-root/drop-caps/seccomp; rendered manifests match live (+ hardening); apps Healthy |
+| **3b — Chart + non-root images + ApplicationSet** | Non-root toolchain images (tools pre-baked) so **H1 `set-security-context`** can be enabled cluster-wide; `helm-charts/build-namespace` + ApplicationSet + inventory; migrate capturly | steps run non-root/drop-caps/seccomp; rendered manifests match live (+ hardening); apps Healthy |
 | **3c — Onboard coreyalan** | One inventory entry per tier | app generated + Healthy from a single file |
 | **3d — Trusted go-live gates** | H6 fail-closed test; H7 Chains keyless + verify-on-admit | release blocks without approval; artifact has a verified attestation |
 | **3e — Blast-radius (opt)** | H8 per-project ESO machine accounts; H4 dedicated build App; H10 build node | leaked build token ≠ all secrets |
@@ -136,3 +136,53 @@ checklist.
 
 3a closes the live holes; 3b–3c deliver the one-entry model + full matrix; 3d
 gates trusted releases; 3e is folded into the above (H4/H8 are now in-scope).
+
+---
+
+## Status (2026-07-20)
+
+- **3a / H2** — ✅ split egress live.
+- **3b-1 (non-root images) + 3b-2 (H1 `set-security-context`)** — ✅ merged,
+  verified on-cluster (uid 65532, drop-ALL, seccomp).
+- **3b-3 (H3 two Verdaccio proxies)** — ✅ merged, verified (per-tier ingress
+  isolates the caches).
+- **3b-4/5 (chart + inventory + ApplicationSet + migrate)** — this change:
+  - `helm-charts/build-namespace/` renders either tier from one values file.
+  - `build-targets/<project>/<channel>-<tier>.yaml` inventory
+    (capturly `android-trusted`, `nextjs-untrusted`).
+  - `argocd/applications/build-targets.yaml` ApplicationSet (git-files generator,
+    multi-source values ref).
+  - **Regression gate:** `helm template` output diffs spec-for-spec against the
+    old hand-written bundles — comment-only deltas plus the intentional additive
+    `build.capturly/channel` label on the untrusted namespace. The old Argo apps
+    + `build-targets/capturly-*/` dirs are deleted here.
+
+### ⚠️ Migration is an Argo app *rename* (do NOT naive-merge)
+
+The old apps (`capturly-builds-trusted`, `capturly-nextjs-untrusted`) carry
+`resources-finalizer.argocd.argoproj.io`. Deleting them via root-apps prune would
+**cascade-delete the build namespaces**, then the ApplicationSet recreates them.
+The generated app names change (`capturly-android-trusted`,
+`capturly-nextjs-untrusted`) but the **namespaces/resources are identical**, so
+run the standard orphan-then-adopt sequence at merge:
+
+```sh
+# 1. Orphan (don't delete) the old apps' resources before root-apps prunes them.
+for app in capturly-builds-trusted capturly-nextjs-untrusted; do
+  kubectl -n argocd patch application "$app" --type=json \
+    -p '[{"op":"remove","path":"/metadata/finalizers"}]'
+done
+# 2. Merge the PR. root-apps deletes the old Application CRs (resources orphaned),
+#    creates the build-targets ApplicationSet, which generates the renamed apps.
+# 3. The new apps adopt the existing resources (ServerSideApply); confirm Healthy.
+kubectl -n argocd get applications capturly-android-trusted capturly-nextjs-untrusted
+```
+
+No build is in flight, so a full delete+recreate is also tolerable (only an empty
+gradle-cache PVC is lost) — but orphan-adopt avoids namespace-termination churn.
+
+### Remaining
+
+- **3c** — add coreyalan inventory entries (+ per-app WIF/secrets/App installs).
+- **3d** — H6 fail-closed test, H7 Chains keyless provenance + verify-on-admit.
+- **3e** — H9 Kata (before any untrusted native channel), H10 build node (opt).

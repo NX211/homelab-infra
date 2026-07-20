@@ -1,0 +1,20 @@
+{{- if eq .Values.tier "untrusted" }}
+---
+# Pipelines-as-Code Repository for the UNTRUSTED PR tier. PaC matches this repo's
+# PR events to this namespace and runs the .tekton/ PipelineRun here. The policy
+# gates who can trigger: fork/external PRs do not run until a maintainer comments
+# /ok-to-test (design §6) — the control that vets untrusted code before it runs.
+#
+# The PaC GitHub App must be installed on {{ .Values.repo }} first.
+apiVersion: pipelinesascode.tekton.dev/v1alpha1
+kind: Repository
+metadata:
+  name: {{ .Values.project }}
+  namespace: {{ include "bn.namespace" . }}
+spec:
+  url: https://github.com/{{ .Values.repo }}
+  settings:
+    policy:
+      pull_request: {{ .Values.pac.policy.pull_request | toJson }}
+      ok_to_test: {{ .Values.pac.policy.ok_to_test | toJson }}
+{{- end }}

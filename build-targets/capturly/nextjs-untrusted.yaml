@@ -1,0 +1,14 @@
+# Inventory entry: capturly web/nextjs PR checks (untrusted tier).
+# Rendered by charts/build-namespace via the build-targets ApplicationSet.
+# namespace -> capturly-builds-untrusted ; pipeline SA -> capturly-nextjs-untrusted.
+project: capturly
+channel: nextjs
+tier: untrusted
+repo: Corey-Alan-Consulting/capturly.app
+runtimeClass: gvisor
+
+pac:
+  policy:
+    # ⚠️ TODO: real GitHub team slug(s); the PaC App must be installed on the repo.
+    pull_request: [capturly-maintainers]
+    ok_to_test: [capturly-maintainers]

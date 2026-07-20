@@ -1,0 +1,42 @@
+# Inventory entry: capturly Android release (trusted tier).
+# Rendered by charts/build-namespace via the build-targets ApplicationSet.
+# namespace -> capturly-builds-trusted ; pipeline SA -> capturly-android-trusted.
+project: capturly
+channel: android
+tier: trusted
+repo: Corey-Alan-Consulting/capturly.app
+runtimeClass: kata          # native/NDK
+
+githubApp:
+  store: bitwarden-build-platform
+  appIdKey: 98c21209-8551-447f-8897-b48d0154e6f7      # BUILD_APP_ID (Contents:read-only App)
+  privateKeyKey: f331c75a-a7fb-4631-8c6d-b48d0154e73b # BUILD_APP_PRIVATE_KEY
+
+webhook:
+  store: bitwarden-build-platform
+  secretKey: 06a03bb9-88d3-4076-9302-b48d0154f9b6     # CAPTURLY_TEKTON_TRUSTED_WEBHOOK_SECRET
+
+signing:
+  store: bitwarden-capturly
+  keys:
+    - { secretKey: upload-keystore.jks.b64, remoteRef: d58e27ce-900d-4ae4-a178-b48100fb27a4, comment: ANDROID_KEYSTORE_BASE64 }
+    - { secretKey: store-password,          remoteRef: 3328a7d4-85af-4718-98b9-b48100fb28b3, comment: ANDROID_KEYSTORE_PASSWORD }
+    - { secretKey: key-alias,               remoteRef: 4561aaf7-9684-42f6-b2d7-b48100fb28ef, comment: ANDROID_KEY_ALIAS }
+    - { secretKey: key-password,            remoteRef: 43bc3f16-1331-43ad-b343-b48100fb2932, comment: ANDROID_KEY_PASSWORD }
+    - { secretKey: sentry-auth-token,       remoteRef: 028b61b9-62ff-46f9-ab5d-b48d01479e71, comment: ANDROID_SENTRY_AUTH_TOKEN (placeholder value — update in Bitwarden) }
+
+wif:
+  audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+  impersonationUrl: https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/play-publisher-ci@capturly-app.iam.gserviceaccount.com:generateAccessToken
+
+gradleCache:
+  enabled: true
+  size: 10Gi
+
+triggers:
+  # ⚠️ TODO: set the real host; ensure public DNS + Traefik TLS resolve to it, and
+  #    register this URL as the webhook on the capturly.app repo.
+  host: tekton-trusted.REPLACE.example
+  tagPrefix: refs/tags/@capturly/mobile@
+  pipeline:
+    path: build-catalog/pipelines/android-build.yaml

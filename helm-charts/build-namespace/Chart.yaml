@@ -1,0 +1,16 @@
+apiVersion: v2
+name: build-namespace
+description: >-
+  One Tekton build-tier bundle (namespace, identity, egress, secrets, triggers)
+  rendered from a single values file. Hardened by default; tier-conditional
+  (trusted vs untrusted). Consumed by the build-targets ApplicationSet — see
+  docs/design/tekton-phase3-plan.md.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - tekton
+  - build-platform
+  - zero-trust
+maintainers:
+  - name: Homelab Admin

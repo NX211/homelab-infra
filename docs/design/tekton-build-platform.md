@@ -315,6 +315,6 @@ homelab-infra/
   argocd/applications/build-platform-appset.yaml   # ApplicationSet over build-targets/
   build-targets/{capturly-android-trusted,capturly-nextjs-untrusted,coreyalan-nextjs-untrusted}.yaml
   build-catalog/pipelines/{android,nextjs,linux}-build.yaml + tasks/
-  charts/build-namespace/                          # per-(project,tier): ns, SA, RBAC, netpol, ESO, PaC Repo
+  helm-charts/build-namespace/                          # per-(project,tier): ns, SA, RBAC, netpol, ESO, PaC Repo
 capturly/.tekton/{android-release (trusted), nextjs-pr (untrusted)}.yaml
 ```
