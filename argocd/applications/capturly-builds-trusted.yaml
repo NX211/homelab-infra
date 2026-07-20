@@ -1,0 +1,36 @@
+---
+# capturly Android trusted-tier build namespace (Phase 1). Namespace + SA +
+# egress netpol + signing/npm ESO + WIF cred config + the android-build catalog
+# tasks. The Pipeline is git-resolved from capturly/.tekton; the trigger is added
+# after the trusted-tier trigger decision. See docs/design/tekton-build-platform.md.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: capturly-builds-trusted
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: build-targets/capturly-android-trusted
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: capturly-builds-trusted
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

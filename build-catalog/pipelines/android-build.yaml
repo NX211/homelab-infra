@@ -1,0 +1,105 @@
+---
+# Channel pipeline: android-build. Authored once here; every project consumes it
+# from its .tekton/ PipelineRun via the git resolver + params (design §4). This
+# is the TRUSTED-tier release flow: build signed AAB → in-cluster approval gate
+# → keyless Play publish. Tekton Chains signs the PipelineRun for SLSA provenance
+# automatically (configured cluster-side).
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: android-build
+  labels:
+    app.kubernetes.io/part-of: build-catalog
+spec:
+  params:
+    - name: git-url
+      type: string
+    - name: git-revision
+      type: string
+      default: ""
+    - name: toolchain-image
+      type: string
+      default: ghcr.io/nx211/capturly-android-toolchain:0.1.0
+    - name: package
+      type: string
+      default: app.capturly.mobile
+    - name: track
+      type: string
+      default: alpha
+    - name: approvers
+      type: array
+      default: ["corey"]
+    - name: approvals-required
+      type: string
+      default: "1"
+  workspaces:
+    - name: source
+    - name: gradle-cache
+      optional: true
+    - name: keystore
+    - name: npmrc
+    - name: gcp-wif
+  tasks:
+    - name: clone
+      workspaces:
+        - name: output
+          workspace: source
+      taskSpec:
+        workspaces:
+          - name: output
+        params: []
+        steps:
+          - name: git-clone
+            image: alpine/git:2.45.2
+            script: |
+              #!/bin/sh
+              set -eu
+              cd "$(workspaces.output.path)"
+              git clone --depth 1 --branch "$(params.git-revision)" \
+                "$(params.git-url)" . 2>/dev/null || git clone "$(params.git-url)" .
+              [ -n "$(params.git-revision)" ] && git checkout "$(params.git-revision)" || true
+    - name: build
+      runAfter: [clone]
+      taskRef:
+        name: build-signed-aab
+      params:
+        - name: toolchain-image
+          value: $(params.toolchain-image)
+      workspaces:
+        - { name: source, workspace: source }
+        - { name: gradle-cache, workspace: gradle-cache }
+        - { name: keystore, workspace: keystore }
+        - { name: npmrc, workspace: npmrc }
+    # ── Change-management gate (design §6, RISK-BUILD-001) ──────────────────
+    # Blocks before publish until approvals-required approvers approve. Interim
+    # Tech-Preview component; fail-closed by construction (absent approval → the
+    # run stays pending, nothing publishes). VERIFY apiVersion/params against the
+    # installed manual-approval-gate release before trusting a real release.
+    - name: release-approval
+      runAfter: [build]
+      taskRef:
+        apiVersion: openshift-pipelines.org/v1alpha1
+        kind: ApprovalTask
+      params:
+        - name: approvers
+          value: $(params.approvers)
+        - name: numberOfApprovalsRequired
+          value: $(params.approvals-required)
+        - name: description
+          value: "Approve Play release of $(params.package) to $(params.track)"
+    - name: publish
+      runAfter: [release-approval]
+      taskRef:
+        name: play-publish
+      params:
+        - name: toolchain-image
+          value: $(params.toolchain-image)
+        - name: package
+          value: $(params.package)
+        - name: track
+          value: $(params.track)
+        - name: aab-path
+          value: $(tasks.build.results.aab-path)
+      workspaces:
+        - { name: source, workspace: source }
+        - { name: gcp-wif, workspace: gcp-wif }

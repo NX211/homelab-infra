@@ -1,0 +1,40 @@
+---
+# Trusted-tier egress: allow the outbound HTTPS the release build needs (GitHub,
+# npm, Maven/Gradle, Google/Play/WIF/STS, Bitwarden) + cluster DNS + the k8s API
+# (Tekton), and DENY all other private ranges to block lateral movement into the
+# homelab. Mirrors the retired ARC egress posture; FQDN-precise allowlisting
+# would need a CiliumNetworkPolicy (noted in the runbook).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: capturly-trusted-egress
+  namespace: capturly-builds-trusted
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # Kubernetes API (Tekton pod orchestration). Adjust endpoints to the cluster.
+    - to:
+        - ipBlock: { cidr: 10.20.0.250/32 }
+      ports:
+        - { protocol: TCP, port: 6443 }
+    - to:
+        - ipBlock: { cidr: 10.43.0.1/32 }
+      ports:
+        - { protocol: TCP, port: 443 }
+    # Public HTTPS only; private ranges excluded (anti lateral-movement).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - { protocol: TCP, port: 443 }

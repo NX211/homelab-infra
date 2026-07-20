@@ -1,0 +1,62 @@
+---
+# Reusable catalog Task: publish an AAB to Google Play via keyless WIF.
+#
+# Keyless per-build identity (design §5, ADR-0005): a projected ServiceAccount
+# token (audience = the WIF pool) is exchanged by google-auth's external_account
+# credential config for the play-publisher SA — no downloaded key. The token's
+# subject is this pod's SA (capturly-android-trusted); the GCP-side pool/provider
+# that trusts the CLUSTER OIDC issuer is a platform-infra Terraform prereq.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: play-publish
+  labels:
+    app.kubernetes.io/part-of: build-catalog
+spec:
+  params:
+    - name: toolchain-image
+      type: string
+    - name: package
+      type: string
+      default: app.capturly.mobile
+    - name: track
+      type: string
+      default: alpha
+    - name: aab-path
+      description: AAB path within the source workspace (from build-signed-aab).
+      type: string
+  workspaces:
+    - name: source
+    - name: gcp-wif        # configmap: credential-config.json (external_account)
+      mountPath: /gcp
+  volumes:
+    # Projected token whose audience matches the WIF provider. TTL is short;
+    # the token is minted per-run — this is the ephemeral build identity.
+    - name: gcp-oidc-token
+      projected:
+        sources:
+          - serviceAccountToken:
+              path: token
+              expirationSeconds: 3600
+              audience: https://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/homelab-tekton/providers/homelab-oidc
+  steps:
+    - name: publish
+      image: $(params.toolchain-image)
+      workingDir: $(workspaces.source.path)/apps/mobile
+      volumeMounts:
+        - name: gcp-oidc-token
+          mountPath: /var/run/gcp
+          readOnly: true
+      env:
+        # external_account cred config points GOOGLE creds at the token file.
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /gcp/credential-config.json
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        pip install --quiet google-api-python-client google-auth
+        python3 scripts/play-upload.py \
+          --package "$(params.package)" \
+          --aab "$(workspaces.source.path)/$(params.aab-path)" \
+          --track "$(params.track)" \
+          --status completed
