@@ -45,10 +45,13 @@ fi
 echo "wrote/updated: $tmpl (plugin: $plugin)"
 
 echo "== 3/3 restart k3s to re-render containerd config =="
-if systemctl list-unit-files 2>/dev/null | grep -q '^k3s\.service'; then
+# Restart whichever unit is actually active (server runs k3s, agents k3s-agent).
+if systemctl is-active --quiet k3s; then
   sudo systemctl restart k3s          # server node (e.g. blacktalon)
-else
+elif systemctl is-active --quiet k3s-agent; then
   sudo systemctl restart k3s-agent    # agent node
+else
+  echo "WARN: neither k3s nor k3s-agent is active — restart the k3s unit manually."
 fi
 
 echo "== done. verify: sudo grep -A2 runsc ${cdir}/config*.toml =="
