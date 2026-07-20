@@ -1,0 +1,55 @@
+---
+# Channel pipeline: nextjs-build (UNTRUSTED PR tier). Clone → web-ci checks. No
+# secrets, no publish. Consumed from a project's .tekton/ PipelineRun via the git
+# resolver, which sets runtimeClassName: gvisor and the zero-secret SA. PaC
+# provides the git auth for the private clone via the bound basic-auth workspace.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: nextjs-build
+  labels:
+    app.kubernetes.io/part-of: build-catalog
+spec:
+  params:
+    - name: repo-url
+      type: string
+    - name: revision
+      type: string
+      default: ""
+  workspaces:
+    - name: source
+    - name: npmrc
+    - name: basic-auth       # PaC-provided git token for the private clone
+      optional: true
+  tasks:
+    - name: clone
+      workspaces:
+        - { name: output, workspace: source }
+        - { name: basic-auth, workspace: basic-auth }
+      taskSpec:
+        workspaces:
+          - name: output
+          - name: basic-auth
+            optional: true
+        steps:
+          - name: git-clone
+            image: alpine/git:2.45.2
+            script: |
+              #!/bin/sh
+              set -eu
+              # PaC mounts a .git-credentials/.gitconfig into the basic-auth ws.
+              if [ -f "$(workspaces.basic-auth.path)/.git-credentials" ]; then
+                cp "$(workspaces.basic-auth.path)/.git-credentials" "$HOME/.git-credentials"
+                cp "$(workspaces.basic-auth.path)/.gitconfig" "$HOME/.gitconfig" 2>/dev/null || true
+                git config --global credential.helper store
+              fi
+              cd "$(workspaces.output.path)"
+              git clone "$(params.repo-url)" .
+              [ -n "$(params.revision)" ] && git checkout "$(params.revision)" || true
+    - name: checks
+      runAfter: [clone]
+      taskRef:
+        name: web-ci
+      workspaces:
+        - { name: source, workspace: source }
+        - { name: npmrc, workspace: npmrc }

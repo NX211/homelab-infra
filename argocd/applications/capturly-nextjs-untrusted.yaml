@@ -1,0 +1,35 @@
+---
+# capturly nextjs untrusted-tier PR-check namespace (Phase 2). Zero-secret SA,
+# egress-locked, npm via Verdaccio, PaC Repository + the web-ci task. Runs under
+# gVisor (set on the PaC PipelineRun in capturly/.tekton). Design §1/§7.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: capturly-nextjs-untrusted
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: build-targets/capturly-nextjs-untrusted
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: capturly-builds-untrusted
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
