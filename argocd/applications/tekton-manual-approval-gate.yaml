@@ -1,0 +1,36 @@
+---
+# manual-approval-gate — the ApprovalTask custom task gating trusted releases
+# (design §6). Tech-Preview maturity accepted as the interim gate under
+# RISK-BUILD-001; the fail-closed verification is a Phase-1 gate before it carries
+# a real release. Independent operator (own CRDs) → SSA.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-manual-approval-gate
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: tekton/manual-approval-gate
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tekton-pipelines
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

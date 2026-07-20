@@ -1,0 +1,35 @@
+---
+# Sandbox RuntimeClasses (gvisor, kata) for the untrusted build tier (design §1).
+# Cluster-scoped; the runsc/kata handlers themselves are a node-level containerd
+# prerequisite (see the RuntimeClass manifests + runbook). Independent of Tekton,
+# so it can land early.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-runtimeclasses
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: tekton/runtimeclasses
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

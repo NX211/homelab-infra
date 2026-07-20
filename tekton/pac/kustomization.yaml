@@ -1,0 +1,18 @@
+# Pipelines-as-Code (PaC) — installed separately from the operator because the
+# operator does NOT provision PaC on non-OpenShift Kubernetes (verified against
+# the operator docs, 2026-07-20). This is the GitHub-webhook trigger + policy/ACL
+# layer (design §6): `spec.settings.policy.{pull_request,ok_to_test}` and the
+# `/ok-to-test` fork-PR gate live in the per-repo Repository CRs (Phase 1+).
+#
+# `release.k8s.yaml` is the vanilla-k8s artifact (not the OpenShift `release.yaml`).
+# Pin: v0.41.1 (2026-01-29). Verify/bump against
+# https://github.com/tektoncd/pipelines-as-code/releases.
+#
+# The ExternalSecret below materializes the PaC GitHub App creds from Bitwarden
+# into the `pipelines-as-code-secret` the controller reads. The release manifest
+# creates the `pipelines-as-code` namespace, so the ExternalSecret applies into it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://github.com/tektoncd/pipelines-as-code/releases/download/v0.41.1/release.k8s.yaml
+  - externalsecret-pac-github-app.yaml
