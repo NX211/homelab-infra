@@ -15,10 +15,10 @@ spec:
       type: string
       # Node+pnpm pre-baked (apps/build-web-toolchain) so the step runs non-root
       # (no `corepack enable` write to /usr/local). Digest pinned by CI.
-      default: ghcr.io/nx211/build-web-toolchain:0.1.0
+      default: ghcr.io/nx211/build-web-toolchain:0.1.0@sha256:acf668f6f9a7bbb9839b2eaef560efeeb88089cdcb0ce680c4c75062e10c4b45
   workspaces:
     - name: source
-    - name: npmrc            # configmap: .npmrc pointing at Verdaccio (no token)
+    - name: npmrc # configmap: .npmrc pointing at Verdaccio (no token)
       mountPath: /config/npm
   steps:
     - name: checks
