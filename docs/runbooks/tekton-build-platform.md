@@ -32,16 +32,28 @@ superseded). Design: [ADR-0017](../../../framework/decisions/0017-tekton-build-p
    - manual-approval-gate `tekton/manual-approval-gate/kustomization.yaml`
      (**confirm the tag is current** — it was pinned from memory, not verified)
 3. **PaC GitHub App** (new, replaces the retired ARC app). Create a GitHub App on
-   `Corey-Alan-Consulting/capturly.app` with permissions **Checks R/W, Contents R,
-   Metadata R, Pull requests R/W**, subscribed to **Check run, Commit comment,
-   Issue comment, Pull request, Push**. Note the App ID; generate a private key;
-   set a webhook secret. Point the App webhook at the PaC controller ingress.
-4. **Bitwarden SM** (project Capturly) — create three secrets and paste their UUIDs
-   into `tekton/pac/externalsecret-pac-github-app.yaml` (replace the `REPLACE-WITH-…`
-   placeholders):
-   - PaC GitHub App ID
-   - PaC GitHub App private key (PEM)
-   - PaC webhook secret
+   the org (installed on `Corey-Alan-Consulting/capturly.app`), private ("only on
+   this account"), webhook **Active**:
+   - Repository perms: **Checks R/W · Contents R/W · Issues R/W · Metadata R ·
+     Pull requests R/W**
+   - Organization perms: **Members R · Plan R**
+   - Events: **Check run · Check suite · Commit comment · Issue comment ·
+     Pull request** (add **Push** only for push-triggered runs)
+   - **Webhook URL** = `https://tekton-pac.coreyalan.com` (the PaC controller
+     IngressRoute; the record is code-managed in platform-infra Cloudflare).
+   - **Callback URL / Setup URL** = leave blank; **Request user authorization
+     (OAuth)** = unchecked. PaC uses the installation token, not user OAuth.
+   - **Webhook secret** = the value of `TEKTON_PAC_WEBHOOK_SECRET` in the Build
+     Platform Bitwarden project (`bws secret get
+     640f7095-4f6a-44b1-8ed1-b48d011e811f`) — already created + wired into ESO.
+   Then generate a private key (.pem) and note the App ID + Installation ID.
+4. **Bitwarden (Build Platform project)** — the webhook secret is already created
+   and referenced. Create the remaining two and paste their UUIDs into
+   `tekton/pac/externalsecret-pac-github-app.yaml`:
+   - `PAC_APP_ID` ← GitHub App ID
+   - `PAC_APP_PRIVATE_KEY` ← the private key (PEM)
+   Also grant the ESO machine account (`bitwarden-credentials`) read access to the
+   Build Platform project, and add `VERDACCIO_NPM_TOKEN` there for the proxy.
 5. **Merge the branch.** ArgoCD's app-of-apps (`root-apps`) picks up the new
    Application CRs. Sync order is wave-driven: operator/runtimeclasses (-2) →
    config/pac/mag (-1).
