@@ -63,9 +63,13 @@ wif:
   impersonationUrl: ""  # https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/<sa>:generateAccessToken
 
 # Persistent Gradle/ccache PVC (native builds). RWO — releases are serialized.
+# storageClassName is required: the cluster's local-path SC is NOT the default, so
+# an unset class never binds. local-path is WaitForFirstConsumer (binds on first
+# build pod), which Argo treats as Healthy while Pending.
 gradleCache:
   enabled: false
   size: 10Gi
+  storageClassName: local-path
 
 # Tekton Triggers: tag push -> EventListener -> PipelineRun.
 triggers:

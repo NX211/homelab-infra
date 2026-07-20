@@ -9,6 +9,7 @@ metadata:
   namespace: {{ include "bn.namespace" . }}
 spec:
   accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ .Values.gradleCache.storageClassName }}
   resources:
     requests:
       storage: {{ .Values.gradleCache.size }}

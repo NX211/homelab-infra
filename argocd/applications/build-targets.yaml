@@ -51,6 +51,27 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{.project}}-builds-{{.tier}}"
+      # Fields the ESO / Tekton-Triggers admission webhooks default in on the
+      # server (not in the chart) — ignore them so trusted apps read Synced
+      # instead of perpetual amber. No-op for apps lacking these kinds.
+      ignoreDifferences:
+        - group: external-secrets.io
+          kind: ExternalSecret
+          jqPathExpressions:
+            - .spec.data[].remoteRef.conversionStrategy
+            - .spec.data[].remoteRef.decodingStrategy
+            - .spec.data[].remoteRef.metadataPolicy
+            - .spec.data[].remoteRef.nullBytePolicy
+            - .spec.target.deletionPolicy
+            - .spec.target.template.mergePolicy
+        - group: triggers.tekton.dev
+          kind: EventListener
+          jsonPointers:
+            - /spec/namespaceSelector
+            - /spec/resources
+          jqPathExpressions:
+            - .spec.triggers[].interceptors[].ref.kind
+            - .spec.triggers[].bindings[].kind
       syncPolicy:
         automated:
           prune: true
