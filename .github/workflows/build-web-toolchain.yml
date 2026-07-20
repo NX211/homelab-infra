@@ -1,0 +1,81 @@
+name: Build build-web-toolchain
+
+# Generic Node+pnpm step image for the nextjs-build `web-ci` task. Pushes to GHCR
+# and pins the digest into web-ci's node-image default (ADR-0004). Runs on changes
+# to the image or this workflow, or on demand.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/build-web-toolchain/**"
+      - ".github/workflows/build-web-toolchain.yml"
+
+concurrency:
+  group: build-web-toolchain
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/nx211/build-web-toolchain
+  VERSION: "0.1.0"
+  TASK: build-catalog/tasks/web-ci.yaml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Mint app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: apps/build-web-toolchain
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+
+      - uses: mikefarah/yq@v4
+
+      - name: Pin digest into the web-ci task
+        env:
+          REF: ${{ env.IMAGE }}:${{ env.VERSION }}@${{ steps.push.outputs.digest }}
+        run: |
+          yq -i '(.spec.params[] | select(.name == "node-image") | .default) = strenv(REF)' "$TASK"
+
+      - name: Commit pin-back
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- "$TASK"; then
+            echo "No change; digest already pinned."
+            exit 0
+          fi
+          git add "$TASK"
+          git commit -m "chore(web-toolchain): pin image ${{ steps.push.outputs.digest }}"
+          git push
