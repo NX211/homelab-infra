@@ -1,0 +1,13 @@
+# capturly nextjs UNTRUSTED-tier PR-check namespace + the web-ci catalog task the
+# nextjs-build pipeline references by name. The Pipeline is git-resolved from
+# capturly/.tekton; the trigger is PaC (pull_request). gVisor + zero-secret +
+# Verdaccio-only npm are what make running arbitrary PR code here defensible.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: capturly-builds-untrusted
+resources:
+  - namespace-and-sa.yaml
+  - networkpolicy.yaml
+  - npmrc-configmap.yaml
+  - repository.yaml
+  - ../../build-catalog/tasks/web-ci.yaml

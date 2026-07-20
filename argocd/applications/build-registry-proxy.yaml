@@ -1,0 +1,35 @@
+---
+# Verdaccio npm registry proxy — the trusted component that lets the zero-secret
+# untrusted build tier install private packages without holding the npm token
+# (Phase 2, design §1). Syncs before the build namespaces (wave -1).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: build-registry-proxy
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: build-registry-proxy
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: build-registry-proxy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

@@ -33,6 +33,9 @@ spec:
     # Phase 1 per-project build namespaces ({project}-builds-{trusted,untrusted}).
     - server: https://kubernetes.default.svc
       namespace: "*-builds-*"
+    # Phase 2 Verdaccio npm registry proxy (untrusted-tier private-dep install).
+    - server: https://kubernetes.default.svc
+      namespace: build-registry-proxy
   # Tekton (operator + PaC + MAG) installs cluster-scoped CRDs/RBAC/webhooks; the
   # untrusted tier needs RuntimeClass; our apps apply the cluster-scoped
   # TektonConfig. First sync may surface an additional cluster kind an upstream

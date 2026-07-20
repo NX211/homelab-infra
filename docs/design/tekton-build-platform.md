@@ -53,6 +53,14 @@ compute defensible:
 2. **No cache/artifact path** flows untrusted → trusted (cache-poisoning is the classic
    supply-chain hole). Separate PVCs; the trusted tier warms its own.
 
+> **Private-dep install without a token (Phase 2 decision, 2026-07-20).** Building
+> capturly needs the private `@corey-alan-consulting/*` packages, which normally requires
+> an npm read token — that would break invariant 1. Resolved with an in-cluster
+> **Verdaccio** proxy (`build-registry-proxy/`): the proxy holds the token and fetches
+> private packages from npmjs; untrusted pods point `.npmrc` at the proxy with **no
+> credential**, so a malicious PR postinstall has nothing to exfiltrate. The only
+> credential in the tier is PaC's short-lived, repo-scoped git token for the clone.
+
 ---
 
 ## 2. Data flow
@@ -188,7 +196,7 @@ price of full PaC — call it out to the auditor, don't hide it.
 |---|---|---|
 | **0 — Foundation** | **Remove the never-live ARC scaffolding (§12);** install Tekton Pipelines + PaC + Chains + Results; gVisor RuntimeClass on nodes; repurpose `business` AppProject; register PaC GitHub App | ARC apps pruned from ArgoCD; a hello-world PipelineRun signs + lands in Rekor; gVisor `RuntimeClass` schedulable |
 | **1 — Trusted Android** | port `release-android` to `.tekton/` + `android-build` catalog pipeline; per-SA WIF; keystore ESO; approval gate (interim `ApprovalTask` + fail-closed test, RISK-BUILD-001); Chains provenance | a real tag builds+signs+publishes via Tekton with a verified attestation and a recorded approval |
-| **2 — Untrusted tier** | `nextjs` PR builds: PaC `pull_request` → gVisor, zero-secret, egress-locked | a fork PR compiles+tests in the sandbox; proves it cannot reach secrets/metadata/RFC1918 |
+| **2 — Untrusted tier** ✅ built | `nextjs` PR builds: PaC `pull_request` → gVisor, zero-secret, egress-locked; private deps via the **Verdaccio proxy** (no npm token in the pod) | a fork PR compiles+tests in the sandbox; proves it cannot reach secrets/metadata/RFC1918 |
 | **3 — Catalog + multi-project** | git-resolver catalog for all channels; `ApplicationSet` over `build-targets`; onboard `coreyalan` | adding a (project, channel) is a single inventory PR that reconciles clean |
 
 > ARC decommission is **not a phase** — it never reached production, so its scaffolding is

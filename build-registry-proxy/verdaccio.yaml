@@ -1,0 +1,91 @@
+---
+# Verdaccio — the trusted npm registry proxy that lets the ZERO-SECRET untrusted
+# build tier install private @corey-alan-consulting packages without ever holding
+# the npm token (design §1, Phase 2 decision 2026-07-20). Verdaccio holds the
+# read token (uplink auth to npmjs); untrusted pods point their .npmrc at this
+# service with NO credential, so a malicious PR postinstall has nothing to steal.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: verdaccio-config
+  namespace: build-registry-proxy
+data:
+  config.yaml: |
+    storage: /verdaccio/storage
+    # No user registration; anonymous read only (publish is denied everywhere).
+    auth:
+      htpasswd:
+        file: /verdaccio/storage/htpasswd
+        max_users: -1
+    uplinks:
+      npmjs:
+        url: https://registry.npmjs.org/
+        # Private-scope read token, injected from the mounted secret env.
+        auth:
+          type: bearer
+          token_env: NPM_TOKEN
+        maxage: 10m
+    packages:
+      '@corey-alan-consulting/*':
+        access: $anonymous          # in-cluster pods read without auth
+        publish: $authenticated     # nobody authenticates → publish denied
+        proxy: npmjs
+      '**':
+        access: $anonymous
+        publish: $authenticated
+        proxy: npmjs
+    server:
+      keepAliveTimeout: 60
+    log: { type: stdout, format: pretty, level: warn }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: verdaccio
+  namespace: build-registry-proxy
+  labels: { app: verdaccio }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: verdaccio }
+  template:
+    metadata:
+      labels: { app: verdaccio }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: verdaccio
+          image: verdaccio/verdaccio:6.2.0
+          ports:
+            - { containerPort: 4873, name: http }
+          env:
+            - name: NPM_TOKEN
+              valueFrom:
+                secretKeyRef: { name: verdaccio-npm-uplink, key: npm-token }
+          volumeMounts:
+            - { name: config, mountPath: /verdaccio/conf }
+            - { name: storage, mountPath: /verdaccio/storage }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /-/ping, port: 4873 }
+            initialDelaySeconds: 5
+      volumes:
+        - name: config
+          configMap: { name: verdaccio-config }
+        - name: storage
+          emptyDir: {}          # proxy cache only; safe to lose
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: verdaccio
+  namespace: build-registry-proxy
+spec:
+  selector: { app: verdaccio }
+  ports:
+    - { port: 4873, targetPort: 4873, name: http }

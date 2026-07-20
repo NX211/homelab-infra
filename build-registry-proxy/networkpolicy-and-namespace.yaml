@@ -1,0 +1,41 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: build-registry-proxy
+  labels:
+    build.capturly/component: registry-proxy
+---
+# Verdaccio egress: DNS + public HTTPS to npmjs only (no private ranges — it has
+# no reason to reach anything in-cluster outbound).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: verdaccio-egress
+  namespace: build-registry-proxy
+spec:
+  podSelector: { matchLabels: { app: verdaccio } }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ namespaceSelector: {} }]
+      ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports: [{ protocol: TCP, port: 443 }]
+---
+# Verdaccio ingress: only untrusted build namespaces may reach the proxy on 4873.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: verdaccio-ingress
+  namespace: build-registry-proxy
+spec:
+  podSelector: { matchLabels: { app: verdaccio } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { build.capturly/tier: untrusted }
+      ports: [{ protocol: TCP, port: 4873 }]

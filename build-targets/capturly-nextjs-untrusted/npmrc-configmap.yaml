@@ -1,0 +1,14 @@
+---
+# .npmrc pointing all installs at the Verdaccio proxy — NO auth token. The proxy
+# holds the credential and fetches private @corey-alan-consulting packages from
+# npmjs on the pod's behalf, so the untrusted pod carries nothing to exfiltrate
+# (Phase 2 decision). Mounted as the `npmrc` workspace.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: capturly-untrusted-npmrc
+  namespace: capturly-builds-untrusted
+data:
+  .npmrc: |
+    registry=http://verdaccio.build-registry-proxy.svc.cluster.local:4873/
+    @corey-alan-consulting:registry=http://verdaccio.build-registry-proxy.svc.cluster.local:4873/
