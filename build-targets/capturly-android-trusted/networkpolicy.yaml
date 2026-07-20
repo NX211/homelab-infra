@@ -1,9 +1,10 @@
 ---
 # Trusted-tier egress: allow the outbound HTTPS the release build needs (GitHub,
-# npm, Maven/Gradle, Google/Play/WIF/STS, Bitwarden) + cluster DNS + the k8s API
-# (Tekton), and DENY all other private ranges to block lateral movement into the
-# homelab. Mirrors the retired ARC egress posture; FQDN-precise allowlisting
-# would need a CiliumNetworkPolicy (noted in the runbook).
+# Maven/Gradle, Google/Play/WIF/STS, Bitwarden, Sentry) + cluster DNS + the k8s
+# API (Tekton) + the in-cluster Verdaccio proxy (npm), and DENY all other private
+# ranges to block lateral movement. npm goes through Verdaccio (no token in the
+# pod), like the untrusted tier. FQDN-precise allowlisting would need a
+# CiliumNetworkPolicy (noted in the runbook).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -28,6 +29,12 @@ spec:
         - ipBlock: { cidr: 10.43.0.1/32 }
       ports:
         - { protocol: TCP, port: 443 }
+    # Verdaccio npm registry proxy (in-cluster) — private-dep install, no token.
+    - to:
+        - namespaceSelector:
+            matchLabels: { build.capturly/component: registry-proxy }
+      ports:
+        - { protocol: TCP, port: 4873 }
     # Public HTTPS only; private ranges excluded (anti lateral-movement).
     - to:
         - ipBlock:
