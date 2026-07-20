@@ -56,7 +56,8 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
-        pip install --quiet google-api-python-client google-auth
+        # google-api-python-client + google-auth are baked into the toolchain
+        # image (no runtime pip install, so the step runs non-root under H1).
         python3 scripts/play-upload.py \
           --package "$(params.package)" \
           --aab "$(workspaces.source.path)/$(params.aab-path)" \

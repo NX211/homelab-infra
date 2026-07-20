@@ -13,7 +13,9 @@ spec:
   params:
     - name: node-image
       type: string
-      default: node:22-bookworm-slim
+      # Node+pnpm pre-baked (apps/build-web-toolchain) so the step runs non-root
+      # (no `corepack enable` write to /usr/local). Digest pinned by CI.
+      default: ghcr.io/nx211/build-web-toolchain:0.1.0
   workspaces:
     - name: source
     - name: npmrc            # configmap: .npmrc pointing at Verdaccio (no token)
@@ -31,7 +33,7 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
-        corepack enable && corepack prepare pnpm@9.15.9 --activate
+        # pnpm is baked into the image (non-root); no corepack enable needed.
         cp /config/npm/.npmrc "$HOME/.npmrc"   # registry = Verdaccio, no auth
         pnpm install --frozen-lockfile
         # apps/web type-checks against the compiled dist/ of its workspace deps.

@@ -56,15 +56,16 @@ spec:
         params: []
         steps:
           - name: git-clone
-            image: alpine/git:2.45.2
+            # Toolchain image (openssl + python3 + curl + git pre-baked) so the
+            # step runs non-root under set-security-context — no runtime apk add.
+            image: $(params.toolchain-image)
             script: |
-              #!/bin/sh
+              #!/usr/bin/env bash
               # Clone the private repo with a ~1h GitHub App installation token
-              # minted at build time — nothing long-lived in the pod. The App key
-              # is the only stored secret (shared with PaC). set -e but never -x
-              # so the token is never echoed.
-              set -eu
-              apk add --no-cache --quiet curl jq openssl >/dev/null
+              # minted at build time — nothing long-lived in the pod. set -e but
+              # never -x so the token is never echoed. JSON parsed with python3
+              # (baked) instead of jq.
+              set -euo pipefail
 
               APP_ID="$(cat /github-app/app-id)"
               b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
@@ -76,8 +77,8 @@ spec:
 
               slug="$(printf '%s' "$(params.git-url)" | sed -E 's#https?://github.com/##; s#\.git$##')"
               gh="https://api.github.com"
-              inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh/repos/$slug/installation" | jq -r .id)"
-              token="$(curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh/app/installations/$inst/access_tokens" | jq -r .token)"
+              inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh/repos/$slug/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
+              token="$(curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh/app/installations/$inst/access_tokens" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')"
 
               cd "$(workspaces.output.path)"
               git clone "https://x-access-token:${token}@github.com/${slug}.git" .
