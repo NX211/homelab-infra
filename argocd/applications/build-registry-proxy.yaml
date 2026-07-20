@@ -9,6 +9,10 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
+    # Server-Side Diff for this app only: server-side dry-run apply so
+    # apiserver/webhook defaulting stops reading as false drift (with the
+    # field-manager ignoreDifferences in argocd-cm). Not global (see argocd values).
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
