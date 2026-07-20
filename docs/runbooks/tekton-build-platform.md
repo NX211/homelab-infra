@@ -32,16 +32,24 @@ superseded). Design: [ADR-0017](../../../framework/decisions/0017-tekton-build-p
    - manual-approval-gate `tekton/manual-approval-gate/kustomization.yaml`
      (**confirm the tag is current** — it was pinned from memory, not verified)
 3. **PaC GitHub App** (new, replaces the retired ARC app). Create a GitHub App on
-   `Corey-Alan-Consulting/capturly.app` with permissions **Checks R/W, Contents R,
-   Metadata R, Pull requests R/W**, subscribed to **Check run, Commit comment,
-   Issue comment, Pull request, Push**. Note the App ID; generate a private key;
-   set a webhook secret. Point the App webhook at the PaC controller ingress.
-4. **Bitwarden SM** (project Capturly) — create three secrets and paste their UUIDs
-   into `tekton/pac/externalsecret-pac-github-app.yaml` (replace the `REPLACE-WITH-…`
-   placeholders):
+   the org (installed on `Corey-Alan-Consulting/capturly.app`), private ("only on
+   this account"), webhook **Active**:
+   - Repository perms: **Checks R/W · Contents R/W · Issues R/W · Metadata R ·
+     Pull requests R/W**
+   - Organization perms: **Members R · Plan R**
+   - Events: **Check run · Check suite · Commit comment · Issue comment ·
+     Pull request** (add **Push** only for push-triggered runs)
+   - **Webhook URL** = the PaC controller IngressRoute host
+     (`tekton/pac/ingressroute.yaml`, `https://<host>`).
+   - **Webhook secret** = the value of `CAPTURLY_PAC_WEBHOOK_SECRET` in Bitwarden
+     (`bws secret get 2bd7c0e0-d5d4-4962-a304-b48d011b8701`) — already created and
+     wired into the ESO.
+   Then generate a private key (.pem) and note the App ID + Installation ID.
+4. **Bitwarden SM** (Staging - Capturly) — the `webhook.secret` is already created
+   and referenced. Create the remaining two and paste their UUIDs into
+   `tekton/pac/externalsecret-pac-github-app.yaml`:
    - PaC GitHub App ID
    - PaC GitHub App private key (PEM)
-   - PaC webhook secret
 5. **Merge the branch.** ArgoCD's app-of-apps (`root-apps`) picks up the new
    Application CRs. Sync order is wave-driven: operator/runtimeclasses (-2) →
    config/pac/mag (-1).

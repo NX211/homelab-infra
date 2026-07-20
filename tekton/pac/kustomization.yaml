@@ -16,3 +16,4 @@ kind: Kustomization
 resources:
   - https://github.com/tektoncd/pipelines-as-code/releases/download/v0.41.1/release.k8s.yaml
   - externalsecret-pac-github-app.yaml
+  - ingressroute.yaml

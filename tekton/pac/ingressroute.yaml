@@ -1,0 +1,26 @@
+---
+# Public HTTPS route to the Pipelines-as-Code controller so GitHub can deliver
+# the App's webhooks. This is the URL you put in the GitHub App's "Webhook URL"
+# field. It is guarded by the App's webhook HMAC (the pipelines-as-code-secret
+# `webhook.secret`) — GitHub can't authenticate, so no SSO here.
+#
+# ⚠️ TODO: set the real host + ensure public DNS/Traefik TLS resolve to it, then
+#    use https://<that host> as the GitHub App Webhook URL.
+#
+# Verify the controller service name/port against the installed PaC release:
+#   kubectl -n pipelines-as-code get svc pipelines-as-code-controller
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: pipelines-as-code-controller
+  namespace: pipelines-as-code
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`pac.REPLACE.example`)
+      kind: Rule
+      services:
+        - name: pipelines-as-code-controller
+          port: 8080
+  tls: {}
