@@ -12,7 +12,13 @@ resources:
   - networkpolicy.yaml
   - externalsecret-signing.yaml
   - externalsecret-npm.yaml
+  - externalsecret-git-and-webhook.yaml
   - wif-credential-config.yaml
+  - gradle-cache-pvc.yaml
+  # Trusted-tier trigger: Tekton Triggers (tag push → PipelineRun).
+  - triggers.yaml
+  - triggers-rbac.yaml
+  - ingressroute.yaml
   # Catalog tasks referenced by the android-build pipeline (name resolution
   # happens in the PipelineRun namespace).
   - ../../build-catalog/tasks/build-signed-aab.yaml

@@ -1,0 +1,82 @@
+name: Build capturly-android-toolchain
+
+# Builds the Tekton step image for Capturly Android release builds (Node/pnpm/
+# JDK17/Android SDK+NDK) and pushes it to GHCR, then pins the published digest
+# into the android-build catalog pipeline so builds pull an immutable image
+# (ADR-0004). Runs on changes to the image or this workflow, or on demand.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/capturly-android-toolchain/**"
+      - ".github/workflows/build-capturly-android-toolchain.yml"
+
+concurrency:
+  group: build-capturly-android-toolchain
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/nx211/capturly-android-toolchain
+  VERSION: "0.1.0"
+  PIPELINE: build-catalog/pipelines/android-build.yaml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Mint app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: apps/capturly-android-toolchain
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+
+      - uses: mikefarah/yq@v4
+
+      - name: Pin digest into the android-build pipeline
+        env:
+          REF: ${{ env.IMAGE }}:${{ env.VERSION }}@${{ steps.push.outputs.digest }}
+        run: |
+          yq -i '(.spec.params[] | select(.name == "toolchain-image") | .default) = strenv(REF)' "$PIPELINE"
+
+      - name: Commit pin-back
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- "$PIPELINE"; then
+            echo "No change; digest already pinned."
+            exit 0
+          fi
+          git add "$PIPELINE"
+          git commit -m "chore(android-toolchain): pin image ${{ steps.push.outputs.digest }}"
+          git push

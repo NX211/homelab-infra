@@ -25,7 +25,7 @@ The **unit of isolation is the trust tier**, not the runner.
 
 | | **Untrusted (PR/fork)** | **Trusted (release)** |
 |---|---|---|
-| Trigger | PaC `pull_request` (fork ⇒ `/ok-to-test` by a maintainer) | PaC protected-tag push |
+| Trigger | PaC `pull_request` (fork ⇒ `/ok-to-test` by a maintainer) | **Tekton Triggers** EventListener on tag push (see note) |
 | Code trust | arbitrary contributor code | maintainer-reviewed, merged |
 | Runtime | **gVisor** default; **Kata** for native/NDK channels (android) | standard (trusted); gVisor optional defense-in-depth |
 | Identity | zero-secret SA — no OIDC audience, no mounts | per-build SA → projected OIDC token → GCP WIF |
@@ -37,6 +37,15 @@ The **unit of isolation is the trust tier**, not the runner.
 | Gate | none needed (sandboxed, powerless) | in-cluster `ApprovalTask`, N approvers, author≠approver |
 | Namespace | `{project}-builds-untrusted` | `{project}-builds-trusted` |
 | Pod hardening | rootless, RO rootfs, seccomp RuntimeDefault, drop ALL caps, non-root uid, no-privesc | same hardening |
+
+> **Trigger split (decided Phase 1, 2026-07-20).** PaC maps a repo → one namespace, so it
+> cannot route one repo's PRs and tags to separate `…-untrusted`/`…-trusted` namespaces.
+> Trusted releases are therefore triggered by a **Tekton Triggers EventListener** (tag push
+> → GitHub interceptor verifies the webhook HMAC + a CEL tag filter → `TriggerTemplate`
+> creates the PipelineRun in the trusted namespace); PaC drives the untrusted PR tier. Both
+> stay in-cluster with GitHub as source; namespace isolation is preserved. The trusted
+> PipelineRun lives in the `TriggerTemplate` (not a `.tekton/` file), still referencing the
+> channel pipeline via the git resolver.
 
 **Never blur the tiers.** The two hard invariants that keep untrusted execution on owned
 compute defensible:
