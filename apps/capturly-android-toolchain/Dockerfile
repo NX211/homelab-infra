@@ -13,8 +13,14 @@ USER root
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      unzip curl git ca-certificates ccache python3 python3-pip \
+      unzip curl git ca-certificates ccache python3 python3-pip openssl \
     && rm -rf /var/lib/apt/lists/*
+
+# Play-publish deps baked in so the step needs no runtime `pip install` (which
+# would need root under set-security-context, H1). openssl (above) + python3 are
+# also what the clone step uses to mint the GitHub App JWT.
+RUN pip3 install --no-cache-dir \
+      google-api-python-client google-auth
 
 # Node 22 + pnpm (pin matches the repo's packageManager)
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \

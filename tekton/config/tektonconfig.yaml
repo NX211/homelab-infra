@@ -18,6 +18,11 @@ spec:
     # Beta fields cover the resolver + provenance features the catalog uses.
     # The git resolver (channel catalog, design §4) ships enabled by default.
     enable-api-fields: beta
+    # H1: harden every step container cluster-wide — runAsNonRoot (uid 65532),
+    # drop ALL capabilities, disallow privilege escalation, seccomp RuntimeDefault.
+    # Defense-in-depth on top of gVisor. Validated non-root with a smoke run of the
+    # (tools-pre-baked) web + android images before enabling (3b-1).
+    set-security-context: "true"
   chain:
     # Chains controller runs now; keyless Sigstore signing (Fulcio/Rekor) + SLSA
     # provenance config is wired in Phase 1 with the trusted Android pipeline

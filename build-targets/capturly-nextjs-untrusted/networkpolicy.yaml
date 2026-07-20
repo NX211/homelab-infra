@@ -1,17 +1,17 @@
 ---
-# Untrusted-tier egress. The build runs arbitrary PR code, so this is the primary
-# containment (with gVisor). Allowed: cluster DNS, the Verdaccio proxy (all npm,
-# private included — no token in the pod), and public HTTPS for the git clone.
-# Denied: cloud metadata and all other private ranges (no lateral movement, no
-# k8s API, no Bitwarden, no other cluster service).
-#
-# ⚠️ HARDENING: public 443 is broad (needed for the GitHub clone) and leaves a
-#    postinstall an exfil path. Replace with a CiliumNetworkPolicy that FQDN-locks
-#    egress to github.com + the Verdaccio service to close it (design §8).
+# Untrusted-tier egress, SPLIT BY TASK (Phase 3 H2). The build runs arbitrary PR
+# code in the `checks` step (pnpm install → postinstall), so that pod gets NO
+# public egress — only cluster DNS + the Verdaccio proxy. Only the `clone` pod
+# (which runs no PR code, just git) may reach the public internet. NetworkPolicies
+# are additive, so each pod's egress is the union of the policies selecting it.
+# This closes the exfil path that a single public-443 rule left open, without
+# needing Cilium FQDN policies (this cluster has no Cilium CNI).
+
+# Baseline: cluster DNS for every pod (incl. Tekton's affinity-assistant).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: capturly-untrusted-egress
+  name: capturly-untrusted-dns
   namespace: capturly-builds-untrusted
 spec:
   podSelector: {}
@@ -19,13 +19,35 @@ spec:
   egress:
     - to: [{ namespaceSelector: {} }]
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
-    # Verdaccio registry proxy (in-cluster) — the only npm path; no token here.
+---
+# `checks` (arbitrary PR code): Verdaccio ONLY — no public egress, no lateral.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: capturly-untrusted-checks-egress
+  namespace: capturly-builds-untrusted
+spec:
+  podSelector:
+    matchLabels: { tekton.dev/pipelineTask: checks }
+  policyTypes: [Egress]
+  egress:
     - to:
         - namespaceSelector:
             matchLabels: { build.capturly/component: registry-proxy }
       ports: [{ protocol: TCP, port: 4873 }]
-    # Public HTTPS for the git clone. Excludes RFC1918 + link-local (169.254.x,
-    # blocks the cloud metadata endpoint) to limit lateral movement / SSRF.
+---
+# `clone` (no PR code, git only): public HTTPS for the GitHub clone. Private
+# ranges + link-local (169.254 metadata) excluded (anti lateral-movement / SSRF).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: capturly-untrusted-clone-egress
+  namespace: capturly-builds-untrusted
+spec:
+  podSelector:
+    matchLabels: { tekton.dev/pipelineTask: clone }
+  policyTypes: [Egress]
+  egress:
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
