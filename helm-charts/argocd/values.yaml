@@ -84,13 +84,16 @@ argo-cd:
       resource.customizations.ignoreDifferences.kyverno.io_ClusterPolicy: |
         managedFieldsManagers:
           - kyverno
-      # The apiserver defaults spec.conversion:{strategy:None} onto CRDs whose
-      # manifests omit it (tekton-operator, kyverno, manual-approval-gate); it is
-      # not tracked under a field manager, so ignore the path. Also covers the
-      # cert-manager cainjector caBundle churn — both are diffs we never act on.
+      # CRDs: charts render spec.preserveUnknownFields:false and an empty
+      # metadata.labels:{} that the apiserver drops (tekton-operator,
+      # manual-approval-gate, kyverno); these are not manager-tracked, so ignore
+      # the paths. (Server-Side Diff above already handles this natively; kept as a
+      # fallback and to also cover cert-manager cainjector caBundle churn.)
       resource.customizations.ignoreDifferences.apiextensions.k8s.io_CustomResourceDefinition: |
-        jqPathExpressions:
-          - .spec.conversion
+        jsonPointers:
+          - /spec/preserveUnknownFields
+          - /metadata/labels
+          - /spec/conversion/webhook/clientConfig/caBundle
       # The Job controller injects immutable batch.kubernetes.io/controller-uid
       # selector + template labels (kyverno-migrate-resources).
       resource.customizations.ignoreDifferences.batch_Job: |
@@ -101,6 +104,13 @@ argo-cd:
     params:
       # Run server without TLS (Traefik handles TLS termination)
       server.insecure: true
+      # Server-Side Diff: the controller computes drift via a server-side dry-run
+      # apply, so apiserver defaulting and mutating-webhook writes (ESO remoteRef
+      # defaults, Kyverno admission/emitWarning, CRD preserveUnknownFields, etc.)
+      # no longer surface as false OutOfSync. Also what makes the managedFields
+      # managers ignoreDifferences above actually affect sync status (not just the
+      # CLI diff view). Recommended default for SSA-heavy clusters.
+      controller.diff.server.side: "true"
 
   # Application Controller - manages application state
   controller:
