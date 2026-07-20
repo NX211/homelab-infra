@@ -1,0 +1,15 @@
+# Tekton Operator (kubernetes/non-OpenShift release), pinned.
+#
+# The operator manages the Tekton component lifecycle (Pipelines, Triggers,
+# Results, Chains) via the TektonConfig CR in tekton/config/. We install the
+# operator here and let TektonConfig (profile: basic) decide which components
+# run — notably NOT the Dashboard (see docs/design/tekton-build-platform.md §10,
+# no web UI).
+#
+# Pin: v0.78.x is the current LTS (released 2025-12-08, EOL 2026-12-08). Verify
+# and bump against https://github.com/tektoncd/operator/releases; keep the k8s
+# `release.yaml` (the OpenShift artifact is a different file).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://storage.googleapis.com/tekton-releases/operator/previous/v0.78.0/release.yaml
