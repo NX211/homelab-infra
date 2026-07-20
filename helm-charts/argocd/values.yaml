@@ -68,6 +68,35 @@ argo-cd:
         hs.status = "Progressing"
         hs.message = "Waiting for PVC to bind"
         return hs
+      # Server-side defaulting that Argo flags as drift on healthy apps. Each
+      # entry suppresses ONLY cosmetic diffs (ignoreDifferences can never create
+      # drift), keyed by the SSA field manager that owns the defaulted fields
+      # where possible so it stays comprehensive as the objects evolve.
+      #
+      # ESO writes remoteRef.{conversion,decoding}Strategy / metadataPolicy /
+      # nullBytePolicy, target.deletionPolicy, template.mergePolicy on every
+      # ExternalSecret (build-registry-proxy, tekton-pac, the build fleet).
+      resource.customizations.ignoreDifferences.external-secrets.io_ExternalSecret: |
+        managedFieldsManagers:
+          - external-secrets
+      # Kyverno's controller defaults admission/emitWarning and writes
+      # status.autogen back onto every ClusterPolicy (kyverno-policies*).
+      resource.customizations.ignoreDifferences.kyverno.io_ClusterPolicy: |
+        managedFieldsManagers:
+          - kyverno
+      # The apiserver defaults spec.conversion:{strategy:None} onto CRDs whose
+      # manifests omit it (tekton-operator, kyverno, manual-approval-gate); it is
+      # not tracked under a field manager, so ignore the path. Also covers the
+      # cert-manager cainjector caBundle churn — both are diffs we never act on.
+      resource.customizations.ignoreDifferences.apiextensions.k8s.io_CustomResourceDefinition: |
+        jqPathExpressions:
+          - .spec.conversion
+      # The Job controller injects immutable batch.kubernetes.io/controller-uid
+      # selector + template labels (kyverno-migrate-resources).
+      resource.customizations.ignoreDifferences.batch_Job: |
+        jqPathExpressions:
+          - .spec.selector
+          - .spec.template.metadata.labels
 
     params:
       # Run server without TLS (Traefik handles TLS termination)
