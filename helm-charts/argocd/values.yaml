@@ -42,6 +42,32 @@ argo-cd:
         hs.status = "Progressing"
         hs.message = "Waiting for CloudNativePG cluster to report Ready"
         return hs
+      # Argo's built-in PVC check reports Pending as Progressing and does not
+      # honour WaitForFirstConsumer, so a local-path PVC (the cluster's only SC,
+      # WFFC) that legitimately waits for its first consumer pins the owning app
+      # in Progressing forever (e.g. the gradle-cache on a build namespace before
+      # any build runs). Treat a Pending local-path PVC as Healthy; leave every
+      # other state at Argo's default assessment.
+      resource.customizations.health.PersistentVolumeClaim: |
+        local hs = {}
+        if obj.status ~= nil and obj.status.phase == "Pending"
+           and obj.spec.storageClassName == "local-path" then
+          hs.status = "Healthy"
+          hs.message = "WaitForFirstConsumer: binds on first consumer"
+          return hs
+        end
+        if obj.status ~= nil and obj.status.phase == "Bound" then
+          hs.status = "Healthy"
+          return hs
+        end
+        if obj.status ~= nil and obj.status.phase == "Lost" then
+          hs.status = "Degraded"
+          hs.message = "PVC lost its bound volume"
+          return hs
+        end
+        hs.status = "Progressing"
+        hs.message = "Waiting for PVC to bind"
+        return hs
 
     params:
       # Run server without TLS (Traefik handles TLS termination)
