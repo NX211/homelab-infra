@@ -38,7 +38,9 @@ spec:
           - serviceAccountToken:
               path: token
               expirationSeconds: 3600
-              audience: https://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/homelab-tekton/providers/homelab-oidc
+              # Must equal the external_account audience + the WIF provider's
+              # expected audience (homelab-staging/k3s-oidc; platform-infra).
+              audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
   steps:
     - name: publish
       image: $(params.toolchain-image)
