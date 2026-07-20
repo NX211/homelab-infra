@@ -61,7 +61,11 @@ spec:
     - name: build
       runAfter: [clone]
       taskRef:
-        name: build-signed-aab
+        resolver: git
+        params:
+          - { name: url, value: https://github.com/NX211/homelab-infra.git }
+          - { name: revision, value: main }
+          - { name: pathInRepo, value: build-catalog/tasks/build-signed-aab.yaml }
       params:
         - name: toolchain-image
           value: $(params.toolchain-image)
@@ -90,7 +94,11 @@ spec:
     - name: publish
       runAfter: [release-approval]
       taskRef:
-        name: play-publish
+        resolver: git
+        params:
+          - { name: url, value: https://github.com/NX211/homelab-infra.git }
+          - { name: revision, value: main }
+          - { name: pathInRepo, value: build-catalog/tasks/play-publish.yaml }
       params:
         - name: toolchain-image
           value: $(params.toolchain-image)

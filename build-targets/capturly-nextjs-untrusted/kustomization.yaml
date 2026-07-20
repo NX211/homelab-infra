@@ -10,4 +10,4 @@ resources:
   - networkpolicy.yaml
   - npmrc-configmap.yaml
   - repository.yaml
-  - ../../build-catalog/tasks/web-ci.yaml
+  # web-ci task is git-resolved by the nextjs-build pipeline (no cross-dir include)

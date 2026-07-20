@@ -20,7 +20,9 @@ spec:
     path: tekton/runtimeclasses
   destination:
     server: https://kubernetes.default.svc
-    namespace: default
+    # RuntimeClass is cluster-scoped; this namespace is only Argo's tracking ns
+    # and must be allowed by the business AppProject (default is not).
+    namespace: tekton-pipelines
   syncPolicy:
     automated:
       prune: true
