@@ -20,12 +20,13 @@ superseded). Design: [ADR-0017](../../../framework/decisions/0017-tekton-build-p
 
 ## One-time setup (in order)
 
-1. **Node runtime prerequisites (NOT GitOps).** On each worker node, install and
-   register the sandbox handlers in containerd:
-   - `runsc` (gVisor) → `plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc`
-   - `kata` (Kata Containers) → the `kata` runtime handler
-   Record this in the node provisioning runbook — a rebuilt node silently loses
-   the sandbox. The `RuntimeClass` objects reference these handlers by name.
+1. **Node runtime prerequisites (NOT GitOps).** The untrusted tier runs under
+   gVisor; k3s does not auto-detect runsc, so each node that schedules build pods
+   needs the runsc binary + a containerd runtime entry. The tracked installer +
+   template live in **`node-bootstrap/gvisor/`** (which nodes, exact steps,
+   verification, and the optional full-GitOps DaemonSet/SUC path). A rebuilt node
+   silently loses the sandbox until re-run. Kata (for the Android/NDK untrusted
+   channel) is added later via `kata-deploy`.
 2. **Pin/verify release versions** before first sync:
    - operator `tekton/operator/kustomization.yaml` (v0.78.0 LTS)
    - PaC `tekton/pac/kustomization.yaml` (`release.k8s.yaml`, v0.41.1)
