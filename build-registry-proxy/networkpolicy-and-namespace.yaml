@@ -25,7 +25,8 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
       ports: [{ protocol: TCP, port: 443 }]
 ---
-# Verdaccio ingress: only untrusted build namespaces may reach the proxy on 4873.
+# Verdaccio ingress: any build-tier namespace (trusted or untrusted) may reach the
+# proxy on 4873 — both install private deps through it, with no token in the pod.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -37,5 +38,6 @@ spec:
   ingress:
     - from:
         - namespaceSelector:
-            matchLabels: { build.capturly/tier: untrusted }
+            matchExpressions:
+              - { key: build.capturly/tier, operator: Exists }
       ports: [{ protocol: TCP, port: 4873 }]

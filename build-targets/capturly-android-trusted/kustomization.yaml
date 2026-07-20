@@ -8,7 +8,7 @@ resources:
   - namespace-and-sa.yaml
   - networkpolicy.yaml
   - externalsecret-signing.yaml
-  - externalsecret-npm.yaml
+  - npmrc-configmap.yaml
   - externalsecret-git-and-webhook.yaml
   - wif-credential-config.yaml
   - gradle-cache-pvc.yaml

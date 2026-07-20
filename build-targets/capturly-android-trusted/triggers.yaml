@@ -57,7 +57,7 @@ spec:
           - name: keystore
             secret: { secretName: capturly-android-signing }
           - name: npmrc
-            secret: { secretName: capturly-npm }
+            configMap: { name: capturly-trusted-npmrc }   # Verdaccio, no token
           - name: gcp-wif
             configMap: { name: capturly-gcp-wif }
 ---
