@@ -1,0 +1,26 @@
+---
+# TektonConfig drives which Tekton components the operator installs and how they
+# are configured. Named `config` (the operator reconciles the singleton by that
+# name). See docs/design/tekton-build-platform.md.
+#
+# profile: basic  => Pipeline + Triggers + Results + Chains, and crucially NO
+# Dashboard. We deliberately run no web UI (§10); observability is `tkn` + Loki,
+# and release approvals are CLI-driven. Pipelines-as-Code is NOT installed by the
+# operator on vanilla k8s — it is a separate app (tekton/pac/).
+apiVersion: operator.tekton.dev/v1alpha1
+kind: TektonConfig
+metadata:
+  name: config
+spec:
+  profile: basic
+  targetNamespace: tekton-pipelines
+  pipeline:
+    # Beta fields cover the resolver + provenance features the catalog uses.
+    # The git resolver (channel catalog, design §4) ships enabled by default.
+    enable-api-fields: beta
+  chain:
+    # Chains controller runs now; keyless Sigstore signing (Fulcio/Rekor) + SLSA
+    # provenance config is wired in Phase 1 with the trusted Android pipeline
+    # (design §5, ADR-0005). Left at install defaults here so Phase 0 only stands
+    # the controller up.
+    disabled: false

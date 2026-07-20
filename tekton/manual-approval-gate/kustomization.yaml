@@ -1,0 +1,17 @@
+# manual-approval-gate — the ApprovalTask custom task that gates trusted release
+# pipelines (design §6). Provides `approvers` + `numberOfApprovalsRequired`; a
+# reject fails the run; absent approval it stays pending (fail-closed).
+#
+# ⚠️ Maturity: this is Red Hat "Technology Preview", not GA core Tekton. It is
+#    accepted as the INTERIM gate under RISK-BUILD-001
+#    (framework/compliance/risks/RISK-BUILD-001-approval-gate-maturity.md); the
+#    hybrid GitHub-Environment gate is the documented fallback. Phase 1 must run
+#    the fail-closed verification before this carries a real release.
+#
+# Pin an exact release; verify/bump against
+# https://github.com/openshift-pipelines/manual-approval-gate/releases. Confirm
+# the tag below is current before first sync (see runbook).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://github.com/openshift-pipelines/manual-approval-gate/releases/download/v0.4.0/release.yaml
