@@ -19,7 +19,7 @@ spec:
       default: ""
     - name: toolchain-image
       type: string
-      default: ghcr.io/nx211/capturly-android-toolchain:0.1.0
+      default: ghcr.io/nx211/capturly-android-toolchain:0.1.0@sha256:9bbe70d637c56efd6d88ea65676b666cdbcb02c8971a04398c5870b4e06f3b73
     - name: package
       type: string
       default: app.capturly.mobile
@@ -66,10 +66,10 @@ spec:
         - name: toolchain-image
           value: $(params.toolchain-image)
       workspaces:
-        - { name: source, workspace: source }
-        - { name: gradle-cache, workspace: gradle-cache }
-        - { name: keystore, workspace: keystore }
-        - { name: npmrc, workspace: npmrc }
+        - {name: source, workspace: source}
+        - {name: gradle-cache, workspace: gradle-cache}
+        - {name: keystore, workspace: keystore}
+        - {name: npmrc, workspace: npmrc}
     # ── Change-management gate (design §6, RISK-BUILD-001) ──────────────────
     # Blocks before publish until approvals-required approvers approve. Interim
     # Tech-Preview component; fail-closed by construction (absent approval → the
@@ -101,5 +101,5 @@ spec:
         - name: aab-path
           value: $(tasks.build.results.aab-path)
       workspaces:
-        - { name: source, workspace: source }
-        - { name: gcp-wif, workspace: gcp-wif }
+        - {name: source, workspace: source}
+        - {name: gcp-wif, workspace: gcp-wif}

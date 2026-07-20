@@ -1,0 +1,37 @@
+---
+# Untrusted-tier egress. The build runs arbitrary PR code, so this is the primary
+# containment (with gVisor). Allowed: cluster DNS, the Verdaccio proxy (all npm,
+# private included — no token in the pod), and public HTTPS for the git clone.
+# Denied: cloud metadata and all other private ranges (no lateral movement, no
+# k8s API, no Bitwarden, no other cluster service).
+#
+# ⚠️ HARDENING: public 443 is broad (needed for the GitHub clone) and leaves a
+#    postinstall an exfil path. Replace with a CiliumNetworkPolicy that FQDN-locks
+#    egress to github.com + the Verdaccio service to close it (design §8).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: capturly-untrusted-egress
+  namespace: capturly-builds-untrusted
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: [{ namespaceSelector: {} }]
+      ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+    # Verdaccio registry proxy (in-cluster) — the only npm path; no token here.
+    - to:
+        - namespaceSelector:
+            matchLabels: { build.capturly/component: registry-proxy }
+      ports: [{ protocol: TCP, port: 4873 }]
+    # Public HTTPS for the git clone. Excludes RFC1918 + link-local (169.254.x,
+    # blocks the cloud metadata endpoint) to limit lateral movement / SSRF.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+      ports: [{ protocol: TCP, port: 443 }]

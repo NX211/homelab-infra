@@ -1,0 +1,43 @@
+---
+# Reusable catalog Task: untrusted web/nextjs PR checks. Faithful to capturly
+# ci.yml (lint-and-typecheck + build): install via the Verdaccio proxy (NO npm
+# token in the pod), build dependent packages, lint, type-check, then build+test
+# the web app. Zero secrets; runs under gVisor (set on the PipelineRun).
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: web-ci
+  labels:
+    app.kubernetes.io/part-of: build-catalog
+spec:
+  params:
+    - name: node-image
+      type: string
+      default: node:22-bookworm-slim
+  workspaces:
+    - name: source
+    - name: npmrc            # configmap: .npmrc pointing at Verdaccio (no token)
+      mountPath: /config/npm
+  steps:
+    - name: checks
+      image: $(params.node-image)
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: HOME
+          value: $(workspaces.source.path)
+        # Turbo/CI hints; no secrets.
+        - name: CI
+          value: "true"
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        corepack enable && corepack prepare pnpm@9.15.9 --activate
+        cp /config/npm/.npmrc "$HOME/.npmrc"   # registry = Verdaccio, no auth
+        pnpm install --frozen-lockfile
+        # apps/web type-checks against the compiled dist/ of its workspace deps.
+        pnpm --filter "@capturly/web^..." --if-present build
+        pnpm run lint --filter='!@capturly/mobile'
+        pnpm run type-check --filter='!@capturly/mobile'
+        # Build + unit-test the web app.
+        pnpm --filter "@capturly/web" --if-present build
+        pnpm --filter "@capturly/web" --if-present test
