@@ -60,6 +60,8 @@ spec:
             configMap: { name: capturly-trusted-npmrc }   # Verdaccio, no token
           - name: gcp-wif
             configMap: { name: capturly-gcp-wif }
+          - name: github-app
+            secret: { secretName: capturly-github-app }   # App key -> ~1h clone token
 ---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener

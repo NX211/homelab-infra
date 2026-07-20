@@ -39,24 +39,49 @@ spec:
     - name: keystore
     - name: npmrc
     - name: gcp-wif
+    - name: github-app        # GitHub App creds (app-id, app-private-key) for a
+                              # short-lived clone token — no static git credential
   tasks:
     - name: clone
       workspaces:
         - name: output
           workspace: source
+        - name: github-app
+          workspace: github-app
       taskSpec:
         workspaces:
           - name: output
+          - name: github-app
+            mountPath: /github-app
         params: []
         steps:
           - name: git-clone
             image: alpine/git:2.45.2
             script: |
               #!/bin/sh
+              # Clone the private repo with a ~1h GitHub App installation token
+              # minted at build time — nothing long-lived in the pod. The App key
+              # is the only stored secret (shared with PaC). set -e but never -x
+              # so the token is never echoed.
               set -eu
+              apk add --no-cache --quiet curl jq openssl >/dev/null
+
+              APP_ID="$(cat /github-app/app-id)"
+              b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+              now=$(date +%s)
+              hdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
+              pld="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now-60))" "$((now+540))" "$APP_ID" | b64url)"
+              sig="$(printf '%s' "$hdr.$pld" | openssl dgst -sha256 -sign /github-app/app-private-key -binary | b64url)"
+              jwt="$hdr.$pld.$sig"
+
+              slug="$(printf '%s' "$(params.git-url)" | sed -E 's#https?://github.com/##; s#\.git$##')"
+              gh="https://api.github.com"
+              inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh/repos/$slug/installation" | jq -r .id)"
+              token="$(curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh/app/installations/$inst/access_tokens" | jq -r .token)"
+
               cd "$(workspaces.output.path)"
-              git clone --depth 1 --branch "$(params.git-revision)" \
-                "$(params.git-url)" . 2>/dev/null || git clone "$(params.git-url)" .
+              git clone "https://x-access-token:${token}@github.com/${slug}.git" .
+              git remote set-url origin "https://github.com/${slug}.git"   # drop the token from .git/config
               [ -n "$(params.git-revision)" ] && git checkout "$(params.git-revision)" || true
     - name: build
       runAfter: [clone]

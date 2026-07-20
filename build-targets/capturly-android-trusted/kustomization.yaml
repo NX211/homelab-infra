@@ -9,7 +9,8 @@ resources:
   - networkpolicy.yaml
   - externalsecret-signing.yaml
   - npmrc-configmap.yaml
-  - externalsecret-git-and-webhook.yaml
+  - externalsecret-webhook.yaml
+  - externalsecret-github-app.yaml
   - wif-credential-config.yaml
   - gradle-cache-pvc.yaml
   # Trusted-tier trigger: Tekton Triggers (tag push → PipelineRun).

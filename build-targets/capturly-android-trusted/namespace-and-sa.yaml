@@ -21,7 +21,5 @@ kind: ServiceAccount
 metadata:
   name: capturly-android-trusted
   namespace: capturly-builds-trusted
-# Tekton injects the `tekton.dev/git-0`-annotated basic-auth secret into the
-# clone step so the private capturly.app source can be fetched.
-secrets:
-  - name: capturly-git
+# No linked git secret: the clone mints a short-lived GitHub App token at build
+# time (see the android-build pipeline + externalsecret-github-app.yaml).
