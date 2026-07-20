@@ -1,0 +1,18 @@
+---
+# TLS cert for the public PaC webhook endpoint, issued by cert-manager via the
+# letsencrypt-prod ClusterIssuer (HTTP-01 through Traefik) — the same pattern as
+# authelia/monitoring. HTTP-01 works for any host that resolves to the homelab
+# public IP on :80, so no Cloudflare/DNS-01 solver is needed. Requires the
+# tekton-pac.coreyalan.com A record (platform-infra Cloudflare, DNS-only).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: tekton-pac-tls
+  namespace: pipelines-as-code
+spec:
+  secretName: tekton-pac-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - tekton-pac.coreyalan.com
