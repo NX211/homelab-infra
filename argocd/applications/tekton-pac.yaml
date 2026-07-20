@@ -1,0 +1,36 @@
+---
+# Pipelines-as-Code — the GitHub-webhook trigger + policy/ACL layer, installed
+# separately because the operator does not provision PaC on vanilla k8s. Bundles
+# the PaC release with the ESO-synced GitHub App secret (tekton/pac/). Independent
+# of the operator; installs its own CRDs, so SSA + early-ish wave.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-pac
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: tekton/pac
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pipelines-as-code
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

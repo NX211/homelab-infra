@@ -1,0 +1,40 @@
+---
+# Tekton Operator — installs the operator + component CRDs (Pipeline, Triggers,
+# Results, Chains). The TektonConfig CR that selects components lives in the
+# `tekton-config` app (wave -1). Follows the third-party-operator pattern
+# (external-secrets-operator, redis-operator, and the retired arc-controller).
+# See docs/design/tekton-build-platform.md and ADR-0017.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-operator
+  namespace: argocd
+  annotations:
+    # Operator + CRDs must exist before any TektonConfig / Tekton CR syncs.
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: tekton/operator
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tekton-operator
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # Tekton CRDs are large; SSA avoids the client-side last-applied
+      # annotation size limit.
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

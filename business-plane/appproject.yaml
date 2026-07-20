@@ -1,9 +1,12 @@
 ---
-# ArgoCD project that fences the business/build apps off from the personal ones.
-# Apps in this project may deploy ONLY into the business namespaces from the
-# homelab-infra repo + the pinned upstream charts — so a personal app manifest
-# can never land in a business namespace, and vice versa. Move the build-fleet
-# Applications to `project: business` (arc-controller, arc-runners-android[-config]).
+# ArgoCD project that fences the business / build-platform apps off from the
+# personal ones. Apps in this project may deploy ONLY into the build-platform
+# namespaces, from the homelab-infra repo + the pinned upstream Tekton release
+# artifacts — so a personal app manifest can never land in a build namespace, and
+# vice versa. Home of the Tekton build platform (tekton-operator, tekton-config,
+# tekton-pac, tekton-manual-approval-gate, tekton-runtimeclasses) and, from
+# Phase 1, the per-project build namespaces. See ADR-0017 +
+# docs/design/tekton-build-platform.md.
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -12,16 +15,28 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  description: SOC-2 in-scope business / build-fleet workloads
+  description: SOC-2 in-scope business / build-platform workloads
   sourceRepos:
     - https://github.com/NX211/homelab-infra.git
-    - ghcr.io/actions/actions-runner-controller-charts
+    # Kustomize remote bases for the pinned Tekton release artifacts.
+    - https://storage.googleapis.com/*          # tekton operator release.yaml
+    - https://github.com/tektoncd/*             # pipelines-as-code release
+    - https://github.com/openshift-pipelines/*  # manual-approval-gate release
   destinations:
     - server: https://kubernetes.default.svc
-      namespace: arc-systems
+      namespace: tekton-operator
+    # Covers tekton-pipelines / tekton-chains / tekton-results (operator layout).
     - server: https://kubernetes.default.svc
-      namespace: arc-runners
-  # ARC installs its own cluster-scoped CRDs/RBAC; allow the kinds it needs.
+      namespace: tekton-*
+    - server: https://kubernetes.default.svc
+      namespace: pipelines-as-code
+    # Phase 1 per-project build namespaces ({project}-builds-{trusted,untrusted}).
+    - server: https://kubernetes.default.svc
+      namespace: "*-builds-*"
+  # Tekton (operator + PaC + MAG) installs cluster-scoped CRDs/RBAC/webhooks; the
+  # untrusted tier needs RuntimeClass; our apps apply the cluster-scoped
+  # TektonConfig. First sync may surface an additional cluster kind an upstream
+  # release bundles — Argo blocks + names it clearly; add it here when it does.
   clusterResourceWhitelist:
     - group: apiextensions.k8s.io
       kind: CustomResourceDefinition
@@ -31,6 +46,14 @@ spec:
       kind: ClusterRoleBinding
     - group: ""
       kind: Namespace
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+    - group: node.k8s.io
+      kind: RuntimeClass
+    - group: operator.tekton.dev
+      kind: TektonConfig
   namespaceResourceWhitelist:
     - group: "*"
       kind: "*"

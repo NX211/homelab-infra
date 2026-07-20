@@ -1,0 +1,36 @@
+---
+# TektonConfig CR — selects components (profile: basic => Pipeline + Triggers +
+# Results + Chains, NO Dashboard) and their config. Syncs after the operator +
+# CRDs (wave -2). Plain-directory source so it self-heals independently of the
+# operator release.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-config
+  namespace: argocd
+  annotations:
+    # After tekton-operator (-2): the TektonConfig CRD must exist first.
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: tekton/config
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tekton-pipelines
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
