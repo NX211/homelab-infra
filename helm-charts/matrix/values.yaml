@@ -215,7 +215,7 @@ rtc:
         cpu: 200m
         memory: 128Mi
   elementCall:
-    image: ghcr.io/element-hq/element-call:v0.21.0
+    image: ghcr.io/element-hq/element-call:v0.22.0
     resources:
       requests:
         cpu: 10m
