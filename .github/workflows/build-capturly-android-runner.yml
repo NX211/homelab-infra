@@ -53,7 +53,7 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4.1.2
 
       - name: Sign image (keyless)
         # Sign by digest (immutable). Verified in-cluster by the business-plane
