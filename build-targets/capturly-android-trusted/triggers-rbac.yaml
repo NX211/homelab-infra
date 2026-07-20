@@ -1,0 +1,37 @@
+---
+# ServiceAccount + RBAC for the EventListener sink: it must read Trigger CRs and
+# create PipelineRuns in this namespace. Binds the ClusterRoles the Tekton
+# Triggers install ships (tekton-triggers-eventlistener-roles /
+# -clusterroles). Distinct from the pipeline SA (capturly-android-trusted).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: capturly-trigger
+  namespace: capturly-builds-trusted
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: capturly-trigger-eventlistener
+  namespace: capturly-builds-trusted
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-eventlistener-roles
+subjects:
+  - kind: ServiceAccount
+    name: capturly-trigger
+    namespace: capturly-builds-trusted
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: capturly-trigger-eventlistener-clusterroles
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-eventlistener-clusterroles
+subjects:
+  - kind: ServiceAccount
+    name: capturly-trigger
+    namespace: capturly-builds-trusted

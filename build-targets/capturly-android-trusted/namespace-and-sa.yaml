@@ -1,0 +1,27 @@
+---
+# Trusted-tier build namespace for capturly Android releases. Isolated from the
+# untrusted PR tier (separate namespace, Phase 2) so untrusted code can never
+# reach the signing keystore or the cloud identity that live here (design §1).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: capturly-builds-trusted
+  labels:
+    build.capturly/tier: trusted
+    build.capturly/project: capturly
+    build.capturly/channel: android
+---
+# Per-(project,channel,tier) ServiceAccount. Its projected OIDC token is the
+# per-build identity federated to GCP WIF (design §5); no static cloud key. The
+# GCP-side pool/provider trusting the cluster issuer for this SA subject
+# (system:serviceaccount:capturly-builds-trusted:capturly-android-trusted) is a
+# platform-infra Terraform prereq.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: capturly-android-trusted
+  namespace: capturly-builds-trusted
+# Tekton injects the `tekton.dev/git-0`-annotated basic-auth secret into the
+# clone step so the private capturly.app source can be fetched.
+secrets:
+  - name: capturly-git

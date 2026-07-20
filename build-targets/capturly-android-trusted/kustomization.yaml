@@ -1,0 +1,25 @@
+# capturly Android trusted-tier build namespace + the catalog tasks the
+# android-build pipeline references by name (installed into this namespace so
+# taskRef resolution succeeds; the Pipeline itself is fetched via the git
+# resolver from .tekton). Trigger wiring (PaC Repository vs Tekton Triggers
+# EventListener) is added once the trusted-tier trigger mechanism is decided —
+# see the design note in the PR / runbook.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: capturly-builds-trusted
+resources:
+  - namespace-and-sa.yaml
+  - networkpolicy.yaml
+  - externalsecret-signing.yaml
+  - externalsecret-npm.yaml
+  - externalsecret-git-and-webhook.yaml
+  - wif-credential-config.yaml
+  - gradle-cache-pvc.yaml
+  # Trusted-tier trigger: Tekton Triggers (tag push → PipelineRun).
+  - triggers.yaml
+  - triggers-rbac.yaml
+  - ingressroute.yaml
+  # Catalog tasks referenced by the android-build pipeline (name resolution
+  # happens in the PipelineRun namespace).
+  - ../../build-catalog/tasks/build-signed-aab.yaml
+  - ../../build-catalog/tasks/play-publish.yaml

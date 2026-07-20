@@ -1,0 +1,83 @@
+---
+# Reusable catalog Task: build a signed Android release AAB.
+#
+# Faithful port of capturly/.github/workflows/release-android.yml (the trusted
+# release job): pnpm workspace deps → gradle bundleRelease with the Bitwarden
+# upload keystore → 16KB-alignment + policy-manifest checks. Toolchain lives in
+# the step image (design §4); signing material + npm auth arrive as secret-backed
+# workspaces so this Task stays project-agnostic.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: build-signed-aab
+  labels:
+    app.kubernetes.io/part-of: build-catalog
+spec:
+  params:
+    - name: toolchain-image
+      description: Node+pnpm+JDK17+Android SDK image the build runs in.
+      type: string
+    - name: mobile-dir
+      description: Path to the mobile app within the repo.
+      type: string
+      default: apps/mobile
+  workspaces:
+    - name: source        # cloned repo (from git-clone)
+    - name: gradle-cache   # persistent ~/.gradle (optional but recommended)
+      optional: true
+    - name: keystore      # secret: upload-keystore.jks.b64, store-password, key-alias, key-password
+      mountPath: /secrets/keystore
+    - name: npmrc         # secret: .npmrc with the @corey-alan-consulting read token
+      mountPath: /secrets/npm
+  results:
+    - name: aab-path
+      description: Path to the built AAB within the source workspace.
+  steps:
+    - name: pnpm-workspace-deps
+      image: $(params.toolchain-image)
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: HOME
+          value: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        cp /secrets/npm/.npmrc "$HOME/.npmrc"
+        # Retry: @prisma/engines postinstall fetches binaries and can abort.
+        attempt=1; max=3
+        until pnpm install --frozen-lockfile; do
+          [ "$attempt" -ge "$max" ] && { echo "pnpm install failed"; exit 1; }
+          echo "retry $attempt/$max"; sleep $((attempt * 15)); attempt=$((attempt + 1))
+        done
+        # Metro resolves workspace deps via their built dist/ — compile first.
+        pnpm --filter "@capturly/mobile^..." --if-present build
+    - name: gradle-bundle-release
+      image: $(params.toolchain-image)
+      workingDir: $(workspaces.source.path)/$(params.mobile-dir)
+      env:
+        - name: HOME
+          value: $(workspaces.source.path)
+        # Signing material from the mounted keystore secret workspace.
+        - name: ANDROID_KEYSTORE_PASSWORD
+          valueFrom: { secretKeyRef: { name: capturly-android-signing, key: store-password } }
+        - name: ANDROID_KEY_ALIAS
+          valueFrom: { secretKeyRef: { name: capturly-android-signing, key: key-alias } }
+        - name: ANDROID_KEY_PASSWORD
+          valueFrom: { secretKeyRef: { name: capturly-android-signing, key: key-password } }
+        - name: SENTRY_AUTH_TOKEN
+          valueFrom: { secretKeyRef: { name: capturly-android-signing, key: sentry-auth-token } }
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        # Materialize the upload keystore (base64 in the secret) to a temp path.
+        export ANDROID_KEYSTORE_PATH="$(mktemp -d)/upload-keystore.jks"
+        base64 -d /secrets/keystore/upload-keystore.jks.b64 > "$ANDROID_KEYSTORE_PATH"
+        ./gradlew bundleRelease --no-daemon
+        AAB="app/build/outputs/bundle/release/app-release.aab"
+        # 16KB page alignment (Play requirement) + policy-clean merged manifest.
+        python3 ../scripts/check-elf-alignment.py "$AAB"
+        MANIFEST="app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml"
+        if grep -E "AD_ID|READ_MEDIA_IMAGES|READ_MEDIA_VIDEO" "$MANIFEST"; then
+          echo "Policy-sensitive permission leaked into merged manifest"; exit 1
+        fi
+        echo -n "$(params.mobile-dir)/android/$AAB" > "$(results.aab-path.path)"
