@@ -9,9 +9,10 @@
 #    the fail-closed verification before this carries a real release.
 #
 # Pin an exact release; verify/bump against
-# https://github.com/openshift-pipelines/manual-approval-gate/releases. Confirm
-# the tag below is current before first sync (see runbook).
+# https://github.com/openshift-pipelines/manual-approval-gate/releases. Use the
+# **release-kubernetes.yaml** asset (the plain release.yaml doesn't exist; there's
+# a separate release-openshift.yaml).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - https://github.com/openshift-pipelines/manual-approval-gate/releases/download/v0.4.0/release.yaml
+  - https://github.com/openshift-pipelines/manual-approval-gate/releases/download/v0.9.0/release-kubernetes.yaml
