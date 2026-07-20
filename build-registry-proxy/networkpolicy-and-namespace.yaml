@@ -6,15 +6,14 @@ metadata:
   labels:
     build.capturly/component: registry-proxy
 ---
-# Verdaccio egress: DNS + public HTTPS to npmjs only (no private ranges — it has
-# no reason to reach anything in-cluster outbound).
+# Both proxies' egress: DNS + public HTTPS to npmjs only (no private ranges).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: verdaccio-egress
   namespace: build-registry-proxy
 spec:
-  podSelector: { matchLabels: { app: verdaccio } }
+  podSelector: { matchLabels: { app.kubernetes.io/name: verdaccio } }
   policyTypes: [Egress]
   egress:
     - to: [{ namespaceSelector: {} }]
@@ -25,19 +24,33 @@ spec:
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
       ports: [{ protocol: TCP, port: 443 }]
 ---
-# Verdaccio ingress: any build-tier namespace (trusted or untrusted) may reach the
-# proxy on 4873 — both install private deps through it, with no token in the pod.
+# Per-tier ingress (H3): the untrusted proxy accepts ONLY untrusted-tier
+# namespaces; the trusted proxy ONLY trusted-tier. A tier physically cannot reach
+# the other tier's cache.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: verdaccio-ingress
+  name: verdaccio-untrusted-ingress
   namespace: build-registry-proxy
 spec:
-  podSelector: { matchLabels: { app: verdaccio } }
+  podSelector: { matchLabels: { app: verdaccio-untrusted } }
   policyTypes: [Ingress]
   ingress:
     - from:
         - namespaceSelector:
-            matchExpressions:
-              - { key: build.capturly/tier, operator: Exists }
+            matchLabels: { build.capturly/tier: untrusted }
+      ports: [{ protocol: TCP, port: 4873 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: verdaccio-trusted-ingress
+  namespace: build-registry-proxy
+spec:
+  podSelector: { matchLabels: { app: verdaccio-trusted } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { build.capturly/tier: trusted }
       ports: [{ protocol: TCP, port: 4873 }]

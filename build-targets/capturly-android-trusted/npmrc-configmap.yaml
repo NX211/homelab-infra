@@ -11,5 +11,5 @@ metadata:
   namespace: capturly-builds-trusted
 data:
   .npmrc: |
-    registry=http://verdaccio.build-registry-proxy.svc.cluster.local:4873/
-    @corey-alan-consulting:registry=http://verdaccio.build-registry-proxy.svc.cluster.local:4873/
+    registry=http://verdaccio-trusted.build-registry-proxy.svc.cluster.local:4873/
+    @corey-alan-consulting:registry=http://verdaccio-trusted.build-registry-proxy.svc.cluster.local:4873/

@@ -1,9 +1,9 @@
 ---
-# Verdaccio — the trusted npm registry proxy that lets the ZERO-SECRET untrusted
-# build tier install private @corey-alan-consulting packages without ever holding
-# the npm token (design §1, Phase 2 decision 2026-07-20). Verdaccio holds the
-# read token (uplink auth to npmjs); untrusted pods point their .npmrc at this
-# service with NO credential, so a malicious PR postinstall has nothing to steal.
+# Verdaccio npm registry proxies — TWO instances so the trusted and untrusted
+# build tiers share NO cache (H3). Each holds the read token (uplink to npmjs) and
+# serves private @corey-alan-consulting packages anonymously in-cluster, so build
+# pods hold no npm credential. Shared config; separate deployments + emptyDir
+# caches; a tier can only reach its own proxy (per-tier ingress netpol).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,7 +12,6 @@ metadata:
 data:
   config.yaml: |
     storage: /verdaccio/storage
-    # No user registration; anonymous read only (publish is denied everywhere).
     auth:
       htpasswd:
         file: /verdaccio/storage/htpasswd
@@ -20,15 +19,14 @@ data:
     uplinks:
       npmjs:
         url: https://registry.npmjs.org/
-        # Private-scope read token, injected from the mounted secret env.
         auth:
           type: bearer
           token_env: NPM_TOKEN
         maxage: 10m
     packages:
       '@corey-alan-consulting/*':
-        access: $anonymous          # in-cluster pods read without auth
-        publish: $authenticated     # nobody authenticates → publish denied
+        access: $anonymous
+        publish: $authenticated
         proxy: npmjs
       '**':
         access: $anonymous
@@ -41,37 +39,27 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: verdaccio
+  name: verdaccio-untrusted
   namespace: build-registry-proxy
-  labels: { app: verdaccio }
+  labels: { app: verdaccio-untrusted, app.kubernetes.io/name: verdaccio }
 spec:
   replicas: 1
   selector:
-    matchLabels: { app: verdaccio }
+    matchLabels: { app: verdaccio-untrusted }
   template:
     metadata:
-      labels: { app: verdaccio }
+      labels: { app: verdaccio-untrusted, app.kubernetes.io/name: verdaccio }
     spec:
-      # The `verdaccio` Service injects a docker-link env var VERDACCIO_PORT=
-      # tcp://<clusterip>:4873, which Verdaccio misreads as its listen ADDRESS
-      # ("Invalid address"). Disable service-link injection to stop it.
-      enableServiceLinks: false
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 10001
-        fsGroup: 10001
+      enableServiceLinks: false     # avoid VERDACCIO_PORT=tcp://... injection
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001 }
       containers:
         - name: verdaccio
           image: verdaccio/verdaccio:6.2.0
-          ports:
-            - { containerPort: 4873, name: http }
+          ports: [{ containerPort: 4873, name: http }]
           env:
-            # Explicit listen port (belt-and-suspenders vs the injected var).
-            - name: VERDACCIO_PORT
-              value: "4873"
+            - { name: VERDACCIO_PORT, value: "4873" }
             - name: NPM_TOKEN
-              valueFrom:
-                secretKeyRef: { name: verdaccio-npm-uplink, key: npm-token }
+              valueFrom: { secretKeyRef: { name: verdaccio-npm-uplink, key: npm-token } }
           volumeMounts:
             - { name: config, mountPath: /verdaccio/conf }
             - { name: storage, mountPath: /verdaccio/storage }
@@ -82,17 +70,60 @@ spec:
             httpGet: { path: /-/ping, port: 4873 }
             initialDelaySeconds: 5
       volumes:
-        - name: config
-          configMap: { name: verdaccio-config }
-        - name: storage
-          emptyDir: {}          # proxy cache only; safe to lose
+        - { name: config, configMap: { name: verdaccio-config } }
+        - { name: storage, emptyDir: {} }
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: verdaccio
+  name: verdaccio-untrusted
   namespace: build-registry-proxy
 spec:
-  selector: { app: verdaccio }
-  ports:
-    - { port: 4873, targetPort: 4873, name: http }
+  selector: { app: verdaccio-untrusted }
+  ports: [{ port: 4873, targetPort: 4873, name: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: verdaccio-trusted
+  namespace: build-registry-proxy
+  labels: { app: verdaccio-trusted, app.kubernetes.io/name: verdaccio }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: verdaccio-trusted }
+  template:
+    metadata:
+      labels: { app: verdaccio-trusted, app.kubernetes.io/name: verdaccio }
+    spec:
+      enableServiceLinks: false
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001 }
+      containers:
+        - name: verdaccio
+          image: verdaccio/verdaccio:6.2.0
+          ports: [{ containerPort: 4873, name: http }]
+          env:
+            - { name: VERDACCIO_PORT, value: "4873" }
+            - name: NPM_TOKEN
+              valueFrom: { secretKeyRef: { name: verdaccio-npm-uplink, key: npm-token } }
+          volumeMounts:
+            - { name: config, mountPath: /verdaccio/conf }
+            - { name: storage, mountPath: /verdaccio/storage }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /-/ping, port: 4873 }
+            initialDelaySeconds: 5
+      volumes:
+        - { name: config, configMap: { name: verdaccio-config } }
+        - { name: storage, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: verdaccio-trusted
+  namespace: build-registry-proxy
+spec:
+  selector: { app: verdaccio-trusted }
+  ports: [{ port: 4873, targetPort: 4873, name: http }]
