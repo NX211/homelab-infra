@@ -110,8 +110,8 @@ checklist.
 
 | Step | Work | Verify |
 |---|---|---|
-| **3a — Harden live bundles** | Add H1 securityContext + H2 split-egress to the *current* capturly bundles (before templating) | untrusted build pod has no public egress; a test exfil fails |
-| **3b — Chart + ApplicationSet** | Build `charts/build-namespace` + the ApplicationSet + inventory; migrate capturly | rendered manifests match live (+ hardening); apps Healthy |
+| **3a — Split egress (H2)** | Split the untrusted egress by task (clone gets internet; the arbitrary-code `checks` step gets Verdaccio only) | untrusted `checks` pod has no public egress; a test exfil fails |
+| **3b — Chart + non-root images + ApplicationSet** | Non-root toolchain images (tools pre-baked) so **H1 `set-security-context`** can be enabled cluster-wide; `charts/build-namespace` + ApplicationSet + inventory; migrate capturly | steps run non-root/drop-caps/seccomp; rendered manifests match live (+ hardening); apps Healthy |
 | **3c — Onboard coreyalan** | One inventory entry per tier | app generated + Healthy from a single file |
 | **3d — Trusted go-live gates** | H6 fail-closed test; H7 Chains keyless + verify-on-admit | release blocks without approval; artifact has a verified attestation |
 | **3e — Blast-radius (opt)** | H8 per-project ESO machine accounts; H4 dedicated build App; H10 build node | leaked build token ≠ all secrets |

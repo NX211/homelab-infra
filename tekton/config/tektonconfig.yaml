@@ -18,6 +18,9 @@ spec:
     # Beta fields cover the resolver + provenance features the catalog uses.
     # The git resolver (channel catalog, design §4) ships enabled by default.
     enable-api-fields: beta
+    # H1 (set-security-context) is deferred to 3b: it forces runAsNonRoot on all
+    # steps, which needs the tools pre-baked into images (no runtime apk add /
+    # corepack enable). Enabled once the non-root toolchain images land.
   chain:
     # Chains controller runs now; keyless Sigstore signing (Fulcio/Rekor) + SLSA
     # provenance config is wired in Phase 1 with the trusted Android pipeline
