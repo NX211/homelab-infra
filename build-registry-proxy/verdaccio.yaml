@@ -52,6 +52,10 @@ spec:
     metadata:
       labels: { app: verdaccio }
     spec:
+      # The `verdaccio` Service injects a docker-link env var VERDACCIO_PORT=
+      # tcp://<clusterip>:4873, which Verdaccio misreads as its listen ADDRESS
+      # ("Invalid address"). Disable service-link injection to stop it.
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -62,6 +66,9 @@ spec:
           ports:
             - { containerPort: 4873, name: http }
           env:
+            # Explicit listen port (belt-and-suspenders vs the injected var).
+            - name: VERDACCIO_PORT
+              value: "4873"
             - name: NPM_TOKEN
               valueFrom:
                 secretKeyRef: { name: verdaccio-npm-uplink, key: npm-token }
