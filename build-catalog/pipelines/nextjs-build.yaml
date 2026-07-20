@@ -49,7 +49,11 @@ spec:
     - name: checks
       runAfter: [clone]
       taskRef:
-        name: web-ci
+        resolver: git
+        params:
+          - { name: url, value: https://github.com/NX211/homelab-infra.git }
+          - { name: revision, value: main }
+          - { name: pathInRepo, value: build-catalog/tasks/web-ci.yaml }
       workspaces:
         - { name: source, workspace: source }
         - { name: npmrc, workspace: npmrc }
