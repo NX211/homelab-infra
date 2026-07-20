@@ -1,0 +1,66 @@
+---
+# Build-platform fleet, generated from an inventory. A git-files generator reads
+# every build-targets/<project>/<channel>-<tier>.yaml and templates one Argo
+# Application per entry, each rendering helm-charts/build-namespace with that file as
+# its Helm values (multi-source: a `values` ref source + the chart source).
+#
+# Onboarding a new build channel = adding ONE inventory file. Removing one prunes
+# its Application (and, via the resources finalizer, its namespace). Replaces the
+# hand-written per-namespace Argo apps + build-targets/capturly-*/ bundles, which
+# the chart reproduces spec-for-spec (regression-gated in the 3b-4 PR) plus the
+# baked hardening (H1-H5, H8). See docs/design/tekton-phase3-plan.md.
+#
+# Lives here so root-apps applies it like any other entry; it is an ArgoCD
+# control-plane CR (safe to prune). Generated apps land in the `business` project.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: build-targets
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/NX211/homelab-infra.git
+        revision: main
+        files:
+          - path: build-targets/*/*.yaml
+  template:
+    metadata:
+      name: "{{.project}}-{{.channel}}-{{.tier}}"
+      annotations:
+        # After business-plane (-6) and build-registry-proxy (-1).
+        argocd.argoproj.io/sync-wave: "0"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: business
+      sources:
+        # Ref source: exposes the repo tree as $values for the inventory file.
+        - repoURL: https://github.com/NX211/homelab-infra.git
+          targetRevision: main
+          ref: values
+        # Chart source, fed the matched inventory file as its values.
+        - repoURL: https://github.com/NX211/homelab-infra.git
+          targetRevision: main
+          path: helm-charts/build-namespace
+          helm:
+            valueFiles:
+              - "$values/{{.path.path}}/{{.path.filename}}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{.project}}-builds-{{.tier}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m

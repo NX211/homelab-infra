@@ -1,0 +1,14 @@
+---
+# .npmrc pointing pnpm install at the per-tier Verdaccio proxy — NO auth token in
+# the pod. The proxy holds the org npm read token and fetches private
+# {{ .Values.privateScope }}/* packages from npmjs on the pod's behalf, so the
+# build pod carries nothing to exfiltrate. Mounted as the `npmrc` workspace.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.project }}-{{ .Values.tier }}-npmrc
+  namespace: {{ include "bn.namespace" . }}
+data:
+  .npmrc: |
+    registry={{ include "bn.verdaccioRegistry" . }}
+    {{ .Values.privateScope }}:registry={{ include "bn.verdaccioRegistry" . }}

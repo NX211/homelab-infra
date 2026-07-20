@@ -1,0 +1,97 @@
+{{- if eq .Values.tier "trusted" }}
+---
+# Tekton Triggers wiring for the TRUSTED tier: a tag push on {{ .Values.repo }} ->
+# EventListener (github interceptor verifies the webhook HMAC + a CEL filter limits
+# to the release tag) -> TriggerTemplate creates the {{ .Values.channel }}-build
+# PipelineRun in this namespace. PaC is NOT used here (its repo->namespace 1:1
+# model can't split trusted/untrusted for one repo); PaC drives the untrusted PR
+# tier. Design §4/§6.
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: {{ .Values.project }}-{{ .Values.channel }}-tag
+  namespace: {{ include "bn.namespace" . }}
+spec:
+  params:
+    - name: git-url
+      value: $(body.repository.clone_url)
+    - name: git-revision
+      value: $(body.after)          # pushed commit SHA — clean checkout ref
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: {{ .Values.project }}-{{ .Values.channel }}-release
+  namespace: {{ include "bn.namespace" . }}
+spec:
+  params:
+    - name: git-url
+    - name: git-revision
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: {{ .Values.project }}-{{ .Values.channel }}-release-
+      spec:
+        taskRunTemplate:
+          serviceAccountName: {{ include "bn.pipelineSA" . }}
+        pipelineRef:
+          # Channel catalog via git resolver (design §4). Pin `revision` to a
+          # catalog tag once cut.
+          resolver: git
+          params:
+            - { name: url, value: {{ .Values.triggers.pipeline.url }} }
+            - { name: revision, value: {{ .Values.triggers.pipeline.revision }} }
+            - { name: pathInRepo, value: {{ .Values.triggers.pipeline.path }} }
+        params:
+          - { name: git-url, value: $(tt.params.git-url) }
+          - { name: git-revision, value: $(tt.params.git-revision) }
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: ["ReadWriteOnce"]
+                resources: { requests: { storage: {{ .Values.triggers.sourceWorkspaceSize }} } }
+{{- if .Values.gradleCache.enabled }}
+          - name: gradle-cache
+            persistentVolumeClaim: { claimName: {{ .Values.project }}-gradle-cache }
+{{- end }}
+{{- if .Values.signing.keys }}
+          - name: keystore
+            secret: { secretName: {{ .Values.project }}-{{ .Values.channel }}-signing }
+{{- end }}
+          - name: npmrc
+            configMap: { name: {{ .Values.project }}-{{ .Values.tier }}-npmrc }   # Verdaccio, no token
+{{- if .Values.wif.audience }}
+          - name: gcp-wif
+            configMap: { name: {{ .Values.project }}-gcp-wif }
+{{- end }}
+          - name: github-app
+            secret: { secretName: {{ .Values.project }}-github-app }   # App key -> ~1h clone token
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: {{ .Values.project }}-{{ .Values.channel }}-{{ .Values.tier }}
+  namespace: {{ include "bn.namespace" . }}
+spec:
+  serviceAccountName: {{ include "bn.triggerSA" . }}
+  triggers:
+    - name: tag-release
+      interceptors:
+        - ref: { name: github }
+          params:
+            - name: secretRef
+              value: { secretName: {{ .Values.project }}-webhook, secretKey: webhook-secret }
+            - name: eventTypes
+              value: ["push"]
+        - ref: { name: cel }
+          params:
+            # Only the release tag — not every push/branch.
+            - name: filter
+              value: "body.ref.startsWith('{{ .Values.triggers.tagPrefix }}')"
+      bindings:
+        - ref: {{ .Values.project }}-{{ .Values.channel }}-tag
+      template:
+        ref: {{ .Values.project }}-{{ .Values.channel }}-release
+{{- end }}

@@ -1,0 +1,23 @@
+{{- if and (eq .Values.tier "trusted") .Values.triggers.host }}
+---
+# Exposes the EventListener sink so GitHub can POST the tag-push webhook. This is
+# the ONE inbound path to the build platform (the Dashboard is not deployed, §10)
+# and must be internet-reachable for GitHub. Guarded by the webhook HMAC (github
+# interceptor) + the CEL tag filter — not by SSO (GitHub can't auth). Register
+# this URL as the webhook on {{ .Values.repo }}.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ .Values.project }}-{{ .Values.channel }}-{{ .Values.tier }}-el
+  namespace: {{ include "bn.namespace" . }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ .Values.triggers.host }}`)
+      kind: Rule
+      services:
+        - name: el-{{ .Values.project }}-{{ .Values.channel }}-{{ .Values.tier }}
+          port: 8080
+  tls: {}
+{{- end }}

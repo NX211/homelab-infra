@@ -1,0 +1,30 @@
+{{- if and (eq .Values.tier "trusted") .Values.wif.audience }}
+---
+# GCP Workload Identity Federation credential config (external_account) for
+# keyless cloud access (e.g. Play publishing). google-auth reads the projected SA
+# token from the file the publish task mounts, exchanges it at STS for the target
+# SA — no downloaded key (ADR-0005). Mounted as the `gcp-wif` workspace.
+#
+# Reuses the homelab-staging WIF pool / k3s-oidc provider (platform-infra
+# homelab-wif.tf). The platform-infra change adds this pipeline SA
+# ({{ include "bn.pipelineSA" . }}) to the provider's attribute_condition and
+# grants it workloadIdentityUser on the target SA.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.project }}-gcp-wif
+  namespace: {{ include "bn.namespace" . }}
+data:
+  credential-config.json: |
+    {
+      "type": "external_account",
+      "audience": "{{ .Values.wif.audience }}",
+      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+      "token_url": "https://sts.googleapis.com/v1/token",
+      "credential_source": {
+        "file": "/var/run/gcp/token",
+        "format": { "type": "text" }
+      },
+      "service_account_impersonation_url": "{{ .Values.wif.impersonationUrl }}"
+    }
+{{- end }}

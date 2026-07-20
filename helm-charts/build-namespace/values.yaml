@@ -1,0 +1,78 @@
+# build-namespace defaults. One inventory entry (build-targets/<project>/<channel>-<tier>.yaml)
+# overrides only what it needs; everything below is the hardened-by-default baseline.
+#
+# Every resource name is derived from (project, channel, tier) so the rendered
+# output matches the hand-written bundles it replaces (regression-gated, Phase 3
+# B4). Override `namespace` / `pipelineServiceAccount` only to preserve a legacy name.
+
+# --- identity (required per entry) ---
+project: ""            # e.g. capturly
+channel: ""            # android | nextjs | linux
+tier: ""               # trusted | untrusted
+repo: ""               # owner/name, e.g. Corey-Alan-Consulting/capturly.app
+
+# --- name overrides (blank = convention) ---
+# namespace:               default <project>-builds-<tier>
+# pipelineServiceAccount:  default <project>-<channel>-<tier>
+namespace: ""
+pipelineServiceAccount: ""
+
+# Runtime sandbox for the build pods. Informational here — the RuntimeClass is
+# set on the PipelineRun by PaC/Triggers, not on the namespace bundle. gVisor for
+# JS/managed builds; kata for native/NDK (H9).
+runtimeClass: gvisor
+
+# npm: the registry is always the per-tier Verdaccio proxy (verdaccio-<tier>), so
+# no npm token ever lands in a build pod. privateScope also routes through it.
+privateScope: "@corey-alan-consulting"
+
+cluster:
+  # Endpoints the TRUSTED egress netpol must allow for Tekton pod orchestration.
+  apiServerCidr: 10.20.0.250/32   # kube-apiserver
+  serviceCidr: 10.43.0.1/32       # in-cluster kubernetes Service ClusterIP
+
+# ---------------- untrusted tier ----------------
+# Pipelines-as-Code Repository policy: who may trigger a run. Fork/external PRs
+# don't run until a listed team member comments /ok-to-test (design §6).
+pac:
+  policy:
+    pull_request: []
+    ok_to_test: []
+
+# ---------------- trusted tier ------------------
+# Dedicated Contents:read build App (H4). The clone step mints a ~1h installation
+# token from these at build time — no static git credential.
+githubApp:
+  store: bitwarden-build-platform
+  appIdKey: ""          # Bitwarden UUID of BUILD_APP_ID
+  privateKeyKey: ""     # Bitwarden UUID of BUILD_APP_PRIVATE_KEY
+
+# HMAC the GitHub tag webhook signs with; the EventListener github interceptor verifies it.
+webhook:
+  store: bitwarden-build-platform
+  secretKey: ""         # Bitwarden UUID of the webhook secret
+
+# Channel signing material (e.g. Android keystore). Empty list => no signing ES.
+signing:
+  store: bitwarden-capturly
+  keys: []              # list of { secretKey, remoteRef, comment? }
+
+# Keyless GCP via Workload Identity Federation (external_account, no downloaded key).
+wif:
+  audience: ""          # //iam.googleapis.com/projects/<n>/locations/global/workloadIdentityPools/<pool>/providers/<prov>
+  impersonationUrl: ""  # https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/<sa>:generateAccessToken
+
+# Persistent Gradle/ccache PVC (native builds). RWO — releases are serialized.
+gradleCache:
+  enabled: false
+  size: 10Gi
+
+# Tekton Triggers: tag push -> EventListener -> PipelineRun.
+triggers:
+  host: ""                    # tekton-trusted.<project>.example (public, webhook sink)
+  tagPrefix: ""               # refs/tags/@capturly/mobile@
+  sourceWorkspaceSize: 8Gi
+  pipeline:                   # git-resolved channel pipeline (design §4)
+    url: https://github.com/NX211/homelab-infra.git
+    revision: main
+    path: ""                  # build-catalog/pipelines/<channel>-build.yaml
