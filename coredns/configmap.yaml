@@ -70,6 +70,10 @@ data:
     10.43.5.100 call.coreyalan.com
     10.43.5.100 mrtc.coreyalan.com
     10.43.5.100 admin.coreyalan.com
+    # Tekton Pipelines-as-Code controller (build platform). Split-horizon so the
+    # cert-manager HTTP-01 self-check reaches Traefik instead of hairpinning to
+    # the public IP; GitHub's external webhook still hits the public IP:443.
+    10.43.5.100 tekton-pac.coreyalan.com
     10.43.5.100 sabnzbd.authoritah.tv
     10.43.5.100 jellyfin.authoritah.tv
     10.43.5.100 docs.authoritah.com
