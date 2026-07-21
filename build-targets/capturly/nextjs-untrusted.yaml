@@ -7,8 +7,8 @@ tier: untrusted
 repo: Corey-Alan-Consulting/capturly.app
 runtimeClass: gvisor
 
-pac:
-  policy:
-    # ⚠️ TODO: real GitHub team slug(s); the PaC App must be installed on the repo.
-    pull_request: [capturly-maintainers]
-    ok_to_test: [capturly-maintainers]
+# No pac.policy: use PaC's default ACL (owner + write-collaborators auto-run;
+# external/fork PRs need a maintainer /ok-to-test). The capturly-maintainers team
+# does not exist in the Corey-Alan-Consulting org, and naming a missing team makes
+# the policy check 404 and deny everyone. Add a real team slug here only if one is
+# created.
