@@ -104,13 +104,11 @@ argo-cd:
     params:
       # Run server without TLS (Traefik handles TLS termination)
       server.insecure: true
-      # Server-Side Diff: the controller computes drift via a server-side dry-run
-      # apply, so apiserver defaulting and mutating-webhook writes (ESO remoteRef
-      # defaults, Kyverno admission/emitWarning, CRD preserveUnknownFields, etc.)
-      # no longer surface as false OutOfSync. Also what makes the managedFields
-      # managers ignoreDifferences above actually affect sync status (not just the
-      # CLI diff view). Recommended default for SSA-heavy clusters.
-      controller.diff.server.side: "true"
+      # NB: Server-Side Diff is scoped per-app (argocd.argoproj.io/compare-options:
+      # ServerSideDiff=true) on the build/tekton/kyverno apps that need it — NOT
+      # enabled globally, because cluster-wide SSD surfaced a false OutOfSync on
+      # traefik's Service/IngressClass (server-allocated fields) and selfHeal then
+      # thrashed it. Keep the blast radius to the apps whose drift we understand.
 
   # Application Controller - manages application state
   controller:
