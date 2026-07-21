@@ -1,9 +1,13 @@
 {{- if eq .Values.tier "untrusted" }}
 ---
 # Pipelines-as-Code Repository for the UNTRUSTED PR tier. PaC matches this repo's
-# PR events to this namespace and runs the .tekton/ PipelineRun here. The policy
-# gates who can trigger: fork/external PRs do not run until a maintainer comments
-# /ok-to-test (design §6) — the control that vets untrusted code before it runs.
+# PR events to this namespace and runs the .tekton/ PipelineRun here.
+#
+# By default (no policy set) PaC's built-in ACL applies: owner + write-access
+# collaborators auto-run; genuine external/fork PRs wait for a maintainer
+# `/ok-to-test` (design §6) — the control that vets untrusted code before it runs.
+# Only set pac.policy.* to a GitHub TEAM slug that actually exists in the org — a
+# missing team makes the policy check 404 and denies EVERYONE (incl. the owner).
 #
 # The PaC GitHub App must be installed on {{ .Values.repo }} first.
 apiVersion: pipelinesascode.tekton.dev/v1alpha1
@@ -13,8 +17,14 @@ metadata:
   namespace: {{ include "bn.namespace" . }}
 spec:
   url: https://github.com/{{ .Values.repo }}
+{{- if or .Values.pac.policy.pull_request .Values.pac.policy.ok_to_test }}
   settings:
     policy:
+{{- if .Values.pac.policy.pull_request }}
       pull_request: {{ .Values.pac.policy.pull_request | toJson }}
+{{- end }}
+{{- if .Values.pac.policy.ok_to_test }}
       ok_to_test: {{ .Values.pac.policy.ok_to_test | toJson }}
+{{- end }}
+{{- end }}
 {{- end }}
