@@ -1,0 +1,134 @@
+{{- if .Values.coturn.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "capturly-live.fullname" . }}-coturn
+  labels:
+    app.kubernetes.io/name: capturly-live-coturn
+    {{- include "capturly-live.labels" . | nindent 4 }}
+data:
+  turnserver.conf: |
+    listening-port={{ .Values.coturn.listeningPort }}
+    tls-listening-port={{ .Values.coturn.tlsListeningPort }}
+    external-ip={{ .Values.coturn.externalIp }}
+    realm={{ .Values.coturn.host }}
+    server-name={{ .Values.coturn.host }}
+    lt-cred-mech
+    user={{ .Values.coturn.authUser }}:{{ .Values.coturn.authPassword }}
+    fingerprint
+    min-port={{ .Values.coturn.relayPortMin }}
+    max-port={{ .Values.coturn.relayPortMax }}
+    cert=/certs/tls.crt
+    pkey=/certs/tls.key
+    no-tlsv1
+    no-tlsv1_1
+    no-cli
+    no-multicast-peers
+    # Relay creds are public (they ship to browsers), so keep the relay from
+    # reaching anything private and bound per-user/total session counts.
+    denied-peer-ip=0.0.0.0-0.255.255.255
+    denied-peer-ip=10.0.0.0-10.255.255.255
+    denied-peer-ip=100.64.0.0-100.127.255.255
+    denied-peer-ip=127.0.0.0-127.255.255.255
+    denied-peer-ip=169.254.0.0-169.254.255.255
+    denied-peer-ip=172.16.0.0-172.31.255.255
+    denied-peer-ip=192.168.0.0-192.168.255.255
+    denied-peer-ip=224.0.0.0-255.255.255.255
+    user-quota=12
+    total-quota=100
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "capturly-live.fullname" . }}-coturn
+  annotations:
+    reloader.stakater.com/auto: "true"
+  labels:
+    app.kubernetes.io/name: capturly-live-coturn
+    {{- include "capturly-live.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: capturly-live-coturn
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: capturly-live-coturn
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      # TURN media is raw UDP/TCP and bypasses Traefik entirely — bind the
+      # proxy node directly and UniFi-forward the ports to it.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      enableServiceLinks: false
+      {{- with .Values.coturn.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: coturn
+        image: "{{ .Values.coturn.image.repository }}:{{ .Values.coturn.image.tag }}"
+        imagePullPolicy: {{ .Values.coturn.image.pullPolicy }}
+        args: ["-c", "/etc/coturn/turnserver.conf"]
+        ports:
+        - name: turn-udp
+          containerPort: {{ .Values.coturn.listeningPort }}
+          hostPort: {{ .Values.coturn.listeningPort }}
+          protocol: UDP
+        - name: turn-tcp
+          containerPort: {{ .Values.coturn.listeningPort }}
+          hostPort: {{ .Values.coturn.listeningPort }}
+          protocol: TCP
+        - name: turns-tcp
+          containerPort: {{ .Values.coturn.tlsListeningPort }}
+          hostPort: {{ .Values.coturn.tlsListeningPort }}
+          protocol: TCP
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.coturn.listeningPort }}
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.coturn.listeningPort }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 1
+        volumeMounts:
+        - name: config
+          mountPath: /etc/coturn
+          readOnly: true
+        - name: tls
+          mountPath: /certs
+          readOnly: true
+        resources:
+          {{- toYaml .Values.coturn.resources | nindent 10 }}
+      volumes:
+      - name: config
+        configMap:
+          name: {{ include "capturly-live.fullname" . }}-coturn
+      - name: tls
+        secret:
+          secretName: {{ include "capturly-live.fullname" . }}-coturn-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "capturly-live.fullname" . }}-coturn-tls
+  labels:
+    app.kubernetes.io/name: capturly-live-coturn
+    {{- include "capturly-live.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "capturly-live.fullname" . }}-coturn-tls
+  issuerRef:
+    name: {{ .Values.clusterIssuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.coturn.host }}
+{{- end }}
