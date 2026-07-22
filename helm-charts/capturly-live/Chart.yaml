@@ -1,0 +1,14 @@
+apiVersion: v2
+name: capturly-live
+description: Capturly Live - self-hosted VDO.Ninja fork (static app, signaling, TURN)
+type: application
+version: 1.0.0
+appVersion: "30.2"
+
+keywords:
+  - capturly
+  - webrtc
+  - streaming
+
+maintainers:
+  - name: Homelab Admin
