@@ -203,18 +203,26 @@ staging-app:
       cpu: 100m
       memory: 256Mi
     limits:
-      cpu: 500m
+      # 1000m: cold start compiles the whole server bundle on the main thread
+      # when the first readiness probe hits; at 500m the pod sat pinned at its
+      # limit with the event loop starved, failing even the trivial liveness
+      # route until the kubelet killed it mid-warmup (restart bursts on every
+      # jlshaw staging rollout).
+      cpu: 1000m
       memory: 768Mi
   # Liveness = process-only check; readiness = DB+Redis. Avoids restarting the
   # pod on a dependency blip (and rendering the SSR homepage on every probe).
+  # The chart has no startupProbe support, so the long initialDelay stands in
+  # for one: liveness must not kill the pod before the cold-start compile
+  # storm finishes.
   livenessProbe:
     enabled: true
     path: /api/health/live
     port: 3000
-    initialDelaySeconds: 30
+    initialDelaySeconds: 180
     periodSeconds: 10
     timeoutSeconds: 5
-    failureThreshold: 3
+    failureThreshold: 6
   readinessProbe:
     enabled: true
     path: /api/health
