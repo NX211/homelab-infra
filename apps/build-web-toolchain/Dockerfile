@@ -6,7 +6,7 @@
 # node:22-bookworm (full, not slim) includes git + python3/make/g++ for any deps
 # with native (node-gyp) builds. pnpm is installed globally and is world-readable,
 # so an arbitrary non-root uid can run it.
-FROM node:22-bookworm
+FROM node:26-bookworm
 
 RUN npm install -g pnpm@9.15.9 \
     && npm cache clean --force \
