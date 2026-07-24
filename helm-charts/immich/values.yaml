@@ -83,7 +83,7 @@ redis:
   enabled: true
   image:
     repository: docker.io/redis
-    tag: "8.6-alpine"
+    tag: "8.8-alpine"
     pullPolicy: IfNotPresent
   service:
     port: 6379
