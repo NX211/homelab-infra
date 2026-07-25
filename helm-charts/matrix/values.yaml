@@ -166,7 +166,7 @@ elementWeb:
 # --------------------------------------------------------------------------
 synapseAdmin:
   enabled: true
-  image: ghcr.io/etkecc/ketesa:v1.3.0
+  image: ghcr.io/etkecc/ketesa:v1.4.0
   host: admin.coreyalan.com
   resources:
     requests:
