@@ -1,0 +1,15 @@
+apiVersion: v2
+name: nightingale
+description: Nightingale - ML-powered karaoke app (vocal separation, lyric transcription, pitch scoring)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - nightingale
+  - karaoke
+  - music
+  - media
+
+maintainers:
+  - name: Homelab Admin
