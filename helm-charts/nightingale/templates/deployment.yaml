@@ -42,6 +42,15 @@ spec:
         - name: NIGHTINGALE_LIBRARY_PATH
           value: {{ .Values.env.libraryPath | quote }}
         {{- end }}
+        # Keep ML thread pools in step with the CPU limit (see values.yaml).
+        - name: OMP_NUM_THREADS
+          value: {{ .Values.env.threads | quote }}
+        - name: MKL_NUM_THREADS
+          value: {{ .Values.env.threads | quote }}
+        - name: NUMEXPR_NUM_THREADS
+          value: {{ .Values.env.threads | quote }}
+        - name: OPENBLAS_NUM_THREADS
+          value: {{ .Values.env.threads | quote }}
         volumeMounts:
         - name: data
           mountPath: {{ .Values.env.dataPath }}
