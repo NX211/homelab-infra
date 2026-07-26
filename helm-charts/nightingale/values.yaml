@@ -49,14 +49,21 @@ env:
   bind: "0.0.0.0:8080"
   dataPath: /data
   libraryPath: /songs
+  # ML thread cap. PyTorch/OpenMP otherwise read the host's core count (56) and
+  # spawn one thread per core, which thrashes against the cgroup CPU limit and
+  # produces massive CFS throttling. Keep this equal to resources.limits.cpu.
+  threads: "24"
 
-# Resource limits — CPU-based ML (Demucs/UVR vocal separation + WhisperX
-# transcription) is compute- and memory-heavy while processing a song, then
-# idle. Requests stay low; limits allow bursting on demand.
+# Resource limits — CPU-based ML (mel_band_roformer vocal separation + WhisperX
+# transcription) is compute-heavy in a burst while first analysing a song, then
+# idle (results are cached per-song). blacktalon has 56 cores and sits near-idle,
+# so give the burst real headroom: at 6 cores a single 234s song took ~20 min
+# and sat throttled >60% of the time. Requests stay low so nothing is reserved
+# while idle; the limit bounds the burst so it can't starve live Plex transcodes.
 resources:
   requests:
-    cpu: 250m
+    cpu: "2"
     memory: 1Gi
   limits:
-    cpu: "6"
+    cpu: "24"
     memory: 8Gi
