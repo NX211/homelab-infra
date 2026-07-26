@@ -60,10 +60,14 @@ env:
 # so give the burst real headroom: at 6 cores a single 234s song took ~20 min
 # and sat throttled >60% of the time. Requests stay low so nothing is reserved
 # while idle; the limit bounds the burst so it can't starve live Plex transcodes.
+#
+# Memory: the WhisperX transcription phase (after separation) loads its model and
+# spiked to ~7.9Gi, which OOMKilled the pod at an 8Gi limit mid-analysis. Raised
+# to 16Gi for headroom; the node has ample free RAM (limits ~45% allocated).
 resources:
   requests:
     cpu: "2"
-    memory: 1Gi
+    memory: 2Gi
   limits:
     cpu: "24"
-    memory: 8Gi
+    memory: 16Gi
