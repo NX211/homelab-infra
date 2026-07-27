@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@prisma/client": "^6.2.0",
+    "@prisma/client": "^7.0.0",
     "@restatedev/restate-sdk": "^1.7.0",
     "prisma": "^6.2.0"
   },
