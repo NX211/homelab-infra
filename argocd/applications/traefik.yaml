@@ -55,6 +55,13 @@ spec:
                 entryPoint:
                   to: websecure
                   scheme: https
+                  # Low priority so cert-manager's HTTP-01 solver Ingress (a
+                  # Host()+Path() router whose length-based priority is far higher)
+                  # wins for /.well-known/acme-challenge/* on :80. Without this the
+                  # catch-all redirect out-prioritizes the solver and every LE
+                  # HTTP-01 challenge 301s — breaking all cert issuance/renewal
+                  # (build-platform webhook sinks, and tekton-pac at its Sep renewal).
+                  priority: 10
           websecure:
             port: 8443
             hostPort: 443

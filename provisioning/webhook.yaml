@@ -1,6 +1,8 @@
 ---
-# Provisioning sync webhook — Phase 2a: submits the Tenant to the Restate engine
-# and mirrors the workflow's state into Tenant.status. Still ConfigMap-mounted /
+# Provisioning sync webhook — submits the Tenant to the Restate engine's
+# provisionTenant Virtual Object (reconcile) and mirrors its state (getStatus)
+# into Tenant.status. The 300s Metacontroller resync re-drives reconcile → drift
+# converges. Still ConfigMap-mounted /
 # zero-dependency (Node 22 global fetch). Graceful fallback: while the engine is
 # unbuilt/unregistered, Restate calls fail and the webhook reports phase Pending —
 # so this is safe to ship before the engine is live.
@@ -18,17 +20,19 @@ data:
     const WF = 'provisionTenant';
 
     async function driveRestate(id, spec) {
-      // Fire-and-forget submit (idempotent: re-submits to an existing workflow key
-      // are ignored by Restate). Then read the workflow's published state.
+      // Fire-and-forget reconcile on the Virtual Object keyed by id. Restate
+      // serializes calls per key, so the periodic drift resync and a spec-change
+      // sync never race; the reconcile is level-triggered (re-runs each call).
+      // Then read the object's published state via the shared getStatus handler.
       try {
-        await fetch(`${RESTATE}/${WF}/${encodeURIComponent(id)}/run/send`, {
+        await fetch(`${RESTATE}/${WF}/${encodeURIComponent(id)}/reconcile/send`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(spec),
         });
       } catch { /* engine not up yet */ }
       try {
-        const r = await fetch(`${RESTATE}/${WF}/${encodeURIComponent(id)}/status`, { method: 'POST' });
+        const r = await fetch(`${RESTATE}/${WF}/${encodeURIComponent(id)}/getStatus`, { method: 'POST' });
         if (r.ok) return await r.json();
       } catch { /* fall through to Pending */ }
       return null;
