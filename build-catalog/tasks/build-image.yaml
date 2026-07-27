@@ -1,0 +1,89 @@
+---
+# Reusable catalog Task: build a Dockerfile → OCI image → push to Artifact
+# Registry, keyless via WIF (ADR-0017 "linux-build"/container-build gap; design §5).
+#
+# Auth mirrors play-publish.yaml exactly: the `gcp-wif` workspace holds the
+# external_account credential-config.json and a projected SA token (audience = the
+# homelab-staging WIF pool) is minted per-run — no downloaded key. kaniko's
+# go-containerregistry keychain reads GOOGLE_APPLICATION_CREDENTIALS and exchanges
+# the token at STS to push.
+#
+# BUILDER NOTE: kaniko is used for the first cut because it natively consumes the
+# external_account WIF config (simplest correct auth), but it is archived upstream
+# (2024). Migrate to buildkit-rootless or buildah once proven — both need an extra
+# "WIF token -> docker config" step. kaniko needs root to assemble layers; that is
+# safe here because the trusted tier pins runtimeClassName: kata (microVM) on the
+# PipelineRun, so this step overrides the cluster H1 non-root default deliberately.
+#
+# Emits IMAGE_URL + IMAGE_DIGEST (Tekton Chains type-hints) so Chains signs the
+# pushed digest once keyless signing is configured.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: build-image
+  labels:
+    app.kubernetes.io/part-of: build-catalog
+spec:
+  params:
+    - name: image
+      description: Full AR destination without tag, e.g. us-central1-docker.pkg.dev/<project>/<repo>/<name>.
+      type: string
+    - name: tag
+      description: Image tag (the pipeline passes the git revision / a digest-pin).
+      type: string
+    - name: dockerfile
+      type: string
+      default: Dockerfile
+    - name: context
+      description: Build context dir within the source workspace.
+      type: string
+      default: .
+    - name: kaniko-image
+      type: string
+      default: gcr.io/kaniko-project/executor:v1.23.2 # digest-pin in the inventory
+  workspaces:
+    - name: source
+    - name: gcp-wif # configmap: credential-config.json (external_account)
+      mountPath: /gcp
+  volumes:
+    # Per-run ephemeral build identity; audience must equal the WIF provider's.
+    - name: gcp-oidc-token
+      projected:
+        sources:
+          - serviceAccountToken:
+              path: token
+              expirationSeconds: 3600
+              audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+  results:
+    - name: IMAGE_URL
+      description: Pushed image reference (Chains type-hint).
+    - name: IMAGE_DIGEST
+      description: Pushed image digest (Chains type-hint).
+  steps:
+    - name: build-and-push
+      image: $(params.kaniko-image)
+      workingDir: $(workspaces.source.path)
+      # kaniko assembles layers as root; the Kata microVM is the isolation boundary
+      # (runtimeClassName: kata on the PipelineRun), so root-in-VM is safe. This
+      # overrides the cluster-wide H1 non-root default for THIS step only.
+      securityContext:
+        runAsUser: 0
+        runAsNonRoot: false
+      volumeMounts:
+        - name: gcp-oidc-token
+          mountPath: /var/run/gcp
+          readOnly: true
+      env:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /gcp/credential-config.json
+      script: |
+        #!/busybox/sh
+        set -eu
+        DEST="$(params.image):$(params.tag)"
+        /kaniko/executor \
+          --dockerfile "$(params.context)/$(params.dockerfile)" \
+          --context "dir://$(workspaces.source.path)/$(params.context)" \
+          --destination "$DEST" \
+          --digest-file /tmp/digest
+        printf '%s' "$DEST" > "$(results.IMAGE_URL.path)"
+        printf '%s' "$(cat /tmp/digest)" > "$(results.IMAGE_DIGEST.path)"
