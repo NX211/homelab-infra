@@ -1,0 +1,63 @@
+---
+# Restate (staging) — bare install of the upstream chart. StatefulSet + a
+# persistent RocksDB datastore on local-path; ClusterIP only (cluster-internal,
+# no IngressRoute/DNS). Not yet wired to any app, so sync-wave 0 is fine.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: restate
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/restatedev
+    chart: restate-helm
+    targetRevision: 1.6.2
+    helm:
+      valuesObject:
+        replicaCount: 1
+
+        # Modest footprint for staging. RESTATE_ROCKSDB_TOTAL_MEMORY_SIZE must
+        # stay under 50% of the memory limit (see chart values note).
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+
+        env:
+          - name: RESTATE_LOG_FORMAT
+            value: json
+          - name: RESTATE_CLUSTER_NAME
+            value: helm-single-node
+          - name: RESTATE_ROCKSDB_TOTAL_MEMORY_SIZE
+            value: 256Mi
+
+        # Persistent datastore on the K3s built-in provisioner. Single-node pod
+        # affinity is expected and acceptable for staging.
+        storage:
+          size: 10Gi
+          storageClassName: local-path
+
+        service:
+          type: ClusterIP
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: restate
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
