@@ -1,0 +1,21 @@
+{
+  "name": "provisioning-engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Restate durable-execution engine for the tenant provisioning saga (ADR-0019, L1).",
+  "scripts": {
+    "build": "prisma generate && tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.0",
+    "@restatedev/restate-sdk": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "prisma": "^6.2.0",
+    "typescript": "^5.7.0"
+  }
+}
