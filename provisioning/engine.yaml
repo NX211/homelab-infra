@@ -51,6 +51,18 @@ spec:
                   key: uri
             - name: RESTATE_ADMIN
               value: http://restate.restate.svc.cluster.local:9070
+            # Cloudflare (dns island). Read lazily at first reconcile, so the
+            # engine still boots if the secret isn't populated yet.
+            - name: CLOUDFLARE_API_TOKEN
+              valueFrom:
+                secretKeyRef: { name: provisioning-cloudflare, key: api-token }
+            - name: CLOUDFLARE_ACCOUNT_ID
+              valueFrom:
+                secretKeyRef: { name: provisioning-cloudflare, key: account-id }
+            # Optional: when set, the dns island points the app hostname at this
+            # ingress. Unset = ensure the zone only (island handles absence).
+            # - name: PLATFORM_INGRESS_TARGET
+            #   value: staging-k8s.coreyalan.com
           resources:
             requests: { cpu: 25m, memory: 64Mi }
             limits: { cpu: 250m, memory: 256Mi }
