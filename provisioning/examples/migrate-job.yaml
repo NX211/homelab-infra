@@ -19,6 +19,8 @@ spec:
         app.kubernetes.io/name: provisioning-db-migrate
     spec:
       restartPolicy: OnFailure
+      imagePullSecrets:
+        - name: gcr-pull-secret-provisioning-engine
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -26,7 +28,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: provisioning-engine:UNBUILT # ← same image you set in engine.yaml
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine:0.1.0
           command: ["./node_modules/.bin/prisma", "db", "push", "--skip-generate"]
           env:
             - name: DATABASE_URL

@@ -69,6 +69,21 @@ data:
         | kubectl apply -f -
     done
     echo "refreshed ${NS}: ${SECRETS}"
+
+    # Control-plane provisioning-engine (coreyalan-provisioning AR) — same token.
+    printf '%s\n' \
+      'apiVersion: v1' \
+      'kind: Secret' \
+      'metadata:' \
+      '  name: gcr-pull-secret-provisioning-engine' \
+      '  namespace: provisioning' \
+      '  annotations:' \
+      '    reloader.stakater.com/ignore: "true"' \
+      'type: kubernetes.io/dockerconfigjson' \
+      'data:' \
+      "  .dockerconfigjson: ${DOCKERCFG_B64}" \
+      | kubectl apply -f -
+    echo "refreshed provisioning: gcr-pull-secret-provisioning-engine"
 ---
 apiVersion: batch/v1
 kind: CronJob

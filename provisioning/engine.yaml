@@ -18,7 +18,7 @@ metadata:
     app.kubernetes.io/name: provisioning-engine
     app.kubernetes.io/part-of: provisioning
 spec:
-  replicas: 0 # ↑ to 1 after building the image + registering with Restate
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: provisioning-engine
@@ -29,6 +29,8 @@ spec:
         app.kubernetes.io/part-of: provisioning
     spec:
       serviceAccountName: provisioning-engine
+      imagePullSecrets:
+        - name: gcr-pull-secret-provisioning-engine
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -36,7 +38,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engine
-          image: provisioning-engine:UNBUILT # TODO: set to the Tekton-built image
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine:0.1.0
           ports:
             - containerPort: 9080
           env:
