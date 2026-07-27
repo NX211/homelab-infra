@@ -1,5 +1,25 @@
 {{- if and (eq .Values.tier "trusted") .Values.triggers.host }}
 ---
+# Public TLS cert for the webhook sink, issued by cert-manager via the
+# letsencrypt-prod ClusterIssuer (HTTP-01 through Traefik) — same pattern as the
+# PaC controller (tekton/pac/certificate.yaml) and authelia. GitHub verifies TLS
+# on delivery, so the default Traefik cert won't do. HTTP-01 works for any host
+# that resolves to the homelab public IP on :80, so no DNS-01 solver is needed;
+# it requires the {{ .Values.triggers.host }} A record (platform-infra Cloudflare,
+# DNS-only) to exist first.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.project }}-{{ .Values.channel }}-{{ .Values.tier }}-el-tls
+  namespace: {{ include "bn.namespace" . }}
+spec:
+  secretName: {{ .Values.project }}-{{ .Values.channel }}-{{ .Values.tier }}-el-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.triggers.host }}
+---
 # Exposes the EventListener sink so GitHub can POST the tag-push webhook. This is
 # the ONE inbound path to the build platform (the Dashboard is not deployed, §10)
 # and must be internet-reachable for GitHub. Guarded by the webhook HMAC (github
@@ -19,5 +39,6 @@ spec:
       services:
         - name: el-{{ .Values.project }}-{{ .Values.channel }}-{{ .Values.tier }}
           port: 8080
-  tls: {}
+  tls:
+    secretName: {{ .Values.project }}-{{ .Values.channel }}-{{ .Values.tier }}-el-tls
 {{- end }}
