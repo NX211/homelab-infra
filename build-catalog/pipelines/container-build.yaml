@@ -91,10 +91,13 @@ spec:
               git remote set-url origin "https://github.com/${slug}.git"   # drop the token from .git/config
               [ -n "$(params.git-revision)" ] && git checkout "$(params.git-revision)" || true
 
-              # Drop the Verdaccio .npmrc into the build context so the Dockerfile's
-              # npm install resolves @corey-alan-consulting/* through the proxy (no
-              # token in the image). Optional — absent for public-only builds.
-              cp /npmrc/.npmrc "$(workspaces.output.path)/.npmrc" 2>/dev/null || true
+              # Drop a SCOPED-ONLY .npmrc into the build context: route only the
+              # private @scope through the Verdaccio proxy (no token in the image),
+              # leaving public deps (prisma, restate-sdk, …) on npmjs direct. The
+              # trusted tier has public egress; proxying large public tarballs
+              # through a cold Verdaccio cache is slow and flaky (ECONNRESET on
+              # @prisma/client). Keeping only the `@scope:registry=` line does that.
+              grep ':registry=' /npmrc/.npmrc > "$(workspaces.output.path)/.npmrc" 2>/dev/null || true
     - name: build
       runAfter: [clone]
       taskRef:
