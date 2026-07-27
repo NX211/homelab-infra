@@ -38,9 +38,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engine
-          # Channel-built (Tekton container-build, tag v0.1.1 = commit e5c9bb7),
-          # digest-pinned. Replaces the initial one-off laptop `docker build`.
-          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:5f9d8aa904faef0062dae0aa94b970ea1896366c0300b71da12da9515e228f08
+          # Channel-built (Tekton container-build, tag v0.1.3 = commit 9e9907b) —
+          # dns island + Virtual Object reconcile, cloudflare via Verdaccio.
+          # digest-pinned.
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:4f1fe21ba1d01a6ef8f2e51023bc758878abba85f1a563e87e53e1aa769ef1e1
           ports:
             - containerPort: 9080
           env:
