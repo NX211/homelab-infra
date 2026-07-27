@@ -1,12 +1,9 @@
 ---
-# Provisioning sync webhook — Phase 1b STUB (ADR-0019). Status-only: it computes
-# per-island desired state from Tenant.spec and writes Tenant.status; it emits no
-# children and calls no SaaS. Purpose: prove the loop end-to-end
-# (Metacontroller → webhook → status) before any island logic (Phase 2).
-#
-# Deliberately zero-dependency and ConfigMap-mounted on a stock node image, so it
-# ships with no build step. Phase 2 replaces it with a Tekton-built TS service
-# that drives the Restate saga (the "exercise the build channel" moment).
+# Provisioning sync webhook — Phase 2a: submits the Tenant to the Restate engine
+# and mirrors the workflow's state into Tenant.status. Still ConfigMap-mounted /
+# zero-dependency (Node 22 global fetch). Graceful fallback: while the engine is
+# unbuilt/unregistered, Restate calls fail and the webhook reports phase Pending —
+# so this is safe to ship before the engine is live.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,32 +11,41 @@ metadata:
   namespace: provisioning
 data:
   server.mjs: |
-    // Metacontroller CompositeController sync hook — Phase 1b stub (status only).
+    // Metacontroller CompositeController sync hook -> Restate engine.
     import { createServer } from 'node:http';
 
-    const ISLANDS = ['spine', 'dns', 'email', 'app', 'staging'];
-    const desired = (island, s) => ({
-      spine: true,
-      dns: Boolean(s.domain),
-      email: Boolean(s.provisionEmail),
-      app: Boolean(s.appName || s.githubRepo),
-      staging: Boolean(s.stagingBaseUrl),
-    }[island]);
+    const RESTATE = process.env.RESTATE_INGRESS ?? 'http://restate.restate.svc.cluster.local:8080';
+    const WF = 'provisionTenant';
 
-    function syncHook(request) {
+    async function driveRestate(id, spec) {
+      // Fire-and-forget submit (idempotent: re-submits to an existing workflow key
+      // are ignored by Restate). Then read the workflow's published state.
+      try {
+        await fetch(`${RESTATE}/${WF}/${encodeURIComponent(id)}/run/send`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(spec),
+        });
+      } catch { /* engine not up yet */ }
+      try {
+        const r = await fetch(`${RESTATE}/${WF}/${encodeURIComponent(id)}/status`, { method: 'POST' });
+        if (r.ok) return await r.json();
+      } catch { /* fall through to Pending */ }
+      return null;
+    }
+
+    async function syncHook(request) {
       const parent = request.parent ?? {};
       const spec = parent.spec ?? {};
       const meta = parent.metadata ?? {};
-      const now = new Date().toISOString();
-      const conditions = ISLANDS
-        .filter((i) => desired(i, spec))
-        .map((island) => ({ island, status: 'Pending', lastTransitionTime: now }));
+      const id = meta.uid ?? '';
+      const state = id ? await driveRestate(id, spec) : null;
       return {
         status: {
-          provisioningId: meta.uid ?? '',
-          phase: spec.decommissioned ? 'Decommissioned' : 'Pending',
+          provisioningId: id,
+          phase: state?.phase ?? 'Pending',
           observedGeneration: meta.generation ?? 0,
-          conditions,
+          conditions: state?.conditions ?? [],
         },
         children: [],
       };
@@ -50,16 +56,16 @@ data:
       if (req.method !== 'POST' || req.url !== '/sync') { res.writeHead(404).end(); return; }
       let body = '';
       req.on('data', (c) => (body += c));
-      req.on('end', () => {
+      req.on('end', async () => {
         try {
-          const payload = JSON.stringify(syncHook(JSON.parse(body || '{}')));
+          const payload = JSON.stringify(await syncHook(JSON.parse(body || '{}')));
           res.writeHead(200, { 'content-type': 'application/json' }).end(payload);
         } catch (err) {
           res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: String(err) }));
         }
       });
     });
-    server.listen(8080, () => console.log('provisioning-webhook stub listening on :8080'));
+    server.listen(8080, () => console.log('provisioning-webhook (restate) listening on :8080'));
 ---
 apiVersion: v1
 kind: ServiceAccount
