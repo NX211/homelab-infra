@@ -38,10 +38,10 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engine
-          # Channel-built (Tekton container-build, tag v0.1.3 = commit 9e9907b) —
+          # Channel-built (Tekton container-build, tag v0.1.4 = commit 8171b8f) —
           # dns island + Virtual Object reconcile, cloudflare via Verdaccio.
           # digest-pinned.
-          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:4f1fe21ba1d01a6ef8f2e51023bc758878abba85f1a563e87e53e1aa769ef1e1
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:21f8d8c87598e9db8c3dc8c150459370f5da5909f8a760dc8b89a84c95b66eeb
           ports:
             - containerPort: 9080
           env:
