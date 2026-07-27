@@ -1,0 +1,73 @@
+---
+# provisioning-engine Deployment — the Restate durable-execution service (L1).
+# Ships at replicas: 0 with a placeholder image so it syncs cleanly; activation
+# (README): build the image (Tekton), set it below, scale to 1, then register the
+# endpoint with Restate (provisioning/examples/restate-register-job.yaml).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: provisioning-engine
+  namespace: provisioning
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provisioning-engine
+  namespace: provisioning
+  labels:
+    app.kubernetes.io/name: provisioning-engine
+    app.kubernetes.io/part-of: provisioning
+spec:
+  replicas: 0 # ↑ to 1 after building the image + registering with Restate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: provisioning-engine
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: provisioning-engine
+        app.kubernetes.io/part-of: provisioning
+    spec:
+      serviceAccountName: provisioning-engine
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: engine
+          image: provisioning-engine:UNBUILT # TODO: set to the Tekton-built image
+          ports:
+            - containerPort: 9080
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: provisioning-db-app
+                  key: uri
+            - name: RESTATE_ADMIN
+              value: http://restate.restate.svc.cluster.local:9070
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: 250m, memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: provisioning-engine
+  namespace: provisioning
+  labels:
+    app.kubernetes.io/name: provisioning-engine
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: provisioning-engine
+  ports:
+    - port: 9080
+      targetPort: 9080
+      protocol: TCP
