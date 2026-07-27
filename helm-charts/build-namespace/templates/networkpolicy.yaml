@@ -89,6 +89,15 @@ spec:
         - ipBlock: { cidr: {{ .Values.cluster.serviceCidr }} }
       ports:
         - { protocol: TCP, port: 443 }
+    # Tekton Triggers core interceptors (github HMAC + CEL) live in tekton-pipelines
+    # on :8443. The EventListener sink runs in this namespace under the blanket
+    # podSelector, so without this its interceptor call is dropped and no trigger
+    # ever fires (the PipelineRun is never created).
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: tekton-pipelines }
+      ports:
+        - { protocol: TCP, port: 8443 }
     # Verdaccio npm registry proxy (in-cluster) — private-dep install, no token.
     - to:
         - namespaceSelector:
