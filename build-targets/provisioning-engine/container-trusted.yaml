@@ -20,7 +20,7 @@ githubApp:
 # bitwarden-build-platform store and put its UUID here (see the activation runbook).
 webhook:
   store: bitwarden-build-platform
-  secretKey: REPLACE_WITH_WEBHOOK_SECRET_UUID       # PROVISIONING_ENGINE_TEKTON_WEBHOOK_SECRET
+  secretKey: 642b4aba-60b0-430c-a1f3-b494012cfd39   # PROVISIONING_ENGINE_TEKTON_WEBHOOK_SECRET
 
 # No signing block: container images are signed by Tekton Chains (cluster-side),
 # not by a channel keystore.
