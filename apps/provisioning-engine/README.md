@@ -17,12 +17,16 @@ This is a **scaffold** — the code is complete, but unlike the Phase-1 manifest
 can't be dry-run-verified; it needs building + a DB + Restate registration.
 
 ## Activation runbook
-1. **Control DB** — apply a CloudNativePG cluster (the homelab has the operator) and
-   set `DATABASE_URL`. Then `DATABASE_URL=… npx prisma migrate deploy`.
-2. **Build the image** — via the Tekton node/linux channel ([ADR-0017](../../../framework/decisions/0017-tekton-build-platform.md))
-   or `docker build`, push to the homelab registry. (Add a `.tekton/` PipelineRun
-   referencing the appropriate channel — `nextjs-build` is Next.js-shaped, so a
-   generic node/linux channel + Dockerfile build task is the better fit.)
+1. **Control DB** — already deployed by `provisioning/control-db.yaml` (CloudNativePG,
+   secret `provisioning-db-app`). Create the schema with the migrate Job (uses this
+   same image): `kubectl -n provisioning apply -f provisioning/examples/migrate-job.yaml`.
+2. **Build the image** — **note:** the Tekton catalog does *not* build container images
+   yet (it does web CI-checks + Android only, [ADR-0017](../../../framework/decisions/0017-tekton-build-platform.md)).
+   So for now: `docker build` this dir and push to the homelab registry, then set that
+   image in `engine.yaml` **and** `examples/migrate-job.yaml`. Longer term, either add a
+   container-build channel to the catalog, or make this an app repo on the
+   `deploy-workflows` GitHub Actions path (→ Artifact Registry). This image is
+   migrate-capable (serves on :9080 **and** runs `prisma db push`).
 3. **Deploy** the engine (Deployment/Service on :9080) with `DATABASE_URL` from ESO.
 4. **Register with Restate** — `restate deployments register http://provisioning-engine.provisioning.svc:9080`
    (or the Restate admin API via a one-shot Job).

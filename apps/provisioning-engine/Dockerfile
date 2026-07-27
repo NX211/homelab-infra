@@ -19,6 +19,8 @@ RUN npm install --omit=dev
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build /app/dist ./dist
+# Schema stays so the same image can run `prisma db push` (the migrate Job).
+COPY --from=build /app/prisma ./prisma
 USER 1000
 EXPOSE 9080
 CMD ["node", "dist/index.js"]
