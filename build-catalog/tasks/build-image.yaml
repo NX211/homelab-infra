@@ -40,7 +40,10 @@ spec:
       default: .
     - name: kaniko-image
       type: string
-      default: gcr.io/kaniko-project/executor:v1.23.2 # digest-pin in the inventory
+      # -debug: bundles /busybox/sh, which the step's `script` shebang needs. The
+      # non-debug executor image has no shell, so the script can't exec at all
+      # (fork/exec ...: no such file or directory). digest-pin in the inventory.
+      default: gcr.io/kaniko-project/executor:v1.23.2-debug
   workspaces:
     - name: source
     - name: gcp-wif # configmap: credential-config.json (external_account)
