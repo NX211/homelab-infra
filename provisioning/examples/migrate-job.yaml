@@ -1,0 +1,42 @@
+---
+# Create/sync the control-DB schema (activation step 1). Uses the SAME engine
+# image (it carries the prisma CLI + schema), so no separate migrate image.
+# NOT synced by ArgoCD (examples/) — apply AFTER the engine image is built and set
+# below, and after the control DB is Ready:
+#   kubectl -n provisioning apply -f provisioning/examples/migrate-job.yaml
+# `db push` syncs the schema directly (no migration files needed for the first cut).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: provisioning-db-migrate
+  namespace: provisioning
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: provisioning-db-migrate
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: provisioning-engine:UNBUILT # ← same image you set in engine.yaml
+          command: ["./node_modules/.bin/prisma", "db", "push", "--skip-generate"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: provisioning-db-app
+                  key: uri
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
