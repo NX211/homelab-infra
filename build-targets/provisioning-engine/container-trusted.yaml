@@ -1,0 +1,40 @@
+# Inventory entry: provisioning-engine control-plane container image (trusted tier).
+# Rendered by helm-charts/build-namespace via the build-targets ApplicationSet.
+# namespace -> provisioning-engine-builds-trusted ; pipeline SA ->
+# provisioning-engine-container-trusted (matches the WIF subject bound in
+# platform-infra #1069). The FIRST container-build channel (ADR-0020).
+project: provisioning-engine
+channel: container
+tier: trusted
+repo: Corey-Alan-Consulting/provisioning-engine
+runtimeClass: kata          # kaniko assembles layers as root; Kata microVM is the boundary
+
+# Shared org build App (Contents:read-only, H4) — same App as capturly; it must be
+# INSTALLED on the provisioning-engine repo. The clone step mints a ~1h token.
+githubApp:
+  store: bitwarden-build-platform
+  appIdKey: 98c21209-8551-447f-8897-b48d0154e6f7      # BUILD_APP_ID
+  privateKeyKey: f331c75a-a7fb-4631-8c6d-b48d0154e73b # BUILD_APP_PRIVATE_KEY
+
+# NEW per-repo HMAC the GitHub tag webhook signs with. Create this in the
+# bitwarden-build-platform store and put its UUID here (see the activation runbook).
+webhook:
+  store: bitwarden-build-platform
+  secretKey: REPLACE_WITH_WEBHOOK_SECRET_UUID       # PROVISIONING_ENGINE_TEKTON_WEBHOOK_SECRET
+
+# No signing block: container images are signed by Tekton Chains (cluster-side),
+# not by a channel keystore.
+
+# Keyless AR push: the pipeline SA impersonates provisioning-engine-push via the
+# homelab-staging WIF pool (platform-infra #1069).
+wif:
+  audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+  impersonationUrl: https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/provisioning-engine-push@coreyalan-provisioning.iam.gserviceaccount.com:generateAccessToken
+
+triggers:
+  # Public webhook sink: cert-manager LE/HTTP-01 (see the chart), DNS-only A record
+  # in platform-infra (coreyalan-dns.tf). Register this URL as the webhook on the repo.
+  host: tekton-trusted-provisioning-engine.coreyalan.com
+  tagPrefix: refs/tags/v          # git tag vX.Y.Z triggers a build of that commit
+  pipeline:
+    path: build-catalog/pipelines/container-build.yaml
