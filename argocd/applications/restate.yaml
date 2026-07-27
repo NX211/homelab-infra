@@ -48,6 +48,15 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: restate
+  # The StatefulSet's volumeClaimTemplates are defaulted by the API server
+  # (apiVersion/volumeMode + a status block) and are immutable, so ArgoCD flags
+  # them as perpetual drift even under ServerSideApply — ignore them in the diff.
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      name: restate
+      jsonPointers:
+        - /spec/volumeClaimTemplates
   syncPolicy:
     automated:
       prune: true
