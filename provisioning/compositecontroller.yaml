@@ -1,0 +1,21 @@
+---
+# Metacontroller CompositeController — the L2 reconcile trigger (ADR-0019).
+# Watches Tenant and calls the sync webhook on every change + every
+# resyncPeriodSeconds (the drift pass). Phase 1b emits no child resources yet;
+# the webhook only writes Tenant.status. Children (ArgoCD Application, DNSEndpoint,
+# ExternalSecret) arrive in Phase 3.
+apiVersion: metacontroller.k8s.io/v1alpha1
+kind: CompositeController
+metadata:
+  name: tenant-provisioner
+spec:
+  generateSelector: true
+  resyncPeriodSeconds: 300
+  parentResource:
+    apiVersion: platform.coreyalan.com/v1alpha1
+    resource: tenants
+  childResources: []
+  hooks:
+    sync:
+      webhook:
+        url: http://provisioning-webhook.provisioning.svc.cluster.local:8080/sync
