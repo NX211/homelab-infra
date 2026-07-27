@@ -78,6 +78,10 @@ kind: Deployment
 metadata:
   name: provisioning-webhook
   namespace: provisioning
+  annotations:
+    # The hook logic is ConfigMap-mounted; a running node process won't re-read it.
+    # Reloader restarts the pod when provisioning-webhook-code changes.
+    reloader.stakater.com/auto: "true"
   labels:
     app.kubernetes.io/name: provisioning-webhook
     app.kubernetes.io/part-of: provisioning
