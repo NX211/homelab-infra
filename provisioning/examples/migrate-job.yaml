@@ -28,7 +28,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine:0.1.0
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:5f9d8aa904faef0062dae0aa94b970ea1896366c0300b71da12da9515e228f08
           command: ["./node_modules/.bin/prisma", "db", "push", "--skip-generate"]
           env:
             - name: DATABASE_URL

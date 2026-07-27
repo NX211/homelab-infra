@@ -38,7 +38,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engine
-          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine:0.1.0
+          # Channel-built (Tekton container-build, tag v0.1.1 = commit e5c9bb7),
+          # digest-pinned. Replaces the initial one-off laptop `docker build`.
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:5f9d8aa904faef0062dae0aa94b970ea1896366c0300b71da12da9515e228f08
           ports:
             - containerPort: 9080
           env:
