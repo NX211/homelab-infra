@@ -79,6 +79,13 @@ spec:
       env:
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: /gcp/credential-config.json
+        # Tekton overrides the image's SSL_CERT_DIR (/kaniko/ssl/certs, where the
+        # kaniko CA bundle lives) with /tekton-custom-certs:/etc/ssl/certs:/etc/pki/
+        # tls/certs — none of which exist in the kaniko image — so Go loads zero CA
+        # roots and every registry TLS handshake fails "x509: unknown authority".
+        # Prepend kaniko's bundle dir back (keeping Tekton's custom-certs path).
+        - name: SSL_CERT_DIR
+          value: /kaniko/ssl/certs:/tekton-custom-certs:/etc/ssl/certs:/etc/pki/tls/certs
       script: |
         #!/busybox/sh
         set -eu
