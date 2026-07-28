@@ -19,6 +19,9 @@ argo-cd:
       timeout.reconciliation: 180s
       # Enable API key generation for admin account
       accounts.admin: apiKey, login
+      # Read-only account for the Port Ocean ArgoCD integration (token minted for
+      # it, stored via ESO). Granted role:readonly below — never admin.
+      accounts.port-ocean-user: apiKey
       # Argo ships no built-in health assessment for the CloudNativePG Cluster
       # CR, so the `postgresql` app perpetually reported "Unknown" health even
       # while the database was up. This Lua check reads the CR's `Ready`
@@ -100,6 +103,12 @@ argo-cd:
         jqPathExpressions:
           - .spec.selector
           - .spec.template.metadata.labels
+
+    rbac:
+      # Grant the Port integration account read-only access (admin stays admin;
+      # no policy.default change so other accounts are unaffected).
+      policy.csv: |
+        g, port-ocean-user, role:readonly
 
     params:
       # Run server without TLS (Traefik handles TLS termination)
