@@ -13,11 +13,14 @@ metadata:
   namespace: provisioning
 data:
   server.mjs: |
-    // Metacontroller CompositeController sync hook -> Restate engine.
+    // Metacontroller CompositeController sync hook + the guarded onboarding seam.
     import { createServer } from 'node:http';
+    import { timingSafeEqual } from 'node:crypto';
 
     const RESTATE = process.env.RESTATE_INGRESS ?? 'http://restate.restate.svc.cluster.local:8080';
-    const WF = 'provisionTenant';
+    const RECONCILE = 'provisionTenant';
+    const ONBOARDING = 'provisionOnboarding';
+    const SEAM_TOKEN = process.env.ONBOARDING_BEARER_TOKEN ?? '';
 
     async function driveRestate(id, spec) {
       // Fire-and-forget reconcile on the Virtual Object keyed by id. Restate
@@ -25,14 +28,14 @@ data:
       // sync never race; the reconcile is level-triggered (re-runs each call).
       // Then read the object's published state via the shared getStatus handler.
       try {
-        await fetch(`${RESTATE}/${WF}/${encodeURIComponent(id)}/reconcile/send`, {
+        await fetch(`${RESTATE}/${RECONCILE}/${encodeURIComponent(id)}/reconcile/send`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(spec),
         });
       } catch { /* engine not up yet */ }
       try {
-        const r = await fetch(`${RESTATE}/${WF}/${encodeURIComponent(id)}/getStatus`, { method: 'POST' });
+        const r = await fetch(`${RESTATE}/${RECONCILE}/${encodeURIComponent(id)}/getStatus`, { method: 'POST' });
         if (r.ok) return await r.json();
       } catch { /* fall through to Pending */ }
       return null;
@@ -55,19 +58,71 @@ data:
       };
     }
 
-    const server = createServer((req, res) => {
-      if (req.method === 'GET' && req.url === '/healthz') { res.writeHead(200).end('ok'); return; }
-      if (req.method !== 'POST' || req.url !== '/sync') { res.writeHead(404).end(); return; }
+    // Onboarding seam — the ONE public inbound path (PathPrefix(/onboarding) in the
+    // IngressRoute; /sync stays cluster-internal). coreyalan.com's producers +
+    // wizard call these; the engine's Restate ingress stays private behind them.
+
+    // Constant-time bearer check. Closed-by-default: no token configured => reject,
+    // so the seam is shut until the shared secret is mounted.
+    function authorized(req) {
+      if (!SEAM_TOKEN) return false;
+      const hdr = req.headers['authorization'] ?? '';
+      const presented = hdr.startsWith('Bearer ') ? hdr.slice(7) : '';
+      const a = Buffer.from(presented);
+      const b = Buffer.from(SEAM_TOKEN);
+      return a.length === b.length && timingSafeEqual(a, b);
+    }
+
+    async function restateCall(name, path, body) {
+      const r = await fetch(`${RESTATE}/${name}/${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      return { status: r.status, text: await r.text() };
+    }
+
+    async function onboardingRoute(url, payload) {
+      const key = encodeURIComponent(payload.key ?? '');
+      if (!key) return { status: 400, text: JSON.stringify({ error: 'missing key' }) };
+      switch (url) {
+        case '/onboarding/start':  // fire-and-forget run-once submission
+          return restateCall(ONBOARDING, `${key}/run/send`, payload.request ?? {});
+        case '/onboarding/state':
+          return restateCall(ONBOARDING, `${key}/getState`);
+        case '/onboarding/submit':
+          return restateCall(ONBOARDING, `${key}/submit`, payload.input ?? {});
+        default:
+          return { status: 404, text: '' };
+      }
+    }
+
+    const ONBOARDING_ROUTES = new Set(['/onboarding/start', '/onboarding/state', '/onboarding/submit']);
+
+    function readJsonBody(req, res, handler) {
       let body = '';
       req.on('data', (c) => (body += c));
       req.on('end', async () => {
         try {
-          const payload = JSON.stringify(await syncHook(JSON.parse(body || '{}')));
-          res.writeHead(200, { 'content-type': 'application/json' }).end(payload);
+          const out = await handler(JSON.parse(body || '{}'));
+          res.writeHead(out.status, { 'content-type': 'application/json' }).end(out.text);
         } catch (err) {
           res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: String(err) }));
         }
       });
+    }
+
+    const server = createServer((req, res) => {
+      if (req.method === 'GET' && req.url === '/healthz') { res.writeHead(200).end('ok'); return; }
+
+      if (req.method === 'POST' && ONBOARDING_ROUTES.has(req.url)) {
+        if (!authorized(req)) { res.writeHead(401, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'unauthorized' })); return; }
+        readJsonBody(req, res, (payload) => onboardingRoute(req.url, payload));
+        return;
+      }
+
+      if (req.method !== 'POST' || req.url !== '/sync') { res.writeHead(404).end(); return; }
+      readJsonBody(req, res, async (payload) => ({ status: 200, text: JSON.stringify(await syncHook(payload)) }));
     });
     server.listen(8080, () => console.log('provisioning-webhook (restate) listening on :8080'));
 ---
@@ -112,6 +167,13 @@ spec:
           command: ["node", "/app/server.mjs"]
           ports:
             - containerPort: 8080
+          env:
+            # Shared bearer for the /onboarding seam. optional:true so the webhook
+            # boots before the secret lands; the seam stays closed (401) until it's
+            # mounted (authorized() rejects when the token is empty).
+            - name: ONBOARDING_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: provisioning-onboarding-auth, key: token, optional: true }
           readinessProbe:
             httpGet: { path: /healthz, port: 8080 }
             initialDelaySeconds: 3

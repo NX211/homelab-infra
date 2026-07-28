@@ -64,6 +64,22 @@ spec:
             # ingress. Unset = ensure the zone only (island handles absence).
             # - name: PLATFORM_INGRESS_TARGET
             #   value: staging-k8s.coreyalan.com
+            # GitOps handoff (onboarding workflow) — commits Tenant CRs to
+            # homelab-infra with a dedicated Contents:write App. optional:true so
+            # the engine boots before the Bitwarden secrets land; the onboarding
+            # commit throws a TerminalError if they're still missing when it runs.
+            - name: GIT_APP_ID
+              valueFrom:
+                secretKeyRef: { name: provisioning-git, key: app-id, optional: true }
+            - name: GIT_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef: { name: provisioning-git, key: app-private-key, optional: true }
+            - name: TENANTS_REPO
+              value: NX211/homelab-infra
+            - name: TENANTS_PATH
+              value: provisioning/tenants
+            - name: TENANTS_BRANCH
+              value: main
           resources:
             requests: { cpu: 25m, memory: 64Mi }
             limits: { cpu: 250m, memory: 256Mi }
