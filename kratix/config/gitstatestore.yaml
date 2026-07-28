@@ -7,7 +7,7 @@ kind: GitStateStore
 metadata:
   name: default
 spec:
-  url: https://github.com/NX211/kratix-state
+  url: https://github.com/Corey-Alan-Consulting/kratix-state
   branch: main
   secretRef:
     name: kratix-state-git
