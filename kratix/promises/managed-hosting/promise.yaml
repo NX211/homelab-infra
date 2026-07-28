@@ -103,7 +103,12 @@ spec:
                       description: Set true to run the teardown/compensation saga (GDPR-erasure path).
                       default: false
                 status:
+                  # Permissive: Kratix owns status.conditions (standard k8s
+                  # conditions like PipelineCompleted); the adapter writes island
+                  # state to status.islands. preserve-unknown-fields lets both
+                  # coexist — our old strict conditions schema clashed with Kratix.
                   type: object
+                  x-kubernetes-preserve-unknown-fields: true
                   properties:
                     provisioningId:
                       type: string
@@ -113,28 +118,6 @@ spec:
                       enum: [Pending, Provisioning, Live, Partial, Failed, Decommissioned]
                     observedGeneration:
                       type: integer
-                    conditions:
-                      type: array
-                      description: One entry per island (spine/dns/email/app/staging).
-                      items:
-                        type: object
-                        required: [island, status]
-                        properties:
-                          island:
-                            type: string
-                            enum: [spine, dns, email, app, staging]
-                          status:
-                            type: string
-                            enum: [Pending, Running, OK, Skipped, Failed]
-                          attempt:
-                            type: integer
-                          detail:
-                            type: string
-                          lastError:
-                            type: string
-                          lastTransitionTime:
-                            type: string
-                            format: date-time
   workflows:
     resource:
       configure:
@@ -169,6 +152,6 @@ spec:
                       "$RESTATE/provisionTenant/$KEY/getStatus" || echo '{}')
                     mkdir -p /kratix/metadata
                     printf '%s' "$STATUS" | KEY="$KEY" GEN="$GEN" yq -P \
-                      '{"provisioningId": env(KEY), "observedGeneration": (env(GEN)|tonumber), "phase": (.phase // "Pending"), "conditions": (.conditions // [])}' \
+                      '{"provisioningId": env(KEY), "observedGeneration": (env(GEN)|tonumber), "phase": (.phase // "Pending"), "islands": (.conditions // [])}' \
                       > /kratix/metadata/status.yaml
                     echo "tenant/$KEY: reconcile dispatched + status published"

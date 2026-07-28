@@ -92,7 +92,11 @@ spec:
                   description: Set true to run the teardown/compensation saga (GDPR-erasure path).
                   default: false
             status:
+              # Permissive: Kratix (the L3 driver) owns status.conditions (standard
+              # k8s conditions); the Promise adapter writes island state to
+              # status.islands. preserve-unknown-fields lets both coexist.
               type: object
+              x-kubernetes-preserve-unknown-fields: true
               properties:
                 provisioningId:
                   type: string
@@ -102,25 +106,3 @@ spec:
                   enum: [Pending, Provisioning, Live, Partial, Failed, Decommissioned]
                 observedGeneration:
                   type: integer
-                conditions:
-                  type: array
-                  description: One entry per island (spine/dns/email/app/staging).
-                  items:
-                    type: object
-                    required: [island, status]
-                    properties:
-                      island:
-                        type: string
-                        enum: [spine, dns, email, app, staging]
-                      status:
-                        type: string
-                        enum: [Pending, Running, OK, Skipped, Failed]
-                      attempt:
-                        type: integer
-                      detail:
-                        type: string
-                      lastError:
-                        type: string
-                      lastTransitionTime:
-                        type: string
-                        format: date-time
