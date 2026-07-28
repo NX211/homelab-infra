@@ -1,0 +1,16 @@
+---
+# Homelab destination — the platform cluster is also a worker (single-cluster for
+# now; prod-GKE is added later via the L0 Argo cluster registration). Kratix
+# writes Works to kratix-state under path "homelab"; a GitOps agent syncs that
+# path onto this cluster (added with the first Promise).
+apiVersion: platform.kratix.io/v1alpha1
+kind: Destination
+metadata:
+  name: homelab
+  labels:
+    environment: homelab
+spec:
+  path: homelab
+  stateStoreRef:
+    name: default
+    kind: GitStateStore
