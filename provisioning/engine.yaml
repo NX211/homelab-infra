@@ -38,11 +38,11 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engine
-          # Channel-built (Tekton container-build, tag v0.1.6) — dns island +
-          # reconcile VO + provisionOnboarding workflow + GitOps Tenant CR commit.
-          # digest-pinned. After this syncs, re-run the restate-register job so
-          # Restate discovers provisionOnboarding.
-          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:9ede07bdf6ebb198fc721db928f61f31cbedd0e8c75c0154d7c7bdf343e22609
+          # Channel-built (Tekton container-build, tag v0.1.7) — dns + email
+          # islands + reconcile VO + provisionOnboarding workflow + GitOps Tenant
+          # CR commit. digest-pinned. Re-run the migrate job (db push) after this
+          # syncs so the EmailDomain table lands.
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:77fd8170ea315457c786d539f24b92017c68109c7b6345e2a7adddff43d2e3bf
           ports:
             - containerPort: 9080
           env:
@@ -61,6 +61,18 @@ spec:
             - name: CLOUDFLARE_ACCOUNT_ID
               valueFrom:
                 secretKeyRef: { name: provisioning-cloudflare, key: account-id }
+            # Mailgun + field cipher (email island). optional:true so the engine
+            # boots before the secrets land; the island only needs them when a
+            # tenant with provisionEmail reconciles.
+            - name: MAILGUN_API_KEY
+              valueFrom:
+                secretKeyRef: { name: provisioning-mailgun, key: api-key, optional: true }
+            - name: MAILGUN_ADMIN_KEY
+              valueFrom:
+                secretKeyRef: { name: provisioning-mailgun, key: admin-key, optional: true }
+            - name: STAGING_ACCESS_SECRET
+              valueFrom:
+                secretKeyRef: { name: provisioning-mailgun, key: cipher-secret, optional: true }
             # Optional: when set, the dns island points the app hostname at this
             # ingress. Unset = ensure the zone only (island handles absence).
             # - name: PLATFORM_INGRESS_TARGET
