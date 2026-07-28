@@ -76,6 +76,9 @@ data:
     # Tekton trusted-tier EventListener webhook sinks (build platform) — same
     # split-horizon reason as tekton-pac above (HTTP-01 self-check, not hairpin).
     10.43.5.100 tekton-trusted-provisioning-engine.coreyalan.com
+    # Onboarding seam (provisioning-webhook /onboarding) — split-horizon so the
+    # cert-manager HTTP-01 self-check resolves to Traefik, not the public IP.
+    10.43.5.100 provisioning.coreyalan.com
     10.43.5.100 sabnzbd.authoritah.tv
     10.43.5.100 jellyfin.authoritah.tv
     10.43.5.100 docs.authoritah.com
