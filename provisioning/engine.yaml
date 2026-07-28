@@ -95,6 +95,26 @@ spec:
               value: provisioning/tenants
             - name: TENANTS_BRANCH
               value: main
+            # App island — dispatches the GitHub Actions onboarding workflow.
+            # Needs a GitHub App with actions:write on PLATFORM_INFRA_REPO
+            # (distinct from the onboarding commit App). optional:true so the
+            # engine boots before the secrets land; the island only needs them
+            # when a tenant with appName+githubRepo reconciles.
+            - name: GITHUB_APP_ID
+              valueFrom:
+                secretKeyRef: { name: provisioning-app, key: github-app-id, optional: true }
+            - name: GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef: { name: provisioning-app, key: github-app-private-key, optional: true }
+            - name: GITHUB_APP_INSTALLATION_ID
+              valueFrom:
+                secretKeyRef: { name: provisioning-app, key: github-app-installation-id, optional: true }
+            - name: PLATFORM_INFRA_REPO
+              valueFrom:
+                secretKeyRef: { name: provisioning-app, key: platform-infra-repo, optional: true }
+            - name: ONBOARD_WORKFLOW_ID
+              valueFrom:
+                secretKeyRef: { name: provisioning-app, key: onboard-workflow-id, optional: true }
           resources:
             requests: { cpu: 25m, memory: 64Mi }
             limits: { cpu: 250m, memory: 256Mi }
