@@ -8,8 +8,8 @@ metadata:
   name: kratix-state-token
   namespace: kratix-platform-system
 spec:
-  appID: "REPLACE_WITH_APP_ID"
-  installID: "REPLACE_WITH_INSTALL_ID"
+  appID: "4415431"
+  installID: "149595521"
   repositories:
     - kratix-state
   permissions:
