@@ -91,6 +91,10 @@ spec:
                   type: boolean
                   description: Set true to run the teardown/compensation saga (GDPR-erasure path).
                   default: false
+                decommissionDryRun:
+                  type: boolean
+                  description: With decommissioned, reconcile only reports what it would delete (no external delete or DB mutation); phase settles on DecommissionPlanned.
+                  default: false
             status:
               # Permissive: Kratix (the L3 driver) owns status.conditions (standard
               # k8s conditions); the Promise adapter writes island state to
@@ -103,6 +107,6 @@ spec:
                   description: Opaque, stable id — the Restate saga key. Never the email.
                 phase:
                   type: string
-                  enum: [Pending, Provisioning, Live, Partial, Failed, Decommissioned]
+                  enum: [Pending, Provisioning, Live, Partial, Failed, DecommissionPlanned, Decommissioned]
                 observedGeneration:
                   type: integer
