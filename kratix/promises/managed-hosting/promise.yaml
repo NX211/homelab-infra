@@ -1,0 +1,107 @@
+---
+# managed-hosting Promise (L3, ADR-0018) — Kratix's platform API for provisioning
+# a client tenant. spec.api is the SAME Tenant CRD the reconcile loop already uses;
+# the resource pipeline is a THIN ADAPTER that delegates to the Restate durable
+# reconcile (the wrap — Kratix owns the API/scheduling, Restate stays the executor).
+#
+# NOT deployed yet: installing this while the Metacontroller CompositeController +
+# its Tenant CRD are live would double-drive Tenants. Deploy during L3.3, which
+# retires Metacontroller so Kratix is the sole Tenant driver.
+apiVersion: platform.kratix.io/v1alpha1
+kind: Promise
+metadata:
+  name: managed-hosting
+  labels:
+    kratix.io/promise-version: v0.1.0
+spec:
+  api:
+    apiVersion: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    metadata:
+      name: tenants.platform.coreyalan.com
+    spec:
+      group: platform.coreyalan.com
+      scope: Namespaced
+      names:
+        kind: Tenant
+        plural: tenants
+        singular: tenant
+        shortNames:
+          - tn
+      versions:
+        - name: v1alpha1
+          served: true
+          storage: true
+          subresources:
+            status: {}
+          schema:
+            openAPIV3Schema:
+              type: object
+              required: [spec]
+              properties:
+                spec:
+                  type: object
+                  required: [email]
+                  properties:
+                    email:
+                      type: string
+                      pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+                    userId: { type: string }
+                    invoiceNinjaId: { type: string }
+                    domain:
+                      type: string
+                      pattern: '^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$'
+                    registrar:
+                      type: string
+                      enum: [namecom, external]
+                      default: external
+                    provisionEmail: { type: boolean, default: false }
+                    emailDomainName: { type: string }
+                    emailRegion:
+                      type: string
+                      enum: [US, EU]
+                      default: US
+                    appName: { type: string }
+                    githubRepo:
+                      type: string
+                      pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+                    appHostname:
+                      type: string
+                      pattern: '^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$'
+                    stagingBaseUrl:
+                      type: string
+                      pattern: '^https://'
+                    blueprint:
+                      type: string
+                      default: managed-hosting@v1
+                    decommissioned: { type: boolean, default: false }
+  workflows:
+    resource:
+      configure:
+        - apiVersion: platform.kratix.io/v1alpha1
+          kind: Pipeline
+          metadata:
+            name: reconcile
+          spec:
+            containers:
+              # Thin adapter — reads the Tenant object Kratix hands it and POSTs
+              # the Restate reconcile (in-cluster). Delegates; no island logic.
+              # Kratix re-runs this on each reconciliation, giving the level-
+              # triggered drift re-reconcile Metacontroller used to. No custom
+              # image: the public yq image (yq + busybox wget) runs the adapter
+              # inline, so there's nothing to build/publish.
+              - name: drive-restate
+                image: docker.io/mikefarah/yq:4
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    set -eu
+                    OBJ=/kratix/input/object.yaml
+                    RESTATE="${RESTATE_INGRESS:-http://restate.restate.svc.cluster.local:8080}"
+                    KEY=$(yq -r '.metadata.name' "$OBJ")
+                    SPEC=$(yq -o=json '.spec' "$OBJ")
+                    [ -n "$KEY" ] && [ "$KEY" != "null" ] || { echo "tenant has no metadata.name" >&2; exit 1; }
+                    # Fire-and-forget: the reconcile saga is durable in Restate.
+                    wget -qO- --header='content-type: application/json' \
+                      --post-data="$SPEC" "$RESTATE/provisionTenant/$KEY/reconcile/send"
+                    echo "reconcile dispatched for tenant/$KEY"
