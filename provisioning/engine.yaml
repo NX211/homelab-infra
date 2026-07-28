@@ -38,9 +38,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engine
-          # Channel-built (Tekton container-build, tag v0.1.5 = commit f896bcb) —
-          # dns island + Virtual Object reconcile, cloudflare via Verdaccio.
-          # digest-pinned.
+          # Channel-built (Tekton container-build). Live: v0.1.5 (commit f896bcb) —
+          # dns island + reconcile VO. tag v0.1.6 adds the provisionOnboarding
+          # workflow + GitOps Tenant CR commit; the /onboarding seam stays inert
+          # until this points at the v0.1.6 build. digest-pinned.
+          #
+          # TODO(v0.1.6): before this PR goes live, swap the digest below to the
+          # v0.1.6 build output, then re-run the restate-register job:
+          #   image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:<V0.1.6_DIGEST>
           image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:88d2f758fb2ddae0960c3252144a3287f1a803022f784a98a017fe50456677c1
           ports:
             - containerPort: 9080
