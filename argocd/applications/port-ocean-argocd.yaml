@@ -1,0 +1,66 @@
+---
+# Homelab Ocean ArgoCD integration — catalogs THIS cluster's ArgoCD Applications
+# (sync status / health / deploy history) into Port. Clone of the GKE one
+# (Corey-Alan-Consulting/platform-infra), pointed at the homelab argocd-server.
+# Distinct integration identifier (argocd-homelab) and UID-based entity ids mean
+# no collision with the GKE argocdApplication entities (e.g. cert-manager exists
+# on both clusters).
+#
+# In-cluster over the internal service; argocd-server runs --insecure so it's
+# plain HTTP and bypasses SSO (token auth straight to the API). Read-only token
+# (port-ocean-user) + Port creds via ESO (Workbench). Probes disabled (the chart
+# hardcodes /health/live which the image 404s -> CrashLoopBackOff otherwise).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: port-ocean-argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://port-labs.github.io/helm-charts
+    chart: port-ocean
+    targetRevision: "0.22.0"
+    helm:
+      releaseName: port-ocean-argocd
+      valuesObject:
+        port:
+          baseUrl: https://api.port.io
+        secret:
+          create: false
+          name: port-ocean-argocd-creds
+        initializePortResources: true
+        sendRawDataExamples: true
+        scheduledResyncInterval: 360
+        livenessProbe:
+          enabled: false
+        readinessProbe:
+          enabled: false
+        integration:
+          type: argocd
+          identifier: argocd-homelab
+          version: "0.1.96" # pin (Kyverno disallow-latest-tag)
+          eventListener:
+            type: POLLING
+          config:
+            serverUrl: http://argocd-server.argocd.svc.cluster.local
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 512Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: port-ocean-argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
