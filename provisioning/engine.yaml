@@ -38,11 +38,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engine
-          # Channel-built (Tekton container-build, tag v0.1.7) — dns + email
-          # islands + reconcile VO + provisionOnboarding workflow + GitOps Tenant
-          # CR commit. digest-pinned. Re-run the migrate job (db push) after this
-          # syncs so the EmailDomain table lands.
-          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:77fd8170ea315457c786d539f24b92017c68109c7b6345e2a7adddff43d2e3bf
+          # Channel-built (Tekton container-build, tag v0.1.8) — all five islands
+          # (spine/dns/email/app/staging) + reconcile VO + provisionOnboarding
+          # workflow + GitOps Tenant CR commit. digest-pinned. Re-run the migrate
+          # job (db push) after this syncs so AppOnboarding + StagingSite land. The
+          # app island also needs a GitHub App (actions:write) + PLATFORM_INFRA_REPO
+          # + ONBOARD_WORKFLOW_ID env before it can dispatch (see follow-up).
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:491ab4232bbd655e41b99fdff7062bb732c2b849fc57a722c4051a6fcd94da00
           ports:
             - containerPort: 9080
           env:
