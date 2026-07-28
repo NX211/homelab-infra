@@ -85,8 +85,23 @@ spec:
           spec:
             containers:
               # Thin adapter — reads the Tenant object Kratix hands it and POSTs
-              # the Restate reconcile (in-cluster). Delegates; does not re-run
-              # island logic. Kratix re-runs this on each reconciliation, giving
-              # the level-triggered drift re-reconcile Metacontroller used to.
+              # the Restate reconcile (in-cluster). Delegates; no island logic.
+              # Kratix re-runs this on each reconciliation, giving the level-
+              # triggered drift re-reconcile Metacontroller used to. No custom
+              # image: the public yq image (yq + busybox wget) runs the adapter
+              # inline, so there's nothing to build/publish.
               - name: drive-restate
-                image: ghcr.io/corey-alan-consulting/kratix-tenant-adapter:v0.1.0
+                image: docker.io/mikefarah/yq:4
+                command: ["/bin/sh", "-c"]
+                args:
+                  - |
+                    set -eu
+                    OBJ=/kratix/input/object.yaml
+                    RESTATE="${RESTATE_INGRESS:-http://restate.restate.svc.cluster.local:8080}"
+                    KEY=$(yq -r '.metadata.name' "$OBJ")
+                    SPEC=$(yq -o=json '.spec' "$OBJ")
+                    [ -n "$KEY" ] && [ "$KEY" != "null" ] || { echo "tenant has no metadata.name" >&2; exit 1; }
+                    # Fire-and-forget: the reconcile saga is durable in Restate.
+                    wget -qO- --header='content-type: application/json' \
+                      --post-data="$SPEC" "$RESTATE/provisionTenant/$KEY/reconcile/send"
+                    echo "reconcile dispatched for tenant/$KEY"
