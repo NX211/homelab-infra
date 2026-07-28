@@ -1,0 +1,14 @@
+---
+# Kratix GitOps state store — Kratix writes scheduled Works here; each
+# Destination's GitOps agent syncs them onto its cluster. Backed by
+# NX211/kratix-state. Credentials (username + PAT) via ESO (placeholder until set).
+apiVersion: platform.kratix.io/v1alpha1
+kind: GitStateStore
+metadata:
+  name: default
+spec:
+  url: https://github.com/Corey-Alan-Consulting/kratix-state
+  branch: main
+  secretRef:
+    name: kratix-state-git
+    namespace: kratix-platform-system
