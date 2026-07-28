@@ -1,12 +1,11 @@
 ---
 # managed-hosting Promise (L3, ADR-0018) — Kratix's platform API for provisioning
-# a client tenant. spec.api is the SAME Tenant CRD the reconcile loop already uses;
-# the resource pipeline is a THIN ADAPTER that delegates to the Restate durable
-# reconcile (the wrap — Kratix owns the API/scheduling, Restate stays the executor).
-#
-# NOT deployed yet: installing this while the Metacontroller CompositeController +
-# its Tenant CRD are live would double-drive Tenants. Deploy during L3.3, which
-# retires Metacontroller so Kratix is the sole Tenant driver.
+# a client tenant. spec.api is the SAME Tenant CRD the reconcile loop uses (exact
+# match with provisioning/tenant-crd.yaml, so co-managing it with ArgoCD causes no
+# drift). The resource pipeline is a thin adapter that delegates to the Restate
+# durable reconcile (the wrap — Kratix owns the API/scheduling, Restate stays the
+# executor). Keyed by metadata.uid, matching what Metacontroller used, so the fold
+# is seamless (same reconcile VO, continuous status).
 apiVersion: platform.kratix.io/v1alpha1
 kind: Promise
 metadata:
@@ -34,6 +33,19 @@ spec:
           storage: true
           subresources:
             status: {}
+          additionalPrinterColumns:
+            - name: Phase
+              type: string
+              jsonPath: .status.phase
+            - name: Domain
+              type: string
+              jsonPath: .spec.domain
+            - name: Email
+              type: boolean
+              jsonPath: .spec.provisionEmail
+            - name: Age
+              type: date
+              jsonPath: .metadata.creationTimestamp
           schema:
             openAPIV3Schema:
               type: object
@@ -45,25 +57,36 @@ spec:
                   properties:
                     email:
                       type: string
+                      description: Client email — the key the reconcile loop is scoped to (never used in resource names or logs).
                       pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
-                    userId: { type: string }
-                    invoiceNinjaId: { type: string }
+                    userId:
+                      type: string
+                      description: Soft reference to the business-plane User (no cross-DB FK).
+                    invoiceNinjaId:
+                      type: string
+                      description: Soft reference to the billing record.
                     domain:
                       type: string
+                      description: Primary domain to provision (DNS island). A hostname with a TLD — not an IP.
                       pattern: '^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$'
                     registrar:
                       type: string
                       enum: [namecom, external]
                       default: external
-                    provisionEmail: { type: boolean, default: false }
-                    emailDomainName: { type: string }
+                    provisionEmail:
+                      type: boolean
+                      default: false
+                    emailDomainName:
+                      type: string
                     emailRegion:
                       type: string
                       enum: [US, EU]
                       default: US
-                    appName: { type: string }
+                    appName:
+                      type: string
                     githubRepo:
                       type: string
+                      description: owner/repo of the client app.
                       pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
                     appHostname:
                       type: string
@@ -73,8 +96,45 @@ spec:
                       pattern: '^https://'
                     blueprint:
                       type: string
+                      description: Versioned managed-hosting blueprint stamped onto the tenant.
                       default: managed-hosting@v1
-                    decommissioned: { type: boolean, default: false }
+                    decommissioned:
+                      type: boolean
+                      description: Set true to run the teardown/compensation saga (GDPR-erasure path).
+                      default: false
+                status:
+                  type: object
+                  properties:
+                    provisioningId:
+                      type: string
+                      description: Opaque, stable id — the Restate saga key. Never the email.
+                    phase:
+                      type: string
+                      enum: [Pending, Provisioning, Live, Partial, Failed, Decommissioned]
+                    observedGeneration:
+                      type: integer
+                    conditions:
+                      type: array
+                      description: One entry per island (spine/dns/email/app/staging).
+                      items:
+                        type: object
+                        required: [island, status]
+                        properties:
+                          island:
+                            type: string
+                            enum: [spine, dns, email, app, staging]
+                          status:
+                            type: string
+                            enum: [Pending, Running, OK, Skipped, Failed]
+                          attempt:
+                            type: integer
+                          detail:
+                            type: string
+                          lastError:
+                            type: string
+                          lastTransitionTime:
+                            type: string
+                            format: date-time
   workflows:
     resource:
       configure:
@@ -84,12 +144,11 @@ spec:
             name: reconcile
           spec:
             containers:
-              # Thin adapter — reads the Tenant object Kratix hands it and POSTs
-              # the Restate reconcile (in-cluster). Delegates; no island logic.
-              # Kratix re-runs this on each reconciliation, giving the level-
-              # triggered drift re-reconcile Metacontroller used to. No custom
-              # image: the public yq image (yq + busybox wget) runs the adapter
-              # inline, so there's nothing to build/publish.
+              # Thin adapter — delegates the Tenant to the Restate durable reconcile
+              # and publishes the reconcile state into .status. No island logic; no
+              # custom image (public yq + busybox wget). Keyed by metadata.uid (same
+              # as Metacontroller), so the fold is seamless. Kratix re-runs this each
+              # reconciliation, giving the level-triggered drift re-reconcile.
               - name: drive-restate
                 image: docker.io/mikefarah/yq:4
                 command: ["/bin/sh", "-c"]
@@ -98,10 +157,18 @@ spec:
                     set -eu
                     OBJ=/kratix/input/object.yaml
                     RESTATE="${RESTATE_INGRESS:-http://restate.restate.svc.cluster.local:8080}"
-                    KEY=$(yq -r '.metadata.name' "$OBJ")
+                    KEY=$(yq -r '.metadata.uid' "$OBJ")
+                    GEN=$(yq -r '.metadata.generation // 0' "$OBJ")
                     SPEC=$(yq -o=json '.spec' "$OBJ")
-                    [ -n "$KEY" ] && [ "$KEY" != "null" ] || { echo "tenant has no metadata.name" >&2; exit 1; }
-                    # Fire-and-forget: the reconcile saga is durable in Restate.
-                    wget -qO- --header='content-type: application/json' \
-                      --post-data="$SPEC" "$RESTATE/provisionTenant/$KEY/reconcile/send"
-                    echo "reconcile dispatched for tenant/$KEY"
+                    [ -n "$KEY" ] && [ "$KEY" != "null" ] || { echo "tenant has no metadata.uid" >&2; exit 1; }
+                    # Drive the durable reconcile (fire-and-forget; Restate serializes per key).
+                    wget -qO- --header='content-type: application/json' --post-data="$SPEC" \
+                      "$RESTATE/provisionTenant/$KEY/reconcile/send" || true
+                    # Publish the reconcile state into .status (Kratix merges status.yaml).
+                    STATUS=$(wget -qO- --header='content-type: application/json' --post-data='{}' \
+                      "$RESTATE/provisionTenant/$KEY/getStatus" || echo '{}')
+                    mkdir -p /kratix/metadata
+                    printf '%s' "$STATUS" | KEY="$KEY" GEN="$GEN" yq -P \
+                      '{"provisioningId": env(KEY), "observedGeneration": (env(GEN)|tonumber), "phase": (.phase // "Pending"), "conditions": (.conditions // [])}' \
+                      > /kratix/metadata/status.yaml
+                    echo "tenant/$KEY: reconcile dispatched + status published"

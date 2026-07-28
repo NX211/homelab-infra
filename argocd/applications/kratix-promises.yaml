@@ -1,0 +1,37 @@
+---
+# Kratix Promises (L3). The managed-hosting Promise is the platform API for a
+# tenant; its pipeline delegates to the Restate reconcile. prune:false on purpose
+# — deleting a Promise cascades to its CRD and every resource of that kind (i.e.
+# would delete live Tenants), so removal must be deliberate, never an ArgoCD prune.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kratix-promises
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/nx211/homelab-infra.git
+    targetRevision: main
+    path: kratix/promises
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
