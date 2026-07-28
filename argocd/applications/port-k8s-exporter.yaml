@@ -55,7 +55,11 @@ spec:
                         relations:
                           domain: .spec.domain
                           email_domain: .spec.emailDomainName
-                          app_onboarding: .status.provisioningId // .metadata.uid
+                          # Only relate when the tenant actually has an app —
+                          # else it points at a non-existent appOnboarding entity
+                          # (that entity is created only when .spec.appName is set)
+                          # and Port rejects the tenant upsert (404 dangling relation).
+                          app_onboarding: (if .spec.appName then (.status.provisioningId // .metadata.uid) else null end)
               # domain — only tenants that provision one
               - kind: platform.coreyalan.com/v1alpha1/tenants
                 selector:
