@@ -1,0 +1,84 @@
+---
+# Periodic drift re-reconcile for Tenants — the safety net that replaces the old
+# Metacontroller 300s resync. Kratix reconciles on spec change (the common case);
+# this CronJob every 15 min sets kratix.io/manual-reconciliation on each Tenant so
+# Kratix re-runs the reconcile pipeline, catching external drift (e.g. a deleted
+# Cloudflare zone) that never changes the spec. Kratix clears the label after.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kratix-tenant-drift
+  namespace: kratix-platform-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kratix-tenant-drift
+  namespace: provisioning
+rules:
+  - apiGroups: ["platform.coreyalan.com"]
+    resources: ["tenants"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kratix-tenant-drift
+  namespace: provisioning
+subjects:
+  - kind: ServiceAccount
+    name: kratix-tenant-drift
+    namespace: kratix-platform-system
+roleRef:
+  kind: Role
+  name: kratix-tenant-drift
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kratix-tenant-drift-reconcile
+  namespace: kratix-platform-system
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 300
+      template:
+        spec:
+          serviceAccountName: kratix-tenant-drift
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: trigger
+              image: registry.k8s.io/kubectl:v1.31.1
+              command: ["kubectl"]
+              args:
+                - -n
+                - provisioning
+                - label
+                - tenants
+                - --all
+                - kratix.io/manual-reconciliation=true
+                - --overwrite
+              env:
+                - name: HOME
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
