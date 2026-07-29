@@ -20,6 +20,7 @@ data:
     const RESTATE = process.env.RESTATE_INGRESS ?? 'http://restate.restate.svc.cluster.local:8080';
     const RECONCILE = 'provisionTenant';
     const ONBOARDING = 'provisionOnboarding';
+    const DECOMMISSION = 'provisionDecommission';
     const SEAM_TOKEN = process.env.ONBOARDING_BEARER_TOKEN ?? '';
 
     async function driveRestate(id, spec) {
@@ -58,9 +59,10 @@ data:
       };
     }
 
-    // Onboarding seam — the ONE public inbound path (PathPrefix(/onboarding) in the
-    // IngressRoute; /sync stays cluster-internal). coreyalan.com's producers +
-    // wizard call these; the engine's Restate ingress stays private behind them.
+    // Onboarding + decommission seams — the public inbound paths (PathPrefix
+    // /onboarding + /decommission in the IngressRoute; /sync stays cluster-internal).
+    // coreyalan.com's producers + wizard call these; the engine's Restate ingress
+    // stays private behind them.
 
     // Constant-time bearer check. Closed-by-default: no token configured => reject,
     // so the seam is shut until the shared secret is mounted.
@@ -97,7 +99,18 @@ data:
       }
     }
 
+    // Teardown seam — commit a decommissioned Tenant CR via the engine's git
+    // handoff (ArgoCD -> Metacontroller -> reconcile teardown). Synchronous so
+    // the caller gets { ok, tenant, dryRun, commitUrl } back. Business plane owns
+    // the spec (same one it onboarded with); dryRun defaults off.
+    async function decommissionRoute(payload) {
+      const spec = payload.spec ?? {};
+      if (!spec.email) return { status: 400, text: JSON.stringify({ error: 'missing spec.email' }) };
+      return restateCall(DECOMMISSION, 'decommission', { spec, dryRun: Boolean(payload.dryRun) });
+    }
+
     const ONBOARDING_ROUTES = new Set(['/onboarding/start', '/onboarding/state', '/onboarding/submit']);
+    const GUARDED_ROUTES = new Set([...ONBOARDING_ROUTES, '/decommission']);
 
     function readJsonBody(req, res, handler) {
       let body = '';
@@ -115,9 +128,11 @@ data:
     const server = createServer((req, res) => {
       if (req.method === 'GET' && req.url === '/healthz') { res.writeHead(200).end('ok'); return; }
 
-      if (req.method === 'POST' && ONBOARDING_ROUTES.has(req.url)) {
+      if (req.method === 'POST' && GUARDED_ROUTES.has(req.url)) {
         if (!authorized(req)) { res.writeHead(401, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'unauthorized' })); return; }
-        readJsonBody(req, res, (payload) => onboardingRoute(req.url, payload));
+        readJsonBody(req, res, (payload) =>
+          req.url === '/decommission' ? decommissionRoute(payload) : onboardingRoute(req.url, payload),
+        );
         return;
       }
 

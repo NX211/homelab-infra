@@ -8,6 +8,8 @@ metadata:
   # line up without per-app special cases.
   name: staging-blue-skysolutions-com
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: blue-skysolutions-com
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

@@ -4,6 +4,8 @@ kind: Application
 metadata:
   name: staging-coreyalan-com
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: coreyalan-com
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

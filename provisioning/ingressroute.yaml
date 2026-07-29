@@ -17,10 +17,11 @@ spec:
   dnsNames:
     - provisioning.coreyalan.com
 ---
-# The ONE public inbound path to the control plane: PathPrefix(/onboarding) only,
-# so the unauthenticated /sync hook (Metacontroller, in-cluster) is never exposed.
-# Guarded by the constant-time bearer check in the webhook — coreyalan.com's
-# producers + wizard present the shared token. Raw Restate ingress stays private.
+# The only public inbound paths to the control plane: PathPrefix(/onboarding) and
+# PathPrefix(/decommission), so the unauthenticated /sync hook (Metacontroller,
+# in-cluster) is never exposed. Both are guarded by the constant-time bearer check
+# in the webhook — coreyalan.com's producers + wizard present the shared token.
+# Raw Restate ingress stays private.
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -30,7 +31,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`provisioning.coreyalan.com`) && PathPrefix(`/onboarding`)
+    - match: Host(`provisioning.coreyalan.com`) && (PathPrefix(`/onboarding`) || PathPrefix(`/decommission`))
       kind: Rule
       services:
         - name: provisioning-webhook

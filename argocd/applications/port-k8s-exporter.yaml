@@ -37,6 +37,10 @@ spec:
         configMap:
           create: true
           config: |
+            # Dangling build->repository relations create a stub githubRepository
+            # (identifier = repo name) that the GitHub integration later merges,
+            # so a build never fails to ingest for an un-cataloged repo.
+            createMissingRelatedEntities: true
             resources:
               # tenant — the spine root (identifier = opaque provisioningId)
               - kind: platform.coreyalan.com/v1alpha1/tenants
@@ -104,6 +108,32 @@ spec:
                         relations:
                           github_repository: .spec.githubRepo
                           argocd_application: .spec.appName
+              # build — Tekton PipelineRuns across the *-builds-{trusted,untrusted}
+              # namespaces. Handles both trusted (Tekton Triggers: git-url/git-revision
+              # spec params) and untrusted (PaC: sha/url annotations) runs.
+              - kind: tekton.dev/v1/pipelineruns
+                selector:
+                  query: "true"
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .metadata.uid
+                        title: .metadata.name
+                        blueprint: '"build"'
+                        properties:
+                          status: .status.conditions[0].reason
+                          succeeded: (.status.conditions[0].status == "True")
+                          pipeline: .metadata.labels["tekton.dev/pipeline"]
+                          namespace: .metadata.namespace
+                          commit: ((.spec.params // [] | map(select(.name == "git-revision")) | .[0].value) // .metadata.annotations["pipelinesascode.tekton.dev/sha"])
+                          git_url: ((.spec.params // [] | map(select(.name == "git-url")) | .[0].value) // .metadata.annotations["pipelinesascode.tekton.dev/repo-url"])
+                          triggered_by: (.metadata.labels["triggers.tekton.dev/eventlistener"] // .metadata.labels["pipelinesascode.tekton.dev/repository"] // "manual")
+                          started_at: .status.startTime
+                          completed_at: .status.completionTime
+                        relations:
+                          # PaC exposes the repo name directly (url-repository label);
+                          # Tekton Triggers runs derive it from the git-url param.
+                          repository: (.metadata.labels["pipelinesascode.tekton.dev/url-repository"] // (((.spec.params // [] | map(select(.name == "git-url")) | .[0].value) // "") | sub("\\.git$"; "") | split("/") | last))
   destination:
     server: https://kubernetes.default.svc
     namespace: port-k8s-exporter

@@ -38,13 +38,17 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engine
-          # Channel-built (Tekton container-build, tag v0.1.8) — all five islands
-          # (spine/dns/email/app/staging) + reconcile VO + provisionOnboarding
-          # workflow + GitOps Tenant CR commit. digest-pinned. Re-run the migrate
-          # job (db push) after this syncs so AppOnboarding + StagingSite land. The
-          # app island also needs a GitHub App (actions:write) + PLATFORM_INFRA_REPO
-          # + ONBOARD_WORKFLOW_ID env before it can dispatch (see follow-up).
-          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:491ab4232bbd655e41b99fdff7062bb732c2b849fc57a722c4051a6fcd94da00
+          # Channel-built (Tekton container-build, tag v0.1.11) — v0.1.10 islands
+          # + sentry error tracking behind SENTRY_DSN. All five islands
+          # (spine/dns/email/app/staging) with reverse-order TEARDOWN (Registrar
+          # zones retained, teardown retries bounded) + reconcile VO +
+          # provisionOnboarding + provisionDecommission + GitOps Tenant CR commit.
+          # digest-pinned. RE-REGISTER Restate after this syncs (apply
+          # examples/restate-register-job.yaml) so provisionDecommission + the
+          # updated provisionTenant are discoverable. The app island also needs a
+          # GitHub App (actions:write) + PLATFORM_INFRA_REPO + ONBOARD_WORKFLOW_ID
+          # (and ONBOARD_TEARDOWN_WORKFLOW_ID for app teardown) before it dispatches.
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:3d20e8cbd33caa579718db705863cfb96795541b3427abb5b65abed137787d6a
           ports:
             - containerPort: 9080
           env:
@@ -55,6 +59,13 @@ spec:
                   key: uri
             - name: RESTATE_ADMIN
               value: http://restate.restate.svc.cluster.local:9070
+            # Error tracking (Port operational_readiness Gold signal). DSN is a
+            # public client key; inert until an engine image with the sentry
+            # init ships (provisioning-engine#10).
+            - name: SENTRY_DSN
+              value: https://3fc73fa33407a09fee6fbd768b5cd773@o4511020580995072.ingest.us.sentry.io/4511819698995200
+            - name: SENTRY_ENVIRONMENT
+              value: production
             # Cloudflare (dns island). Read lazily at first reconcile, so the
             # engine still boots if the secret isn't populated yet.
             - name: CLOUDFLARE_API_TOKEN
