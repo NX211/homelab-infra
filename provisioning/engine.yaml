@@ -38,15 +38,16 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engine
-          # Channel-built (Tekton container-build, tag v0.1.9) — all five islands
-          # (spine/dns/email/app/staging) with reverse-order TEARDOWN + reconcile
-          # VO + provisionOnboarding + provisionDecommission + GitOps Tenant CR
-          # commit. digest-pinned. RE-REGISTER Restate after this syncs (apply
+          # Channel-built (Tekton container-build, tag v0.1.10) — all five islands
+          # (spine/dns/email/app/staging) with reverse-order TEARDOWN (Registrar
+          # zones retained, teardown retries bounded) + reconcile VO +
+          # provisionOnboarding + provisionDecommission + GitOps Tenant CR commit.
+          # digest-pinned. RE-REGISTER Restate after this syncs (apply
           # examples/restate-register-job.yaml) so provisionDecommission + the
           # updated provisionTenant are discoverable. The app island also needs a
           # GitHub App (actions:write) + PLATFORM_INFRA_REPO + ONBOARD_WORKFLOW_ID
           # (and ONBOARD_TEARDOWN_WORKFLOW_ID for app teardown) before it dispatches.
-          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:60ec3f698e9ee3cb79290decda296453639d9fba377b280b1667d9b720c2d174
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:d57363a15cd06cdc5540df2223eaf96a8b341574a572c94aa472026b35b60c34
           ports:
             - containerPort: 9080
           env:
