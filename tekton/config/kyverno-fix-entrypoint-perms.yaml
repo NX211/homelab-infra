@@ -1,0 +1,71 @@
+# gVisor cannot exec the exec-only (0311) /tekton/bin/entrypoint that Tekton's
+# `prepare` init writes: the sentry loads the ELF with the task's credentials and
+# therefore needs READ (google/gvisor#160), so every nonroot container in a Tekton
+# pod — place-scripts and all step containers — dies with exit 126 / "Permission
+# denied" (tektoncd/pipeline#4784; the 0311 mode is hardcoded). Trusted (runc)
+# lanes are unaffected: the Linux kernel execs exec-only binaries fine.
+#
+# Fix: insert a root-in-sandbox init container right after `prepare` that chmods
+# the binary 0755. Root here is contained by gVisor — the same boundary the lane
+# already relies on — and the binary is a public OSS artifact, so losing the
+# exec-only mode protects nothing. Scoped to untrusted (gVisor) build namespaces
+# via the build.capturly/tier label.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: fix-tekton-entrypoint-perms-untrusted
+  annotations:
+    policies.kyverno.io/title: Make Tekton entrypoint readable for gVisor (untrusted build plane)
+    policies.kyverno.io/category: Build Plane
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Inserts a chmod init container into Tekton-managed pods in untrusted
+      (gVisor) build namespaces so nonroot containers can exec
+      /tekton/bin/entrypoint. Remove if Tekton makes the entrypoint mode
+      configurable or the untrusted lane moves to a VM runtime (kata).
+spec:
+  background: false
+  rules:
+    - name: insert-entrypoint-chmod-init
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              selector:
+                matchLabels:
+                  app.kubernetes.io/managed-by: tekton-pipelines
+              namespaceSelector:
+                matchLabels:
+                  build.capturly/tier: untrusted
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.initContainers[0].name || '' }}"
+            operator: Equals
+            value: prepare
+          # JSON 6902 inserts aren't idempotent; webhook reinvocation would
+          # insert a duplicate without this guard.
+          - key: "{{ request.object.spec.initContainers[1].name || '' }}"
+            operator: NotEquals
+            value: fix-entrypoint-perms
+      mutate:
+        patchesJson6902: |-
+          - op: add
+            path: /spec/initContainers/1
+            value:
+              name: fix-entrypoint-perms
+              # Same digest Tekton uses for place-scripts (shell-image).
+              image: cgr.dev/chainguard/busybox@sha256:19f02276bf8dbdd62f069b922f10c65262cc34b710eea26ff928129a736be791
+              command: ["sh", "-c", "chmod 0755 /tekton/bin/entrypoint"]
+              securityContext:
+                runAsUser: 0
+                runAsNonRoot: false
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                  add: ["FOWNER"]
+                seccompProfile:
+                  type: RuntimeDefault
+              volumeMounts:
+                - name: tekton-internal-bin
+                  mountPath: /tekton/bin
