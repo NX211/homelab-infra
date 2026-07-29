@@ -8,6 +8,8 @@ kind: Application
 metadata:
   name: provisioning
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: provisioning-engine
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/compare-options: ServerSideDiff=true
