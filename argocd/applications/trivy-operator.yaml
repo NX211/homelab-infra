@@ -1,0 +1,56 @@
+---
+# Trivy Operator (staging). Continuously scans workloads and publishes
+# VulnerabilityReport / ConfigAuditReport CRs that Port ingests for the
+# operational_readiness security signal. Mirrors the prod install in
+# platform-infra. Concurrency is pinned to 1 scan job — staging is
+# resource-constrained and reports accumulate fine at that pace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: trivy-operator
+  namespace: argocd
+  annotations:
+    # Server-side diff: the aquasecurity CRDs are large and apiserver
+    # defaulting reads as false drift under client-side compare.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://aquasecurity.github.io/helm-charts/
+    chart: trivy-operator
+    targetRevision: 0.34.0
+    helm:
+      valuesObject:
+        # Only the namespaces feeding the Port scorecard signal; runtime
+        # security is tetragon's job.
+        targetNamespaces: "staging,provisioning"
+        operator:
+          scanJobsConcurrentLimit: 1
+          # Rescan weekly, not the 24h default.
+          scannerReportTTL: "168h"
+        trivy:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: trivy-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
