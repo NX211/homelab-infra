@@ -1,0 +1,94 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nightingale.fullname" . }}
+  labels:
+    {{- include "nightingale.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # RWO data PVC — never run two pods against it at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nightingale.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nightingale.selectorLabels" . | nindent 8 }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: nightingale
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        env:
+        - name: TZ
+          value: {{ .Values.env.TZ | quote }}
+        - name: NIGHTINGALE_BIND
+          value: {{ .Values.env.bind | quote }}
+        - name: NIGHTINGALE_DATA_PATH
+          value: {{ .Values.env.dataPath | quote }}
+        {{- if .Values.persistence.media.enabled }}
+        - name: NIGHTINGALE_LIBRARY_PATH
+          value: {{ .Values.env.libraryPath | quote }}
+        {{- end }}
+        # Keep ML thread pools in step with the CPU limit (see values.yaml).
+        - name: OMP_NUM_THREADS
+          value: {{ .Values.env.threads | quote }}
+        - name: MKL_NUM_THREADS
+          value: {{ .Values.env.threads | quote }}
+        - name: NUMEXPR_NUM_THREADS
+          value: {{ .Values.env.threads | quote }}
+        - name: OPENBLAS_NUM_THREADS
+          value: {{ .Values.env.threads | quote }}
+        volumeMounts:
+        - name: data
+          mountPath: {{ .Values.env.dataPath }}
+        {{- if .Values.persistence.media.enabled }}
+        - name: music
+          mountPath: {{ .Values.persistence.media.music.mountPath }}
+          readOnly: true
+        {{- end }}
+        # Web server binds on start; ML deps (~several GB) download lazily into
+        # /data on first use, so gate readiness/liveness on the TCP port only.
+        startupProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        livenessProbe:
+          tcpSocket:
+            port: http
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          tcpSocket:
+            port: http
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: {{ include "nightingale.fullname" . }}-data
+      {{- if .Values.persistence.media.enabled }}
+      - name: music
+        hostPath:
+          path: {{ .Values.persistence.media.music.hostPath }}
+          type: Directory
+      {{- end }}

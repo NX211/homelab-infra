@@ -1,0 +1,40 @@
+---
+# Public TLS for the onboarding seam host, issued by cert-manager via
+# letsencrypt-prod (HTTP-01 through Traefik) — same pattern as the build sink and
+# PaC controller. Requires the A record (platform-infra Cloudflare, DNS-only) to
+# resolve to the homelab public IP, plus the CoreDNS split-horizon entry so the
+# in-cluster HTTP-01 self-check doesn't hairpin (see coredns/configmap.yaml).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: provisioning-onboarding-tls
+  namespace: provisioning
+spec:
+  secretName: provisioning-onboarding-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - provisioning.coreyalan.com
+---
+# The only public inbound paths to the control plane: PathPrefix(/onboarding) and
+# PathPrefix(/decommission), so the unauthenticated /sync hook (Metacontroller,
+# in-cluster) is never exposed. Both are guarded by the constant-time bearer check
+# in the webhook — coreyalan.com's producers + wizard present the shared token.
+# Raw Restate ingress stays private.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: provisioning-onboarding
+  namespace: provisioning
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`provisioning.coreyalan.com`) && (PathPrefix(`/onboarding`) || PathPrefix(`/decommission`))
+      kind: Rule
+      services:
+        - name: provisioning-webhook
+          port: 8080
+  tls:
+    secretName: provisioning-onboarding-tls

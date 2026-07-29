@@ -1,0 +1,73 @@
+# Nightingale Helm Chart Values
+
+# Image configuration
+# CPU (multi-arch) image. The `-cuda` variant needs an NVIDIA GPU + device
+# plugin on the node; this cluster runs CPU-only, so vocal separation and
+# transcription run on CPU (slower, but cached per-song after first play).
+image:
+  repository: razzaru/nightingale
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+# Service configuration
+service:
+  port: 8080
+
+# Ingress configuration
+ingress:
+  enabled: true
+  host: karaoke.authoritah.tv
+  clusterIssuer: letsencrypt-prod
+
+# Node selection — pinned to blacktalon where the hostPath music library lives.
+nodeSelector:
+  kubernetes.io/hostname: blacktalon
+
+# Persistence
+persistence:
+  # Config, SQLite library db, stem/transcript cache, and the ~several-GB
+  # vendored ffmpeg/Python/PyTorch + ML models downloaded on first launch.
+  # Mounted at /data (NIGHTINGALE_DATA_PATH). Grows as more songs are processed.
+  data:
+    enabled: true
+    size: 20Gi
+    storageClass: local-path
+
+  # Music library (read-only) — the same hostPath Plex mounts and that lives
+  # under Jellyfin's /blacktalon/media root. Mounted at /songs
+  # (NIGHTINGALE_LIBRARY_PATH).
+  media:
+    enabled: true
+    music:
+      hostPath: /blacktalon/media/music
+      mountPath: /songs
+
+# Environment variables
+env:
+  TZ: America/New_York
+  # Bind on all interfaces so the Service can reach it.
+  bind: "0.0.0.0:8080"
+  dataPath: /data
+  libraryPath: /songs
+  # ML thread cap. PyTorch/OpenMP otherwise read the host's core count (56) and
+  # spawn one thread per core, which thrashes against the cgroup CPU limit and
+  # produces massive CFS throttling. Keep this equal to resources.limits.cpu.
+  threads: "24"
+
+# Resource limits — CPU-based ML (mel_band_roformer vocal separation + WhisperX
+# transcription) is compute-heavy in a burst while first analysing a song, then
+# idle (results are cached per-song). blacktalon has 56 cores and sits near-idle,
+# so give the burst real headroom: at 6 cores a single 234s song took ~20 min
+# and sat throttled >60% of the time. Requests stay low so nothing is reserved
+# while idle; the limit bounds the burst so it can't starve live Plex transcodes.
+#
+# Memory: the WhisperX transcription phase (after separation) loads its model and
+# spiked to ~7.9Gi, which OOMKilled the pod at an 8Gi limit mid-analysis. Raised
+# to 16Gi for headroom; the node has ample free RAM (limits ~45% allocated).
+resources:
+  requests:
+    cpu: "2"
+    memory: 2Gi
+  limits:
+    cpu: "24"
+    memory: 16Gi

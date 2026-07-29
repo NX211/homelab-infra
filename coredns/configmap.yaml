@@ -62,7 +62,6 @@ data:
     10.43.5.100 staging.dispatchr.social
     10.43.5.100 staging.capturly.app
     10.43.5.100 staging.blue-skysolutions.com
-    10.43.5.100 staging.atlas.coreyalan.com
     # Matrix stack (server_name coreyalan.com; apex served by prod cluster).
     10.43.5.100 matrix.coreyalan.com
     10.43.5.100 auth.coreyalan.com
@@ -74,6 +73,12 @@ data:
     # cert-manager HTTP-01 self-check reaches Traefik instead of hairpinning to
     # the public IP; GitHub's external webhook still hits the public IP:443.
     10.43.5.100 tekton-pac.coreyalan.com
+    # Tekton trusted-tier EventListener webhook sinks (build platform) — same
+    # split-horizon reason as tekton-pac above (HTTP-01 self-check, not hairpin).
+    10.43.5.100 tekton-trusted-provisioning-engine.coreyalan.com
+    # Onboarding seam (provisioning-webhook /onboarding) — split-horizon so the
+    # cert-manager HTTP-01 self-check resolves to Traefik, not the public IP.
+    10.43.5.100 provisioning.coreyalan.com
     10.43.5.100 sabnzbd.authoritah.tv
     10.43.5.100 jellyfin.authoritah.tv
     10.43.5.100 docs.authoritah.com
@@ -98,3 +103,4 @@ data:
     10.43.5.100 tools.authoritah.com
     10.43.5.100 transmission.authoritah.tv
     10.43.5.100 13ft.authoritah.link
+    10.43.5.100 karaoke.authoritah.tv

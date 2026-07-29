@@ -1,0 +1,28 @@
+---
+# RBAC surface for Tenants (ADR-0019 Phase 1). No bindings yet — the reconcile
+# webhook's ServiceAccount and human operators bind to these in later phases /
+# when a teammate is onboarded (ADR-0018 team-onboarding step).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tenant-admin
+  labels:
+    app.kubernetes.io/part-of: provisioning
+rules:
+  - apiGroups: [platform.coreyalan.com]
+    resources: [tenants]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [platform.coreyalan.com]
+    resources: [tenants/status]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tenant-viewer
+  labels:
+    app.kubernetes.io/part-of: provisioning
+rules:
+  - apiGroups: [platform.coreyalan.com]
+    resources: [tenants, tenants/status]
+    verbs: [get, list, watch]

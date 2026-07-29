@@ -1,0 +1,120 @@
+---
+# Channel pipeline: container-build (TRUSTED tier). Clone the app repo with a
+# short-lived GitHub App token → kaniko builds the Dockerfile → pushes to Artifact
+# Registry keyless via WIF. The FIRST in-cluster container-image build channel
+# (ADR-0020), extending ADR-0017 which shipped only web CI-checks + Android AABs.
+# Consumed from the trusted EventListener's TriggerTemplate via the git resolver;
+# the git tag push supplies git-url + git-revision. The image is tagged with the
+# pushed commit SHA (immutable, reproducible). Tekton Chains signs the pushed
+# digest — build-image emits IMAGE_URL/IMAGE_DIGEST as type-hints.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: container-build
+  labels:
+    app.kubernetes.io/part-of: build-catalog
+spec:
+  params:
+    - name: git-url
+      type: string
+    - name: git-revision
+      type: string
+      default: ""
+    - name: image
+      description: AR destination without tag, e.g. us-central1-docker.pkg.dev/<project>/<repo>/<name>.
+      type: string
+      default: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine
+    - name: context
+      description: Build context dir within the cloned source.
+      type: string
+      default: .
+    - name: dockerfile
+      type: string
+      default: Dockerfile
+    - name: toolchain-image
+      description: Clone toolchain (git/openssl/python3/curl, non-root) for the App-token clone.
+      type: string
+      # INTERIM: reuse the public android toolchain (it bakes the same git/openssl/
+      # python3/curl and runs this exact non-root clone). Swap to the slim dedicated
+      # image (build-catalog/images/clone-toolchain/) once ghcr write:packages is
+      # available to push it.
+      default: ghcr.io/nx211/capturly-android-toolchain:0.1.0@sha256:e266bc15b6ad57bb6c913c9a60e666fa0014cf687f97134438bad2b12ecaaabb
+  workspaces:
+    - name: source
+    - name: gcp-wif      # external_account WIF config → keyless AR push
+    - name: github-app   # App key → ~1h clone token; no static git credential
+    - name: npmrc        # Verdaccio-proxy .npmrc → private @scope install, no token
+  tasks:
+    - name: clone
+      workspaces:
+        - name: output
+          workspace: source
+        - name: github-app
+          workspace: github-app
+        - name: npmrc
+          workspace: npmrc
+      taskSpec:
+        workspaces:
+          - name: output
+          - name: github-app
+            mountPath: /github-app
+          - name: npmrc
+            mountPath: /npmrc
+        steps:
+          - name: git-clone
+            # Toolchain image (openssl + python3 + curl + git pre-baked) so the
+            # step runs non-root under set-security-context — no runtime apk add.
+            image: $(params.toolchain-image)
+            script: |
+              #!/usr/bin/env bash
+              # Clone the private repo with a ~1h GitHub App installation token
+              # minted at build time — nothing long-lived in the pod. set -e but
+              # never -x so the token is never echoed. JSON parsed with python3
+              # (baked) instead of jq.
+              set -euo pipefail
+
+              APP_ID="$(cat /github-app/app-id)"
+              b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+              now=$(date +%s)
+              hdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
+              pld="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now-60))" "$((now+540))" "$APP_ID" | b64url)"
+              sig="$(printf '%s' "$hdr.$pld" | openssl dgst -sha256 -sign /github-app/app-private-key -binary | b64url)"
+              jwt="$hdr.$pld.$sig"
+
+              slug="$(printf '%s' "$(params.git-url)" | sed -E 's#https?://github.com/##; s#\.git$##')"
+              gh="https://api.github.com"
+              inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh/repos/$slug/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
+              token="$(curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh/app/installations/$inst/access_tokens" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')"
+
+              cd "$(workspaces.output.path)"
+              git clone "https://x-access-token:${token}@github.com/${slug}.git" .
+              git remote set-url origin "https://github.com/${slug}.git"   # drop the token from .git/config
+              [ -n "$(params.git-revision)" ] && git checkout "$(params.git-revision)" || true
+
+              # Drop a SCOPED-ONLY .npmrc into the build context: route only the
+              # private @scope through the Verdaccio proxy (no token in the image),
+              # leaving public deps (prisma, restate-sdk, …) on npmjs direct. The
+              # trusted tier has public egress; proxying large public tarballs
+              # through a cold Verdaccio cache is slow and flaky (ECONNRESET on
+              # @prisma/client). Keeping only the `@scope:registry=` line does that.
+              grep ':registry=' /npmrc/.npmrc > "$(workspaces.output.path)/.npmrc" 2>/dev/null || true
+    - name: build
+      runAfter: [clone]
+      taskRef:
+        resolver: git
+        params:
+          - { name: url, value: 'https://github.com/NX211/homelab-infra.git' }
+          - { name: revision, value: main }
+          - { name: pathInRepo, value: build-catalog/tasks/build-image.yaml }
+      params:
+        - name: image
+          value: $(params.image)
+        - name: tag
+          value: $(params.git-revision)   # immutable: image tag = pushed commit SHA
+        - name: context
+          value: $(params.context)
+        - name: dockerfile
+          value: $(params.dockerfile)
+      workspaces:
+        - { name: source, workspace: source }
+        - { name: gcp-wif, workspace: gcp-wif }

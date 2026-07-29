@@ -1,0 +1,230 @@
+---
+# Provisioning sync webhook — submits the Tenant to the Restate engine's
+# provisionTenant Virtual Object (reconcile) and mirrors its state (getStatus)
+# into Tenant.status. The 300s Metacontroller resync re-drives reconcile → drift
+# converges. Still ConfigMap-mounted /
+# zero-dependency (Node 22 global fetch). Graceful fallback: while the engine is
+# unbuilt/unregistered, Restate calls fail and the webhook reports phase Pending —
+# so this is safe to ship before the engine is live.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: provisioning-webhook-code
+  namespace: provisioning
+data:
+  server.mjs: |
+    // Metacontroller CompositeController sync hook + the guarded onboarding seam.
+    import { createServer } from 'node:http';
+    import { timingSafeEqual } from 'node:crypto';
+
+    const RESTATE = process.env.RESTATE_INGRESS ?? 'http://restate.restate.svc.cluster.local:8080';
+    const RECONCILE = 'provisionTenant';
+    const ONBOARDING = 'provisionOnboarding';
+    const DECOMMISSION = 'provisionDecommission';
+    const SEAM_TOKEN = process.env.ONBOARDING_BEARER_TOKEN ?? '';
+
+    async function driveRestate(id, spec) {
+      // Fire-and-forget reconcile on the Virtual Object keyed by id. Restate
+      // serializes calls per key, so the periodic drift resync and a spec-change
+      // sync never race; the reconcile is level-triggered (re-runs each call).
+      // Then read the object's published state via the shared getStatus handler.
+      try {
+        await fetch(`${RESTATE}/${RECONCILE}/${encodeURIComponent(id)}/reconcile/send`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(spec),
+        });
+      } catch { /* engine not up yet */ }
+      try {
+        const r = await fetch(`${RESTATE}/${RECONCILE}/${encodeURIComponent(id)}/getStatus`, { method: 'POST' });
+        if (r.ok) return await r.json();
+      } catch { /* fall through to Pending */ }
+      return null;
+    }
+
+    async function syncHook(request) {
+      const parent = request.parent ?? {};
+      const spec = parent.spec ?? {};
+      const meta = parent.metadata ?? {};
+      const id = meta.uid ?? '';
+      const state = id ? await driveRestate(id, spec) : null;
+      return {
+        status: {
+          provisioningId: id,
+          phase: state?.phase ?? 'Pending',
+          observedGeneration: meta.generation ?? 0,
+          conditions: state?.conditions ?? [],
+        },
+        children: [],
+      };
+    }
+
+    // Onboarding + decommission seams — the public inbound paths (PathPrefix
+    // /onboarding + /decommission in the IngressRoute; /sync stays cluster-internal).
+    // coreyalan.com's producers + wizard call these; the engine's Restate ingress
+    // stays private behind them.
+
+    // Constant-time bearer check. Closed-by-default: no token configured => reject,
+    // so the seam is shut until the shared secret is mounted.
+    function authorized(req) {
+      if (!SEAM_TOKEN) return false;
+      const hdr = req.headers['authorization'] ?? '';
+      const presented = hdr.startsWith('Bearer ') ? hdr.slice(7) : '';
+      const a = Buffer.from(presented);
+      const b = Buffer.from(SEAM_TOKEN);
+      return a.length === b.length && timingSafeEqual(a, b);
+    }
+
+    async function restateCall(name, path, body) {
+      const r = await fetch(`${RESTATE}/${name}/${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      return { status: r.status, text: await r.text() };
+    }
+
+    async function onboardingRoute(url, payload) {
+      const key = encodeURIComponent(payload.key ?? '');
+      if (!key) return { status: 400, text: JSON.stringify({ error: 'missing key' }) };
+      switch (url) {
+        case '/onboarding/start':  // fire-and-forget run-once submission
+          return restateCall(ONBOARDING, `${key}/run/send`, payload.request ?? {});
+        case '/onboarding/state':
+          return restateCall(ONBOARDING, `${key}/getState`);
+        case '/onboarding/submit':
+          return restateCall(ONBOARDING, `${key}/submit`, payload.input ?? {});
+        default:
+          return { status: 404, text: '' };
+      }
+    }
+
+    // Teardown seam — commit a decommissioned Tenant CR via the engine's git
+    // handoff (ArgoCD -> Metacontroller -> reconcile teardown). Synchronous so
+    // the caller gets { ok, tenant, dryRun, commitUrl } back. Business plane owns
+    // the spec (same one it onboarded with); dryRun defaults off.
+    async function decommissionRoute(payload) {
+      const spec = payload.spec ?? {};
+      if (!spec.email) return { status: 400, text: JSON.stringify({ error: 'missing spec.email' }) };
+      return restateCall(DECOMMISSION, 'decommission', { spec, dryRun: Boolean(payload.dryRun) });
+    }
+
+    const ONBOARDING_ROUTES = new Set(['/onboarding/start', '/onboarding/state', '/onboarding/submit']);
+    const GUARDED_ROUTES = new Set([...ONBOARDING_ROUTES, '/decommission']);
+
+    function readJsonBody(req, res, handler) {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', async () => {
+        try {
+          const out = await handler(JSON.parse(body || '{}'));
+          res.writeHead(out.status, { 'content-type': 'application/json' }).end(out.text);
+        } catch (err) {
+          res.writeHead(500, { 'content-type': 'application/json' }).end(JSON.stringify({ error: String(err) }));
+        }
+      });
+    }
+
+    const server = createServer((req, res) => {
+      if (req.method === 'GET' && req.url === '/healthz') { res.writeHead(200).end('ok'); return; }
+
+      if (req.method === 'POST' && GUARDED_ROUTES.has(req.url)) {
+        if (!authorized(req)) { res.writeHead(401, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'unauthorized' })); return; }
+        readJsonBody(req, res, (payload) =>
+          req.url === '/decommission' ? decommissionRoute(payload) : onboardingRoute(req.url, payload),
+        );
+        return;
+      }
+
+      if (req.method !== 'POST' || req.url !== '/sync') { res.writeHead(404).end(); return; }
+      readJsonBody(req, res, async (payload) => ({ status: 200, text: JSON.stringify(await syncHook(payload)) }));
+    });
+    server.listen(8080, () => console.log('provisioning-webhook (restate) listening on :8080'));
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: provisioning-webhook
+  namespace: provisioning
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: provisioning-webhook
+  namespace: provisioning
+  annotations:
+    # The hook logic is ConfigMap-mounted; a running node process won't re-read it.
+    # Reloader restarts the pod when provisioning-webhook-code changes.
+    reloader.stakater.com/auto: "true"
+  labels:
+    app.kubernetes.io/name: provisioning-webhook
+    app.kubernetes.io/part-of: provisioning
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: provisioning-webhook
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: provisioning-webhook
+        app.kubernetes.io/part-of: provisioning
+    spec:
+      serviceAccountName: provisioning-webhook
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: webhook
+          # Digest-pinned: the floating tag had frozen on a digest whose bundled npm
+          # vendored a critically-vulnerable tar (CVE-2026-59873).
+          image: node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
+          command: ["node", "/app/server.mjs"]
+          ports:
+            - containerPort: 8080
+          env:
+            # Shared bearer for the /onboarding seam. optional:true so the webhook
+            # boots before the secret lands; the seam stays closed (401) until it's
+            # mounted (authorized() rejects when the token is empty).
+            - name: ONBOARDING_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef: { name: provisioning-onboarding-auth, key: token, optional: true }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 3
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 10
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: code
+              mountPath: /app
+      volumes:
+        - name: code
+          configMap:
+            name: provisioning-webhook-code
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: provisioning-webhook
+  namespace: provisioning
+  labels:
+    app.kubernetes.io/name: provisioning-webhook
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: provisioning-webhook
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP

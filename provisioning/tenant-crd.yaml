@@ -1,0 +1,112 @@
+---
+# Tenant — the desired-state provisioning object (ADR-0019, L1/L2 reconcile loop).
+# A Metacontroller CompositeController (added in the follow-up PR) reconciles it by
+# calling a sync webhook that drives a durable Restate saga over the island handlers.
+# This PR stands up the k8s-native surface + RBAC only; no controller wired yet.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: tenants.platform.coreyalan.com
+spec:
+  group: platform.coreyalan.com
+  scope: Namespaced
+  names:
+    kind: Tenant
+    plural: tenants
+    singular: tenant
+    shortNames:
+      - tn
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Domain
+          type: string
+          jsonPath: .spec.domain
+        - name: Email
+          type: boolean
+          jsonPath: .spec.provisionEmail
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  description: Client email — the key the reconcile loop is scoped to (never used in resource names or logs).
+                  pattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
+                userId:
+                  type: string
+                  description: Soft reference to the business-plane User (no cross-DB FK).
+                invoiceNinjaId:
+                  type: string
+                  description: Soft reference to the billing record.
+                domain:
+                  type: string
+                  description: Primary domain to provision (DNS island). A hostname with a TLD — not an IP.
+                  pattern: '^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$'
+                registrar:
+                  type: string
+                  enum: [namecom, external]
+                  default: external
+                provisionEmail:
+                  type: boolean
+                  default: false
+                emailDomainName:
+                  type: string
+                emailRegion:
+                  type: string
+                  enum: [US, EU]
+                  default: US
+                appName:
+                  type: string
+                githubRepo:
+                  type: string
+                  description: owner/repo of the client app.
+                  pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+                appHostname:
+                  type: string
+                  pattern: '^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$'
+                stagingBaseUrl:
+                  type: string
+                  pattern: '^https://'
+                blueprint:
+                  type: string
+                  description: Versioned managed-hosting blueprint stamped onto the tenant.
+                  default: managed-hosting@v1
+                decommissioned:
+                  type: boolean
+                  description: Set true to run the teardown/compensation saga (GDPR-erasure path).
+                  default: false
+                decommissionDryRun:
+                  type: boolean
+                  description: With decommissioned, reconcile only reports what it would delete (no external delete or DB mutation); phase settles on DecommissionPlanned.
+                  default: false
+            status:
+              # Permissive: Kratix (the L3 driver) owns status.conditions (standard
+              # k8s conditions); the Promise adapter writes island state to
+              # status.islands. preserve-unknown-fields lets both coexist.
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+              properties:
+                provisioningId:
+                  type: string
+                  description: Opaque, stable id — the Restate saga key. Never the email.
+                phase:
+                  type: string
+                  enum: [Pending, Provisioning, Live, Partial, Failed, DecommissionPlanned, Decommissioned]
+                observedGeneration:
+                  type: integer

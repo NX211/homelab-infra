@@ -1,0 +1,41 @@
+---
+# Provisioning control-plane surface (ADR-0019 Phase 1): the Tenant CRD + RBAC.
+# Non-recursive, so the examples/ dir is NOT synced (no real Tenant is created).
+# CRD-safe: ServerSideApply + ServerSideDiff + negative sync-wave so the CRD lands
+# before anything references it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: provisioning
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: provisioning-engine
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/nx211/homelab-infra.git
+    targetRevision: main
+    path: provisioning
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: provisioning
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

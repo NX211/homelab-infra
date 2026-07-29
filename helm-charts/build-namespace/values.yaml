@@ -76,6 +76,7 @@ triggers:
   host: ""                    # tekton-trusted.<project>.example (public, webhook sink)
   tagPrefix: ""               # refs/tags/@capturly/mobile@
   sourceWorkspaceSize: 8Gi
+  sourceWorkspaceStorageClass: local-path   # local-path is not the default SC; unset never binds
   pipeline:                   # git-resolved channel pipeline (design §4)
     url: https://github.com/NX211/homelab-infra.git
     revision: main

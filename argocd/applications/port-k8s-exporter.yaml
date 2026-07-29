@@ -1,0 +1,145 @@
+---
+# Port Kubernetes exporter (L4 spine ingest) — reads the Tenant CRs on this
+# homelab cluster and maps them into the platform-spine blueprints in Port
+# (tenant/domain/emailDomain/appOnboarding, defined as code in platform-infra).
+# Keyed on the opaque provisioningId, never the client email.
+#
+# createDefaultResources=false: the spine blueprints already exist (managed by
+# the Port TF provider); this exporter only populates them from the Tenant CRs.
+# General k8s workload cataloging + the homelab app list are separate follow-ups
+# (extend this mapping / a homelab ArgoCD integration).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: port-k8s-exporter
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://port-labs.github.io/helm-charts
+    chart: port-k8s-exporter
+    targetRevision: "0.3.28"
+    helm:
+      valuesObject:
+        image:
+          tag: "0.7.5" # pin (Kyverno disallow-latest-tag)
+        # Port API host for this account (default is api.getport.io).
+        portBaseUrl: https://api.port.io
+        stateKey: homelab-k8s
+        createDefaultResources: false
+        secret:
+          useExistingSecret: true
+          name: port-k8s-exporter # ESO-managed (Workbench Port creds)
+        configMap:
+          create: true
+          config: |
+            # Dangling build->repository relations create a stub githubRepository
+            # (identifier = repo name) that the GitHub integration later merges,
+            # so a build never fails to ingest for an un-cataloged repo.
+            createMissingRelatedEntities: true
+            resources:
+              # tenant — the spine root (identifier = opaque provisioningId)
+              - kind: platform.coreyalan.com/v1alpha1/tenants
+                selector:
+                  query: "true"
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .status.provisioningId // .metadata.uid
+                        title: .spec.appName // .spec.domain // .metadata.name
+                        blueprint: '"tenant"'
+                        properties:
+                          phase: .status.phase
+                          blueprint_version: .spec.blueprint
+                          provision_email: .spec.provisionEmail
+                        relations:
+                          domain: .spec.domain
+                          email_domain: .spec.emailDomainName
+                          # Only relate when the tenant actually has an app —
+                          # else it points at a non-existent appOnboarding entity
+                          # (that entity is created only when .spec.appName is set)
+                          # and Port rejects the tenant upsert (404 dangling relation).
+                          app_onboarding: (if .spec.appName then (.status.provisioningId // .metadata.uid) else null end)
+              # domain — only tenants that provision one
+              - kind: platform.coreyalan.com/v1alpha1/tenants
+                selector:
+                  query: .spec.domain != null
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .spec.domain
+                        title: .spec.domain
+                        blueprint: '"domain"'
+                        properties:
+                          registrar: .spec.registrar
+                          status: .status.phase
+              # emailDomain — only tenants with email provisioning
+              - kind: platform.coreyalan.com/v1alpha1/tenants
+                selector:
+                  query: .spec.emailDomainName != null
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .spec.emailDomainName
+                        title: .spec.emailDomainName
+                        blueprint: '"emailDomain"'
+                        properties:
+                          region: .spec.emailRegion
+                          provider: '"mailgun"'
+              # appOnboarding — only tenants with an app (relations to the
+              # GitHub/ArgoCD ingests; best-effort identifier match)
+              - kind: platform.coreyalan.com/v1alpha1/tenants
+                selector:
+                  query: .spec.appName != null
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .status.provisioningId // .metadata.uid
+                        title: .spec.appName
+                        blueprint: '"appOnboarding"'
+                        properties:
+                          github_repo: .spec.githubRepo
+                          hostname: .spec.appHostname
+                          staging_url: .spec.stagingBaseUrl
+                        relations:
+                          github_repository: .spec.githubRepo
+                          argocd_application: .spec.appName
+              # build — Tekton PipelineRuns across the *-builds-{trusted,untrusted}
+              # namespaces. Handles both trusted (Tekton Triggers: git-url/git-revision
+              # spec params) and untrusted (PaC: sha/url annotations) runs.
+              - kind: tekton.dev/v1/pipelineruns
+                selector:
+                  query: "true"
+                port:
+                  entity:
+                    mappings:
+                      - identifier: .metadata.uid
+                        title: .metadata.name
+                        blueprint: '"build"'
+                        properties:
+                          status: .status.conditions[0].reason
+                          succeeded: (.status.conditions[0].status == "True")
+                          pipeline: .metadata.labels["tekton.dev/pipeline"]
+                          namespace: .metadata.namespace
+                          commit: ((.spec.params // [] | map(select(.name == "git-revision")) | .[0].value) // .metadata.annotations["pipelinesascode.tekton.dev/sha"])
+                          git_url: ((.spec.params // [] | map(select(.name == "git-url")) | .[0].value) // .metadata.annotations["pipelinesascode.tekton.dev/repo-url"])
+                          triggered_by: (.metadata.labels["triggers.tekton.dev/eventlistener"] // .metadata.labels["pipelinesascode.tekton.dev/repository"] // "manual")
+                          started_at: .status.startTime
+                          completed_at: .status.completionTime
+                        relations:
+                          # PaC exposes the repo name directly (url-repository label);
+                          # Tekton Triggers runs derive it from the git-url param.
+                          repository: (.metadata.labels["pipelinesascode.tekton.dev/url-repository"] // (((.spec.params // [] | map(select(.name == "git-url")) | .[0].value) // "") | sub("\\.git$"; "") | split("/") | last))
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: port-k8s-exporter
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

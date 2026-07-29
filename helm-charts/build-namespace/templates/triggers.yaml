@@ -51,6 +51,9 @@ spec:
             volumeClaimTemplate:
               spec:
                 accessModes: ["ReadWriteOnce"]
+                # Required: local-path is NOT the cluster default SC, so an unset
+                # class leaves the PVC unbound (Immediate) and the pod never schedules.
+                storageClassName: {{ .Values.triggers.sourceWorkspaceStorageClass }}
                 resources: { requests: { storage: {{ .Values.triggers.sourceWorkspaceSize }} } }
 {{- if .Values.gradleCache.enabled }}
           - name: gradle-cache

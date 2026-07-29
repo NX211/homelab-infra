@@ -8,6 +8,8 @@ metadata:
   # line up without per-app special cases.
   name: staging-jlshaw-link
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: jlshaw-link
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

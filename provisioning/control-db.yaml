@@ -1,0 +1,24 @@
+---
+# Control DB for the provisioning engine (ADR-0019 Phase 2a). CloudNativePG
+# single-instance Postgres on local-path (staging). CNPG generates the
+# `provisioning-db-app` secret (keys: uri/host/user/password/dbname) — the engine
+# reads DATABASE_URL from its `uri` key. Run `prisma migrate deploy` against it
+# once (activation step 1) to create the Provisioning table.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: provisioning-db
+  namespace: provisioning
+spec:
+  instances: 1
+  # Pinned minor on the current "system" image line (legacy-compatible layout,
+  # Debian trixie packages). The floating :16 tag had frozen on an ancient
+  # bullseye digest whose 15 criticals were all fix:NONE in-distro.
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.11-system-trixie
+  storage:
+    size: 2Gi
+    storageClass: local-path
+  bootstrap:
+    initdb:
+      database: provisioning
+      owner: provisioning

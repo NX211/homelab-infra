@@ -1,0 +1,16 @@
+---
+# KratixConfig (read from kratix-platform-system/kratix key "config" at
+# controller startup — restart the controller-manager after changing).
+# numberOfJobsToKeep: 1 keeps a single completed workflow job per resource
+# instead of the default 5 — the drift-reconcile CronJob spawns a pipeline
+# pod every 15 min, and each retained completed pod drags the pipeline
+# adapter image's CVEs into the provisioning namespace's trivy reports
+# (5 pods x 6 criticals gated provisioning-engine's Gold).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kratix
+  namespace: kratix-platform-system
+data:
+  config: |
+    numberOfJobsToKeep: 1

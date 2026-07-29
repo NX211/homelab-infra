@@ -1,0 +1,22 @@
+---
+# Example Tenant for manual testing — NOT synced by ArgoCD (examples/ is excluded
+# via directory.recurse: false). Apply by hand on staging to exercise the surface:
+#   kubectl -n provisioning apply -f provisioning/examples/tenant-example.yaml
+#   kubectl -n provisioning get tenants          # PHASE/DOMAIN columns
+#   kubectl -n provisioning describe tenant acme
+# No controller is wired yet (ADR-0019 Phase 1), so status stays empty until the
+# CompositeController + webhook land.
+apiVersion: platform.coreyalan.com/v1alpha1
+kind: Tenant
+metadata:
+  name: acme
+  namespace: provisioning
+spec:
+  email: ops@acme.example
+  domain: acme.example
+  provisionEmail: true
+  emailDomainName: acme.example
+  appName: acme-web
+  githubRepo: Corey-Alan-Consulting/acme-web
+  appHostname: acme.example
+  blueprint: managed-hosting@v1
