@@ -39,7 +39,7 @@ spec:
         trivyOperator:
           # Parity with prod: kyverno require-labels demands
           # app.kubernetes.io/name on every Pod (string form, not a map).
-          scanJobPodTemplateLabels: "app.kubernetes.io/name:trivy-scan-job"
+          scanJobPodTemplateLabels: "app.kubernetes.io/name=trivy-scan-job"
         # Controller pod resources (kyverno require-resource-limits parity
         # with prod, where the policy is enforced).
         resources:
