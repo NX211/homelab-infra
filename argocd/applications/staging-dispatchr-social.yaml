@@ -9,6 +9,8 @@ metadata:
   # caused staging-promote.yml to poll a non-existent Application forever.
   name: staging-dispatchr-social
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: dispatchr-social
   finalizers:
     - resources-finalizer.argocd.argoproj.io
   # Note: the previous `notifications.argoproj.io/subscribe.*` and

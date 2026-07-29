@@ -4,6 +4,8 @@ kind: Application
 metadata:
   name: staging-capturly-web
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: capturly-app
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
