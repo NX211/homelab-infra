@@ -178,7 +178,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: webhook
-          image: node:22-alpine
+          # Digest-pinned: the floating tag had frozen on a digest whose bundled npm
+          # vendored a critically-vulnerable tar (CVE-2026-59873).
+          image: node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
           command: ["node", "/app/server.mjs"]
           ports:
             - containerPort: 8080
