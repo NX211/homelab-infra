@@ -43,6 +43,11 @@ spec:
           - key: "{{ request.object.spec.initContainers[0].name || '' }}"
             operator: Equals
             value: prepare
+          # JSON 6902 inserts aren't idempotent; webhook reinvocation would
+          # insert a duplicate without this guard.
+          - key: "{{ request.object.spec.initContainers[1].name || '' }}"
+            operator: NotEquals
+            value: fix-entrypoint-perms
       mutate:
         patchesJson6902: |-
           - op: add
