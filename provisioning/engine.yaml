@@ -58,6 +58,13 @@ spec:
                   key: uri
             - name: RESTATE_ADMIN
               value: http://restate.restate.svc.cluster.local:9070
+            # Error tracking (Port operational_readiness Gold signal). DSN is a
+            # public client key; inert until an engine image with the sentry
+            # init ships (provisioning-engine#10).
+            - name: SENTRY_DSN
+              value: https://3fc73fa33407a09fee6fbd768b5cd773@o4511020580995072.ingest.us.sentry.io/4511819698995200
+            - name: SENTRY_ENVIRONMENT
+              value: production
             # Cloudflare (dns island). Read lazily at first reconcile, so the
             # engine still boots if the secret isn't populated yet.
             - name: CLOUDFLARE_API_TOKEN
