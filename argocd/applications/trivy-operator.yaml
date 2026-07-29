@@ -30,6 +30,21 @@ spec:
           scanJobsConcurrentLimit: 1
           # Rescan weekly, not the 24h default.
           scannerReportTTL: "168h"
+          # Vulnerability reports are the only signal we consume; policy
+          # compliance is kyverno's job.
+          configAuditScannerEnabled: false
+          rbacAssessmentScannerEnabled: false
+          infraAssessmentScannerEnabled: false
+          clusterComplianceEnabled: false
+        # Controller pod resources (kyverno require-resource-limits parity
+        # with prod, where the policy is enforced).
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
         trivy:
           resources:
             requests:
