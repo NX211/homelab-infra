@@ -29,11 +29,11 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/coreyalan-web-migrate
-    digest: "sha256:3fcc6502c9f748d76f635ad25eb968be1da0968c28dbdd8742771751bbd582e7" # Updated by CI/CD
+    digest: "sha256:f671f590bcbcf8a2be193e402c3afa2c7a238fbb39dcc6596fb9cada14f738ac" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/corey-alan-prod/coreyalan/coreyalan-web
     pullPolicy: IfNotPresent
-    digest: "sha256:4074a18241f33491fe5d6987fa156e462a63962319b42b21b5b35e03497970cf" # Updated by CI/CD
+    digest: "sha256:257f6f763768069ed51a615e4694b6617dcd8fddad422873f75a2a6c0225578b" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-coreyalan
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
