@@ -22,10 +22,16 @@ metadata:
       /tekton/bin/entrypoint. Remove if Tekton makes the entrypoint mode
       configurable or the untrusted lane moves to a VM runtime (kata).
 spec:
+  # These match Kyverno's server-side defaults. Declared explicitly so the live
+  # policy (where Argo's field-manager ends up owning them) doesn't sit
+  # perpetually OutOfSync against a git spec that omitted them.
+  admission: true
   background: false
+  emitWarning: false
   validationFailureAction: Audit
   rules:
     - name: insert-entrypoint-chmod-init
+      skipBackgroundRequests: true
       match:
         any:
           - resources:
