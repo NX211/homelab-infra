@@ -17,8 +17,6 @@ spec:
     repoURL: https://github.com/NX211/homelab-infra.git
     targetRevision: HEAD
     path: port-ocean-argocd
-    directory:
-      recurse: false
   destination:
     server: https://kubernetes.default.svc
     namespace: port-ocean-argocd
