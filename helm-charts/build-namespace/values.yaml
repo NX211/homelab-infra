@@ -54,7 +54,7 @@ webhook:
 
 # Channel signing material (e.g. Android keystore). Empty list => no signing ES.
 signing:
-  store: bitwarden-capturly
+  store: bitwarden-capturly-signing
   keys: []              # list of { secretKey, remoteRef, comment? }
 
 # Keyless GCP via Workload Identity Federation (external_account, no downloaded key).
