@@ -27,3 +27,15 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+  # The ExternalSecret CRD server-defaults these remoteRef/target fields, which
+  # aren't in git — ignore them so ExternalSecrets don't sit perpetually
+  # OutOfSync (key/secretKey/storeRef/creationPolicy are still compared).
+  ignoreDifferences:
+    - group: external-secrets.io
+      kind: ExternalSecret
+      jqPathExpressions:
+        - .spec.data[].remoteRef.conversionStrategy
+        - .spec.data[].remoteRef.decodingStrategy
+        - .spec.data[].remoteRef.metadataPolicy
+        - .spec.data[].remoteRef.nullBytePolicy
+        - .spec.target.deletionPolicy
