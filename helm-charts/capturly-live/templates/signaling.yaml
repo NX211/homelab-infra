@@ -19,10 +19,26 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       enableServiceLinks: false
+      # The image runs as the non-root `node` user (uid 1000); enforce it.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if .Values.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret }}
+      {{- end }}
       containers:
       - name: signaling
         image: "{{ .Values.signaling.image.repository }}:{{ .Values.signaling.image.tag }}"
         imagePullPolicy: {{ .Values.signaling.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         env:
         - name: PORT
           value: {{ .Values.signaling.service.port | quote }}

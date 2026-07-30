@@ -9,10 +9,14 @@
 
 clusterIssuer: letsencrypt-prod
 
+# AR pull secret written into this namespace by ar-token-refresher (keyless,
+# refreshed every 30 min). Empty string skips imagePullSecrets injection.
+imagePullSecret: gcr-pull-secret-capturly-live
+
 web:
   host: live.capturly.app
   image:
-    repository: ghcr.io/corey-alan-consulting/live.capturly.app
+    repository: us-central1-docker.pkg.dev/capturly-app/capturly/live-capturly-app
     tag: "latest"  # Updated by CI/CD to a sha tag once the publish workflow runs
     pullPolicy: Always
   service:
@@ -28,7 +32,7 @@ web:
 signaling:
   host: wss.live.capturly.app
   image:
-    repository: ghcr.io/corey-alan-consulting/capturly-live-signaling
+    repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-live-signaling
     tag: "latest"  # Updated by CI/CD to a sha tag once the publish workflow runs
     pullPolicy: Always
   service:

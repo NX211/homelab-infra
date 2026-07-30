@@ -4,9 +4,22 @@ misconfigurations:
   # Kratix platform controller (vendored install manifest). Its manager
   # ClusterRole must manage tenant Secrets and bind/escalate Roles to provision
   # tenants — that is the controller's job. Accepted, path-scoped.
-  - id: KSV0041
+  - id: KSV-0041
     paths:
       - "kratix/install.yaml"
-  - id: KSV0050
+  - id: KSV-0050
     paths:
       - "kratix/install.yaml"
+  # ar-token-refresher's Role must create/update the pull-secret it writes into
+  # each consuming namespace — that is the whole point of the component (same as
+  # the accepted staging/provisioning Roles). Accepted, path-scoped.
+  - id: KSV-0113
+    paths:
+      - "ar-token-refresher/rbac.yaml"
+  # capturly-live web is stock nginx:alpine (root master, pid + cache under
+  # /var/run + /var/cache) so it can't drop to non-root without an image rebuild.
+  # Follow-up: rebuild live-capturly-app on nginxinc/nginx-unprivileged, then
+  # drop this. The signaling deployment IS hardened (runs as the node user).
+  - id: KSV-0118
+    paths:
+      - "helm-charts/capturly-live/templates/web.yaml"
