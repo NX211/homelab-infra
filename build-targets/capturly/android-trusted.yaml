@@ -15,10 +15,6 @@ githubApp:
 webhook:
   store: bitwarden-build-platform
   secretKey: 06a03bb9-88d3-4076-9302-b48d0154f9b6     # CAPTURLY_TEKTON_TRUSTED_WEBHOOK_SECRET
-  # Public EventListener webhook sink (was unset → fell back to the chart's
-  # tekton-trusted.replace.example placeholder, which cert-manager couldn't issue
-  # a cert for). Mirrors tekton-trusted-provisioning-engine.coreyalan.com.
-  host: tekton-trusted-android.capturly.app
 
 signing:
   store: bitwarden-capturly
@@ -38,9 +34,10 @@ gradleCache:
   size: 10Gi
 
 triggers:
-  # ⚠️ TODO: set the real host; ensure public DNS + Traefik TLS resolve to it, and
-  #    register this URL as the webhook on the capturly.app repo.
-  host: tekton-trusted.REPLACE.example
+  # Public EventListener webhook sink. Its cert (cert-manager HTTP-01), the
+  # Cloudflare A record (platform-infra) and the CoreDNS hairpin all key off this
+  # host. Register this URL as the webhook on the capturly.app repo.
+  host: tekton-trusted-android.capturly.app
   tagPrefix: refs/tags/@capturly/mobile@
   pipeline:
     path: build-catalog/pipelines/android-build.yaml
