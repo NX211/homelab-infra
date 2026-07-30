@@ -19,6 +19,10 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       enableServiceLinks: false
+      {{- if .Values.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret }}
+      {{- end }}
       containers:
       - name: signaling
         image: "{{ .Values.signaling.image.repository }}:{{ .Values.signaling.image.tag }}"
