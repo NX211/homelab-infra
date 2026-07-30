@@ -66,8 +66,8 @@ spec:
             - { name: config, mountPath: /verdaccio/conf }
             - { name: storage, mountPath: /verdaccio/storage }
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
-            limits: { cpu: "1", memory: 1Gi }
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: "1", memory: 2Gi }
           readinessProbe:
             httpGet: { path: /-/ping, port: 4873 }
             initialDelaySeconds: 5
@@ -114,8 +114,8 @@ spec:
             - { name: config, mountPath: /verdaccio/conf }
             - { name: storage, mountPath: /verdaccio/storage }
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
-            limits: { cpu: "1", memory: 1Gi }
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: "1", memory: 2Gi }
           readinessProbe:
             httpGet: { path: /-/ping, port: 4873 }
             initialDelaySeconds: 5
