@@ -1,0 +1,12 @@
+# Accepted misconfigurations. Scope each to its path so the CRITICAL gate still
+# catches new findings elsewhere.
+misconfigurations:
+  # Kratix platform controller (vendored install manifest). Its manager
+  # ClusterRole must manage tenant Secrets and bind/escalate Roles to provision
+  # tenants — that is the controller's job. Accepted, path-scoped.
+  - id: KSV0041
+    paths:
+      - "kratix/install.yaml"
+  - id: KSV0050
+    paths:
+      - "kratix/install.yaml"
