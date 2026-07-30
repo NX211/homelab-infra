@@ -1,0 +1,59 @@
+name: Trivy Repo Scan
+
+# Misconfiguration scan for the repo's Dockerfiles, Helm charts and k8s/Kyverno
+# manifests. REPORT-ONLY for now (SARIF + table in the logs): this repo had never
+# been scanned, so it's introduced audit-first — same posture as the Kyverno
+# Audit->Enforce flip. Once the baseline is triaged, flip to a blocking CRITICAL
+# gate (accepted findings are already recorded in .trivyignore.yaml).
+#
+# Known-accepted today: KSV-0041 / KSV-0050 on the vendored Kratix
+# platform-manager ClusterRole (kratix/install.yaml) — the controller must
+# manage tenant Secrets and bind/escalate Roles to provision tenants.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Trivy config scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Trivy config scan (report)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: table
+          severity: CRITICAL,HIGH
+
+      - name: Trivy config SARIF report
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        if: always()
+        with:
+          scan-type: config
+          scan-ref: .
+          format: sarif
+          output: trivy-config.sarif
+          severity: CRITICAL,HIGH,MEDIUM
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        if: always() && hashFiles('trivy-config.sarif') != ''
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+        continue-on-error: true
