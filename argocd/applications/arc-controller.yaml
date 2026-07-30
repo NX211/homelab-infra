@@ -1,0 +1,42 @@
+---
+# Actions Runner Controller (ARC) — the operator that reconciles
+# AutoscalingRunnerSets into ephemeral self-hosted GitHub Actions runners.
+# CRDs (autoscalingrunnersets/ephemeralrunners/etc.) already exist on the
+# cluster; ServerSideApply lets ArgoCD adopt them without ownership conflicts.
+# Release name is pinned to `arc` so the controller ServiceAccount is
+# `arc-gha-rs-controller` (referenced by the scale set below).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-controller
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set-controller
+    targetRevision: 0.14.2
+    helm:
+      releaseName: arc
+      valuesObject:
+        replicaCount: 1
+        resources:
+          requests:
+            cpu: 20m
+            memory: 64Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-systems
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
