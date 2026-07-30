@@ -27,11 +27,11 @@ staging-app:
   migration:
     enabled: true # was false — staging DB had no schema (P2021); runs prisma migrate deploy
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web-migrate
-    digest: "sha256:4b9dccf5d2f99b0b626febb14094af58e6bad4ad8707e788d001a35090c144fd" # Updated by CI/CD
+    digest: "sha256:e1736a528a5d7cead1d3fed8155c12c36b311da96ca0d6746aa457abf2aac0bd" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-web
     pullPolicy: IfNotPresent
-    digest: "sha256:5ccaac01a5b628546adb3881eba62dc7969973f76543927b0a567227e146a2ae" # Updated by CI/CD
+    digest: "sha256:a6ecb583a91439322dbf50ebb85a9011300769153d25e06e3b84f4477ec8bf8c" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-dispatchr
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
