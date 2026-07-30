@@ -27,6 +27,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # keyless cosign signing (OIDC)
     steps:
       - name: Mint app token
         id: app-token
@@ -60,6 +61,15 @@ jobs:
             ${{ env.IMAGE }}:${{ env.VERSION }}
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:sha-${{ github.sha }}
+
+      # Keyless cosign signature so verify-image-signatures-business can verify
+      # ghcr.io/nx211/* by this workflow's OIDC identity. Sign by digest.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Sign image (keyless)
+        env:
+          IMAGE_DIGEST: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$IMAGE_DIGEST"
 
       - uses: mikefarah/yq@1b9b4ac5187171d2e5e3129be0cfa827c7f9d53d # v4
 
