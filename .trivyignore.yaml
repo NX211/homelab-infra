@@ -16,10 +16,3 @@ misconfigurations:
   - id: KSV-0113
     paths:
       - "ar-token-refresher/rbac.yaml"
-  # capturly-live web is stock nginx:alpine (root master, pid + cache under
-  # /var/run + /var/cache) so it can't drop to non-root without an image rebuild.
-  # Follow-up: rebuild live-capturly-app on nginxinc/nginx-unprivileged, then
-  # drop this. The signaling deployment IS hardened (runs as the node user).
-  - id: KSV-0118
-    paths:
-      - "helm-charts/capturly-live/templates/web.yaml"
