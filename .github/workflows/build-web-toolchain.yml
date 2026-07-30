@@ -88,4 +88,12 @@ jobs:
           fi
           git add "$TASK"
           git commit -m "chore(web-toolchain): pin image ${{ steps.push.outputs.digest }}"
-          git push
+          # Concurrent image builds each push a pin-back to main; rebase + retry
+          # so a non-fast-forward rejection self-heals (each build pins a
+          # different file, so the rebase never conflicts).
+          for attempt in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            echo "push rejected (attempt ${attempt}); rebasing onto origin/main"
+            git pull --rebase origin main
+          done
+          echo "::error::pin-back push failed after 5 attempts"; exit 1
