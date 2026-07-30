@@ -17,7 +17,7 @@ webhook:
   secretKey: 06a03bb9-88d3-4076-9302-b48d0154f9b6     # CAPTURLY_TEKTON_TRUSTED_WEBHOOK_SECRET
 
 signing:
-  store: bitwarden-capturly
+  store: bitwarden-capturly-signing
   keys:
     - { secretKey: upload-keystore.jks.b64, remoteRef: d58e27ce-900d-4ae4-a178-b48100fb27a4, comment: ANDROID_KEYSTORE_BASE64 }
     - { secretKey: store-password,          remoteRef: 3328a7d4-85af-4718-98b9-b48100fb28b3, comment: ANDROID_KEYSTORE_PASSWORD }
