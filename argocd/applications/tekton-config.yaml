@@ -34,3 +34,11 @@ spec:
         duration: 5s
         factor: 2
         maxDuration: 3m
+  # Kyverno server-defaults ClusterPolicy fields (admission, emitWarning, autogen,
+  # …) that aren't in git; ignore its field-manager so the entrypoint policy
+  # doesn't sit perpetually OutOfSync (mirrors the kyverno-policies-business app).
+  ignoreDifferences:
+    - group: kyverno.io
+      kind: ClusterPolicy
+      managedFieldsManagers:
+        - kyverno
