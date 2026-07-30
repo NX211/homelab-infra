@@ -18,8 +18,6 @@ spec:
     repoURL: https://github.com/nx211/homelab-infra.git
     targetRevision: main
     path: kratix/config
-    directory:
-      recurse: false
   destination:
     server: https://kubernetes.default.svc
     namespace: kratix-platform-system
