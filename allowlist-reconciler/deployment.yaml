@@ -39,7 +39,7 @@ spec:
         - name: reconciler
           # Built from apps/allowlist-reconciler and pinned by digest (the tag
           # is kept for readability). Rebuild + repush + re-pin to update.
-          image: ghcr.io/nx211/allowlist-reconciler:0.1.0@sha256:655aa93e2f0f41acc282fa5964ccbbb4849c31373018238db673f96f118d7617
+          image: ghcr.io/nx211/allowlist-reconciler:0.1.0@sha256:26876ec3ab725306cdb9069d90623b343686ce17b3cbd033a067e2084db31813
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
