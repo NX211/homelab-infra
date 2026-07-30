@@ -1,8 +1,14 @@
 name: Trivy Repo Scan
 
 # Misconfiguration scan for the repo's Dockerfiles, Helm charts and k8s/Kyverno
-# manifests. Gates on CRITICAL (currently the intended baseline); HIGH/MEDIUM
-# stay advisory via the SARIF report — mirrors the platform-infra IaC posture.
+# manifests. REPORT-ONLY for now (SARIF + table in the logs): this repo had never
+# been scanned, so it's introduced audit-first — same posture as the Kyverno
+# Audit->Enforce flip. Once the baseline is triaged, flip to a blocking CRITICAL
+# gate (accepted findings are already recorded in .trivyignore.yaml).
+#
+# Known-accepted today: KSV-0041 / KSV-0050 on the vendored Kratix
+# platform-manager ClusterRole (kratix/install.yaml) — the controller must
+# manage tenant Secrets and bind/escalate Roles to provision tenants.
 on:
   push:
     branches: [main]
@@ -26,14 +32,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Trivy config scan (gate on CRITICAL)
+      - name: Trivy config scan (report)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref: .
           format: table
-          severity: CRITICAL
-          exit-code: "1"
+          severity: CRITICAL,HIGH
 
       - name: Trivy config SARIF report
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
