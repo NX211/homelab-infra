@@ -24,7 +24,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/blue-skysolutions/blue-skysolutions/blue-skysolutions-web
     pullPolicy: IfNotPresent
-    digest: "sha256:153a771c3b2258273dc85fd14eb82dfc5858c6e6c39c14430792170c3b3588ef" # Updated by CI/CD via gitops-staging-update.yml — seeded from prod for first deploy
+    digest: "sha256:0e5bfcec07e955f45583cf23ab69efac8eae118355dd5c1bafe30110d4711511" # Updated by CI/CD via gitops-staging-update.yml — seeded from prod for first deploy
   imagePullSecrets:
     - name: gcr-pull-secret-blue-sky
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
