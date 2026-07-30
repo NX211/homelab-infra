@@ -38,6 +38,7 @@ data:
     # Internal DNS overrides - Traefik ClusterIP for homelab domains.
     # Enables split-horizon DNS so cert-manager HTTP-01 self-checks succeed
     # and in-cluster traffic to *.authoritah.com stays inside the cluster.
+    10.43.5.100 authoritah.click
     10.43.5.100 authoritah.com
     10.43.5.100 www.authoritah.com
     10.43.5.100 login.authoritah.com
@@ -82,6 +83,9 @@ data:
     # Tekton trusted-tier EventListener webhook sinks (build platform) — same
     # split-horizon reason as tekton-pac above (HTTP-01 self-check, not hairpin).
     10.43.5.100 tekton-trusted-provisioning-engine.coreyalan.com
+    # capturly Android release EventListener (build platform) — same split-horizon
+    # reason (HTTP-01 self-check reaches Traefik, not the public IP).
+    10.43.5.100 tekton-trusted-android.capturly.app
     # Onboarding seam (provisioning-webhook /onboarding) — split-horizon so the
     # cert-manager HTTP-01 self-check resolves to Traefik, not the public IP.
     10.43.5.100 provisioning.coreyalan.com

@@ -15,6 +15,10 @@ githubApp:
 webhook:
   store: bitwarden-build-platform
   secretKey: 06a03bb9-88d3-4076-9302-b48d0154f9b6     # CAPTURLY_TEKTON_TRUSTED_WEBHOOK_SECRET
+  # Public EventListener webhook sink (was unset → fell back to the chart's
+  # tekton-trusted.replace.example placeholder, which cert-manager couldn't issue
+  # a cert for). Mirrors tekton-trusted-provisioning-engine.coreyalan.com.
+  host: tekton-trusted-android.capturly.app
 
 signing:
   store: bitwarden-capturly
