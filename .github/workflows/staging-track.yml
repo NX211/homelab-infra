@@ -210,6 +210,29 @@ jobs:
           echo "skipped=false" >> "$GITHUB_OUTPUT"
           echo "smoke_repo=${REPO}" >> "$GITHUB_OUTPUT"
 
+          # Gate smoke on the NEW pod actually serving 200 via the public
+          # ingress. ArgoCD Healthy+Synced (Stage 1) can be true before the
+          # rolled pod is in the service/ingress routing, so smoking straight
+          # away produced transient false-fails on legit deploys. Poll the same
+          # /api/health the smoke suite checks, up to ~4 min, before dispatching.
+          SMOKE_URL="${SMOKE_URLS[$APP_NAME]}"
+          echo "Waiting for ${SMOKE_URL}/api/health to serve 200 before smoking..."
+          READY=false
+          for i in $(seq 1 24); do
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "${SMOKE_URL}/api/health" || echo "000")
+            if [ "$CODE" = "200" ]; then
+              echo "Staging serving 200 after ${i} attempt(s)"
+              READY=true
+              break
+            fi
+            echo "attempt ${i}/24: ${SMOKE_URL}/api/health -> ${CODE}"
+            sleep 10
+          done
+          if [ "$READY" != "true" ]; then
+            echo "ERROR: ${SMOKE_URL}/api/health never returned 200 — refusing to smoke a non-serving deploy"
+            exit 1
+          fi
+
           echo "Dispatching smoke tests to ${REPO}..."
           gh api "repos/${REPO}/dispatches" \
             -f event_type=staging-smoke-test \
