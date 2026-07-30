@@ -1,7 +1,9 @@
 ---
 # Business-plane images may only come from our GHCR namespace or the ARC upstream
 # charts. Mirrors prod's restrict-image-registries, scoped by the `plane: business`
-# namespace label so the personal services are untouched. AUDIT for now.
+# namespace label so the personal services are untouched. ENFORCE: every
+# business-plane image today is ghcr.io/actions/* (allowlisted) with zero
+# PolicyReport failures, so blocking disallowed registries breaks nothing.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -11,7 +13,7 @@ metadata:
     policies.kyverno.io/category: Supply Chain
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-registries
