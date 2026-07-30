@@ -57,6 +57,11 @@ spec:
       kind: RuntimeClass
     - group: operator.tekton.dev
       kind: TektonConfig
+    # The untrusted build tier ships a Kyverno mutating ClusterPolicy
+    # (fix-tekton-entrypoint-perms-untrusted) so gVisor can exec Tekton's
+    # entrypoint — tekton-config manages it.
+    - group: kyverno.io
+      kind: ClusterPolicy
   namespaceResourceWhitelist:
     - group: "*"
       kind: "*"
