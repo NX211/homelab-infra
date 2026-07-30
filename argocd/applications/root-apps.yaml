@@ -30,9 +30,9 @@ spec:
     targetRevision: HEAD
     path: argocd/applications
     directory:
-      # Flat directory only. Flip to true if/when apps get nested under
-      # argocd/applications/<group>/.
-      recurse: false
+      # Flat directory (recurse defaults to false — do NOT set it explicitly;
+      # Argo drops the default off the live Application, which reads back as a
+      # perpetual OutOfSync). Flip to recurse: true only if apps get nested.
       # Skip non-YAML files (README.md, etc.) so they don't break sync.
       include: "*.yaml"
   destination:
