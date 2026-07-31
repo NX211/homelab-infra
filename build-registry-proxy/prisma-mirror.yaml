@@ -52,14 +52,31 @@ spec:
       labels: { app: prisma-mirror-untrusted, app.kubernetes.io/name: prisma-mirror }
     spec:
       enableServiceLinks: false
-      securityContext: { runAsNonRoot: true, runAsUser: 101, fsGroup: 101 }
+      # uid/gid > 10000 (KSV-0020/0021), matches verdaccio. nginx-unprivileged
+      # runs as an arbitrary non-root uid: it writes only to /tmp (pid + caches,
+      # all redirected in nginx.conf) so readOnlyRootFilesystem holds.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: nginx
           image: nginxinc/nginx-unprivileged:1.27-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+            seccompProfile: { type: RuntimeDefault }
           ports: [{ containerPort: 8080, name: http }]
           volumeMounts:
             - { name: config, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true }
             - { name: tmp, mountPath: /tmp }
+            # Empty dir masks the image's default.conf so the entrypoint's
+            # 10-listen-on-ipv6 script early-returns instead of sed-ing a
+            # read-only file. nginx.conf does not include conf.d.
+            - { name: confd, mountPath: /etc/nginx/conf.d }
           resources:
             requests: { cpu: 25m, memory: 64Mi }
             limits: { cpu: "1", memory: 512Mi }
@@ -69,6 +86,7 @@ spec:
       volumes:
         - { name: config, configMap: { name: prisma-mirror-config } }
         - { name: tmp, emptyDir: {} }
+        - { name: confd, emptyDir: {} }
 ---
 apiVersion: v1
 kind: Service
