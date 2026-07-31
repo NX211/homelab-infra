@@ -25,15 +25,13 @@ data:
       client_body_temp_path /tmp/client_temp;
       proxy_cache_path /tmp/cache levels=1:2 keys_zone=maven:20m max_size=8g inactive=90d use_temp_path=off;
 
-      # Release artifacts (.jar/.aar/.pom/.module) are immutable → cache hard.
-      # maven-metadata.xml is mutable (version listings) → short TTL.
-      map $uri $mvn_ttl { default 30d; ~maven-metadata\.xml$ 10m; }
-
       server {
         listen 8080;
         proxy_ssl_server_name on;
         proxy_cache maven;
-        proxy_cache_valid 200 206 $mvn_ttl;
+        # Android release deps are immutable version-pinned artifacts; a flat TTL
+        # is fine for a CI cache (proxy_cache_valid takes no variable).
+        proxy_cache_valid 200 206 7d;
         proxy_cache_valid 404 1m;
         proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
         proxy_cache_lock on;
