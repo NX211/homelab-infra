@@ -24,6 +24,14 @@ spec:
     - name: checks
       image: $(params.node-image)
       workingDir: $(workspaces.source.path)
+      # Guaranteed CPU so the vitest suite doesn't starve under node contention.
+      # With no request, the step got scheduled with zero reserved CPU and, on a
+      # busy node under gVisor, tests hit their 15s wall-clock timeout. 4 cores
+      # reserved (burst to 8) gives the parallel test/build workers real time;
+      # well within the 32-core build nodes.
+      computeResources:
+        requests: { cpu: "4", memory: 4Gi }
+        limits: { cpu: "8", memory: 8Gi }
       env:
         - name: HOME
           value: $(workspaces.source.path)
