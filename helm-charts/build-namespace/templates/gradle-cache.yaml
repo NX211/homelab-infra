@@ -1,7 +1,8 @@
-{{- if and (eq .Values.tier "trusted") .Values.gradleCache.enabled }}
+{{- if .Values.gradleCache.enabled }}
 ---
-# Persistent Gradle/ccache store for the native build. RWO is fine — releases are
-# serialized (one at a time), so no concurrent-writer conflict.
+# Persistent Gradle/ccache store for native builds. RWO: trusted releases are
+# serialized; untrusted android PR/branch builds also serialize on the cache
+# (RWX via Longhorn for concurrency is a build-platform-reuse hardening item).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
