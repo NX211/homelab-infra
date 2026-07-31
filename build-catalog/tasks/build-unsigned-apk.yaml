@@ -85,10 +85,14 @@ spec:
           h.maven { url = "${MIRROR}/central/"; allowInsecureProtocol = true }
           h.maven { url = "${MIRROR}/gradle-plugins/"; allowInsecureProtocol = true }
         }
+        // gradle-plugins LAST: plugin *impls* (e.g. org.gradle.toolchains:foojay-
+        // resolver) are on Maven Central, which serves them directly; the portal
+        // proxy needs a flaky redirect-follow. Trying central/google first means
+        // only the tiny plugin *marker* (portal-only, no redirect) uses the portal.
         def addMirror = { org.gradle.api.artifacts.dsl.RepositoryHandler h ->
-          h.maven { url = "${MIRROR}/gradle-plugins/"; allowInsecureProtocol = true }
           h.maven { url = "${MIRROR}/central/"; allowInsecureProtocol = true }
           h.maven { url = "${MIRROR}/google/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/gradle-plugins/"; allowInsecureProtocol = true }
         }
         // pluginManagement + the settings plugins{} block resolve DURING settings
         // evaluation (before settingsEvaluated), incl. for included builds like
