@@ -38,7 +38,10 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
-        cp /config/npm/.npmrc "$HOME/.npmrc"   # registry = Verdaccio, no auth
+        # APPEND the Verdaccio registry — do NOT overwrite. HOME is the repo root,
+        # so its checked-in .npmrc (node-linker=hoisted, required for React Native
+        # to resolve @react-native/gradle-plugin) must be preserved. cp clobbered it.
+        cat /config/npm/.npmrc >> "$HOME/.npmrc"   # registry = Verdaccio, no auth
         # Scope to the mobile app + its workspace deps only. A full install pulls
         # the desktop lane (electron/keytar/@parcel/watcher), whose postinstalls
         # fetch prebuilt binaries from GitHub — blocked in the untrusted egress
