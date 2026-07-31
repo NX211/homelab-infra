@@ -19,7 +19,7 @@ spec:
       default: ""
     - name: toolchain-image
       type: string
-      default: ghcr.io/nx211/capturly-android-toolchain:0.1.0@sha256:3b8abb02cb57b64ca6ddf9a58aa3208c923ae73a669f6d427aa37304906d2bc6
+      default: ghcr.io/nx211/capturly-android-toolchain:0.1.0@sha256:37bef612e5d46a210ea22a8f17a910f9db40935b9f06be209e1b8730a9a69e7b
     - name: package
       type: string
       default: app.capturly.mobile
