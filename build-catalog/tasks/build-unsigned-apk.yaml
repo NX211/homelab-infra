@@ -1,0 +1,57 @@
+---
+# Reusable catalog Task: build an UNSIGNED Android debug APK for the untrusted
+# PR / branch-check tier. It answers "does this branch compile?" — pnpm workspace
+# deps (via the per-tier Verdaccio proxy, no npm token) → gradle assembleDebug
+# (debug signing config only; NO release keystore, NO Sentry, NO Play publish).
+# The signed release flow is build-signed-aab.yaml (trusted tier). Zero-secret:
+# this Task mounts no keystore/WIF/GitHub-App workspace.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: build-unsigned-apk
+  labels:
+    app.kubernetes.io/part-of: build-catalog
+spec:
+  params:
+    - name: toolchain-image
+      description: Node+pnpm+JDK17+Android SDK/NDK image the build runs in.
+      type: string
+    - name: mobile-dir
+      description: Path to the mobile app within the repo.
+      type: string
+      default: apps/mobile
+  workspaces:
+    - name: source        # cloned repo
+    - name: gradle-cache  # persistent ~/.gradle (baked offline deps land here)
+      optional: true
+    - name: npmrc         # configMap: .npmrc pointing at Verdaccio (no token)
+      mountPath: /config/npm
+  steps:
+    - name: pnpm-workspace-deps
+      image: $(params.toolchain-image)
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: HOME
+          value: $(workspaces.source.path)
+        - name: CI
+          value: "true"
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        cp /config/npm/.npmrc "$HOME/.npmrc"   # registry = Verdaccio, no auth
+        pnpm install --frozen-lockfile
+        # Metro resolves workspace deps via their built dist/ — compile first.
+        pnpm --filter "@capturly/mobile^..." --if-present build
+    - name: gradle-assemble-debug
+      image: $(params.toolchain-image)
+      workingDir: $(workspaces.source.path)/$(params.mobile-dir)
+      env:
+        - name: HOME
+          value: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        # Debug build only — uses the auto-generated debug keystore, no release
+        # signing material. Compiles RN + native/NDK; that's the PR-check signal.
+        ./gradlew assembleDebug --no-daemon
+        ls -la app/build/outputs/apk/debug/ || true

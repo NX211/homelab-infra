@@ -1,0 +1,68 @@
+---
+# Channel pipeline: android-pr (UNTRUSTED PR / branch tier). Clone → unsigned
+# assembleDebug (does-this-branch-compile). No keystore, no approval, no Play
+# publish — the signed release flow is android-build.yaml (trusted). PaC provides
+# git auth via the bound basic-auth workspace; the project's .tekton PipelineRun
+# sets runtimeClassName: kata (native/NDK). Shares the capturly untrusted
+# namespace + gradle-cache with the nextjs untrusted lane.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: android-pr
+  labels:
+    app.kubernetes.io/part-of: build-catalog
+spec:
+  params:
+    - name: repo-url
+      type: string
+    - name: revision
+      type: string
+      default: ""
+    - name: toolchain-image
+      type: string
+      default: ghcr.io/nx211/capturly-android-toolchain:0.1.0@sha256:75cd7eb9dee3f7e1c43a7b359950ac49d69a99415067b40db576cbd6fdfc748e
+  workspaces:
+    - name: source
+    - name: npmrc
+    - name: gradle-cache
+      optional: true
+    - name: basic-auth       # PaC-provided git token for the private clone
+      optional: true
+  tasks:
+    - name: clone
+      workspaces:
+        - { name: output, workspace: source }
+        - { name: basic-auth, workspace: basic-auth }
+      taskSpec:
+        workspaces:
+          - name: output
+          - name: basic-auth
+            optional: true
+        steps:
+          - name: git-clone
+            image: alpine/git:2.45.2
+            script: |
+              #!/bin/sh
+              set -eu
+              if [ -f "$(workspaces.basic-auth.path)/.git-credentials" ]; then
+                cp "$(workspaces.basic-auth.path)/.git-credentials" "$HOME/.git-credentials"
+                cp "$(workspaces.basic-auth.path)/.gitconfig" "$HOME/.gitconfig" 2>/dev/null || true
+                git config --global credential.helper store
+              fi
+              cd "$(workspaces.output.path)"
+              git clone "$(params.repo-url)" .
+              [ -n "$(params.revision)" ] && git checkout "$(params.revision)" || true
+    - name: build
+      runAfter: [clone]
+      taskRef:
+        resolver: git
+        params:
+          - { name: url, value: https://github.com/NX211/homelab-infra.git }
+          - { name: revision, value: main }
+          - { name: pathInRepo, value: build-catalog/tasks/build-unsigned-apk.yaml }
+      params:
+        - { name: toolchain-image, value: $(params.toolchain-image) }
+      workspaces:
+        - { name: source, workspace: source }
+        - { name: npmrc, workspace: npmrc }
+        - { name: gradle-cache, workspace: gradle-cache }
