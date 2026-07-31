@@ -30,6 +30,13 @@ spec:
         # Turbo/CI hints; no secrets.
         - name: CI
           value: "true"
+        # turbo 2.x defaults to strict env mode, which strips the toolchain's
+        # baked offline-build vars (PRISMA_QUERY_ENGINE_LIBRARY, ELECTRON_SKIP_*)
+        # from task processes, so `prisma generate` in a build task can't find the
+        # baked engine and tries to download it (blocked). loose passes the pod env
+        # through to tasks. Safe here: the untrusted tier is zero-secret by design.
+        - name: TURBO_ENV_MODE
+          value: loose
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
