@@ -45,7 +45,7 @@ esac
 sudo ln -sf /opt/kata/bin/containerd-shim-kata-v2 /usr/local/bin/containerd-shim-kata-v2  # on containerd PATH
 cd /
 
-echo "== 2/3 register the runtime in k3s containerd (detect containerd 1.x vs 2.x) =="
+echo "== 2/4 register the runtime in k3s containerd (detect containerd 1.x vs 2.x) =="
 cdir=/var/lib/rancher/k3s/agent/etc/containerd
 if [ -f "$cdir/config-v3.toml" ]; then
   tmpl="$cdir/config-v3.toml.tmpl"; plugin='io.containerd.cri.v1.runtime'   # containerd 2.x
@@ -53,20 +53,35 @@ else
   tmpl="$cdir/config.toml.tmpl";     plugin='io.containerd.grpc.v1.cri'     # containerd 1.x
 fi
 block=$(printf '[plugins."%s".containerd.runtimes.kata]\n  runtime_type = "io.containerd.kata.v2"\n  [plugins."%s".containerd.runtimes.kata.options]\n    ConfigPath = "/opt/kata/share/defaults/kata-containers/configuration.toml"\n' "$plugin" "$plugin")
+changed=0   # only restart k3s if we actually modified the template (re-runs are then no-ops)
 if [ -f "$tmpl" ]; then
   # Preserve existing customizations (e.g. the runsc block); append kata only if missing.
   if ! sudo grep -q 'runtimes.kata' "$tmpl"; then
     printf '\n%s\n' "$block" | sudo tee -a "$tmpl" >/dev/null
+    changed=1
   fi
 else
   # k3s renders config from this tmpl; {{ template "base" . }} keeps k3s's base.
   printf '{{ template "base" . }}\n\n%s\n' "$block" | sudo tee "$tmpl" >/dev/null
+  changed=1
 fi
-echo "wrote/updated: $tmpl (plugin: $plugin)"
+echo "wrote/updated: $tmpl (plugin: $plugin, changed=$changed)"
 
-echo "== 3/3 restart k3s to re-render containerd config =="
-# Restart whichever unit is active (server runs k3s, agents k3s-agent).
-if systemctl is-active --quiet k3s; then
+echo "== 3/4 raise inotify limits for kata shim watchers =="
+# Each kata shim opens an inotify instance; the per-UID default (128 instances)
+# is exhausted on busy nodes (argocd/synapse/operators all run as root), so
+# inotify_init fails EMFILE ("Creating watcher: too many open files") and the
+# sandbox never starts. Raise the ceilings (persisted + applied live). Idempotent.
+sudo tee /etc/sysctl.d/90-kata-inotify.conf >/dev/null <<'SYSCTL'
+fs.inotify.max_user_instances = 8192
+fs.inotify.max_user_watches = 1048576
+SYSCTL
+sudo sysctl -p /etc/sysctl.d/90-kata-inotify.conf >/dev/null
+
+echo "== 4/4 restart k3s to re-render containerd config (only if template changed) =="
+if [ "$changed" = 0 ]; then
+  echo "template already had kata; sysctl applied live — no k3s restart needed."
+elif systemctl is-active --quiet k3s; then
   sudo systemctl restart k3s          # server node (blacktalon) — brief API blip
 elif systemctl is-active --quiet k3s-agent; then
   sudo systemctl restart k3s-agent    # agent node
