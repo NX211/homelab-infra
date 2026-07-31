@@ -5,8 +5,9 @@
 # Phase 0 cleanup). Bakes exactly what release-android needs so the ephemeral
 # build pod IS the environment and nothing is downloaded per run. Versions pinned
 # to apps/mobile/android/build.gradle: compileSdk 36 · buildToolsVersion 36.0.0 ·
-# ndkVersion 28.2.13676358 · JDK 17. Gradle comes from the repo wrapper (cached
-# on a PVC). Node/pnpm match the repo's packageManager.
+# ndkVersion 28.2.13676358 · JDK 17. Gradle 9.0.0 is baked (matches the repo
+# wrapper) so the egress-locked untrusted lane needs no distribution download.
+# Node/pnpm match the repo's packageManager.
 FROM eclipse-temurin:26-jdk-jammy
 
 USER root
@@ -47,6 +48,16 @@ RUN yes | sdkmanager --licenses > /dev/null \
        "platforms;${ANDROID_PLATFORM}" \
        "build-tools;${ANDROID_BUILD_TOOLS}" \
        "ndk;${ANDROID_NDK}" > /dev/null
+
+# Gradle baked (matches apps/mobile/android/gradle/wrapper — gradle-9.0.0). The
+# untrusted lane has no egress, so the wrapper can't self-download; the task
+# invokes this `gradle` instead of ./gradlew.
+ARG GRADLE_VERSION=9.0.0
+RUN curl -fsSL -o /tmp/gradle.zip \
+      https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip \
+    && unzip -q /tmp/gradle.zip -d /opt \
+    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/local/bin/gradle \
+    && rm /tmp/gradle.zip
 
 ENV CMAKE_C_COMPILER_LAUNCHER=ccache
 ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache
