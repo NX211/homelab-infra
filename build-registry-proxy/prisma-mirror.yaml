@@ -73,6 +73,10 @@ spec:
           volumeMounts:
             - { name: config, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true }
             - { name: tmp, mountPath: /tmp }
+            # nginx always creates fastcgi/uwsgi/scgi_temp dirs here at startup
+            # (compiled-in defaults, not overridden in nginx.conf); needs to be
+            # writable under readOnlyRootFilesystem.
+            - { name: cache, mountPath: /var/cache/nginx }
             # Empty dir masks the image's default.conf so the entrypoint's
             # 10-listen-on-ipv6 script early-returns instead of sed-ing a
             # read-only file. nginx.conf does not include conf.d.
@@ -86,6 +90,7 @@ spec:
       volumes:
         - { name: config, configMap: { name: prisma-mirror-config } }
         - { name: tmp, emptyDir: {} }
+        - { name: cache, emptyDir: {} }
         - { name: confd, emptyDir: {} }
 ---
 apiVersion: v1
