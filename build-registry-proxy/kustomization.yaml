@@ -5,3 +5,4 @@ resources:
   - networkpolicy-and-namespace.yaml
   - externalsecret-npm-uplink.yaml
   - verdaccio.yaml
+  - prisma-mirror.yaml

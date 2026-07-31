@@ -16,3 +16,9 @@ misconfigurations:
   - id: KSV-0113
     paths:
       - "ar-token-refresher/rbac.yaml"
+  # prisma-engines mirror pulls the upstream nginx-unprivileged image from
+  # docker.io (same as the sibling verdaccio proxy). No ghcr re-mirror yet;
+  # accepted, path-scoped. All other KSV findings on this file are hardened.
+  - id: KSV-0125
+    paths:
+      - "build-registry-proxy/prisma-mirror.yaml"
