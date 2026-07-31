@@ -1,0 +1,113 @@
+---
+# Prisma engines caching mirror (UNTRUSTED tier). An nginx reverse-proxy to
+# binaries.prisma.sh so untrusted build pods fetch prisma engines offline-from-
+# mirror via PRISMA_ENGINES_MIRROR — instead of a version-pinned bake in the
+# build-web-toolchain image (which couples the toolchain to one prisma version).
+# Any prisma version now resolves through the mirror. Same per-tier isolation as
+# verdaccio (H3): untrusted-only ingress; its own egress to the public CDN.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prisma-mirror-config
+  namespace: build-registry-proxy
+data:
+  nginx.conf: |
+    worker_processes 1;
+    error_log /dev/stderr warn;
+    pid /tmp/nginx.pid;
+    events { worker_connections 1024; }
+    http {
+      access_log off;
+      proxy_temp_path  /tmp/proxy_temp;
+      client_body_temp_path /tmp/client_temp;
+      proxy_cache_path /tmp/cache levels=1:2 keys_zone=prisma:10m max_size=2g inactive=90d use_temp_path=off;
+      server {
+        listen 8080;
+        # Engine artifacts are immutable (content-addressed by commit hash) → cache hard.
+        location / {
+          proxy_pass https://binaries.prisma.sh;
+          proxy_set_header Host binaries.prisma.sh;
+          proxy_ssl_server_name on;
+          proxy_cache prisma;
+          proxy_cache_valid 200 206 90d;
+          proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+          proxy_cache_lock on;
+        }
+        location = /healthz { return 200 'ok'; add_header Content-Type text/plain; }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prisma-mirror-untrusted
+  namespace: build-registry-proxy
+  labels: { app: prisma-mirror-untrusted, app.kubernetes.io/name: prisma-mirror }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: prisma-mirror-untrusted }
+  template:
+    metadata:
+      labels: { app: prisma-mirror-untrusted, app.kubernetes.io/name: prisma-mirror }
+    spec:
+      enableServiceLinks: false
+      securityContext: { runAsNonRoot: true, runAsUser: 101, fsGroup: 101 }
+      containers:
+        - name: nginx
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          ports: [{ containerPort: 8080, name: http }]
+          volumeMounts:
+            - { name: config, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 3
+      volumes:
+        - { name: config, configMap: { name: prisma-mirror-config } }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prisma-mirror-untrusted
+  namespace: build-registry-proxy
+spec:
+  selector: { app: prisma-mirror-untrusted }
+  ports: [{ port: 8080, targetPort: 8080, name: http }]
+---
+# Egress: DNS + public HTTPS (binaries.prisma.sh) only — mirrors verdaccio-egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prisma-mirror-egress
+  namespace: build-registry-proxy
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: prisma-mirror } }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ namespaceSelector: {} }]
+      ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports: [{ protocol: TCP, port: 443 }]
+---
+# Per-tier ingress (H3): only untrusted-tier build namespaces may reach it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prisma-mirror-untrusted-ingress
+  namespace: build-registry-proxy
+spec:
+  podSelector: { matchLabels: { app: prisma-mirror-untrusted } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { build.capturly/tier: untrusted }
+      ports: [{ protocol: TCP, port: 8080 }]

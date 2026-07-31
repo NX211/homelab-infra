@@ -37,6 +37,12 @@ spec:
         # through to tasks. Safe here: the untrusted tier is zero-secret by design.
         - name: TURBO_ENV_MODE
           value: loose
+        # prisma generate fetches engines from the per-tier prisma-engines mirror
+        # (a caching reverse-proxy to binaries.prisma.sh) instead of a version-
+        # pinned bake in the toolchain image — so any prisma version resolves
+        # offline. loose env-mode passes this through to the build tasks.
+        - name: PRISMA_ENGINES_MIRROR
+          value: http://prisma-mirror-untrusted.build-registry-proxy.svc.cluster.local:8080
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
