@@ -20,7 +20,9 @@ spec:
     - to: [{ namespaceSelector: {} }]
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
 ---
-# `checks` (arbitrary PR code): Verdaccio ONLY — no public egress, no lateral.
+# `checks` + `build` (arbitrary PR code): Verdaccio ONLY — no public egress, no
+# lateral. Both tasks run untrusted PR code that installs npm deps through the
+# proxy (nextjs in `checks`, android pnpm-workspace-deps in `build`).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -28,7 +30,8 @@ metadata:
   namespace: {{ include "bn.namespace" . }}
 spec:
   podSelector:
-    matchLabels: { tekton.dev/pipelineTask: checks }
+    matchExpressions:
+      - { key: tekton.dev/pipelineTask, operator: In, values: [checks, build] }
   policyTypes: [Egress]
   egress:
     - to:
