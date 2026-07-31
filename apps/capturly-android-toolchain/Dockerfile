@@ -8,7 +8,10 @@
 # ndkVersion 28.2.13676358 · JDK 17. Gradle 9.0.0 is baked (matches the repo
 # wrapper) so the egress-locked untrusted lane needs no distribution download.
 # Node/pnpm match the repo's packageManager.
-FROM eclipse-temurin:26-jdk-jammy
+# JDK 17 — required by Gradle 9 / AGP / React Native. The base had drifted to
+# temurin:26 (Java 26 = class-file major 70), which Gradle can't run on:
+# "Unsupported class file major version 70".
+FROM eclipse-temurin:17-jdk-jammy
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
