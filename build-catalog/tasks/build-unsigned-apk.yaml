@@ -56,6 +56,11 @@ spec:
       image: $(params.toolchain-image)
       # React Native: the Gradle project (gradlew + app/) lives in <mobile-dir>/android.
       workingDir: $(workspaces.source.path)/$(params.mobile-dir)/android
+      # kata sizes the pod VM to the memory limit; gradle (-Xmx2048m) + Kotlin/R8/
+      # NDK native compilation OOMs under kata's small default. Match web-ci.
+      computeResources:
+        requests: { cpu: "4", memory: 4Gi }
+        limits: { cpu: "8", memory: 8Gi }
       env:
         - name: HOME
           value: $(workspaces.source.path)
