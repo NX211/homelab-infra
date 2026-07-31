@@ -6,3 +6,4 @@ resources:
   - externalsecret-npm-uplink.yaml
   - verdaccio.yaml
   - prisma-mirror.yaml
+  - maven-mirror.yaml
