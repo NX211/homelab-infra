@@ -29,9 +29,14 @@ ENV PRISMA_VERSION=5.22.0 \
 RUN npm install -g "@prisma/engines@${PRISMA_VERSION}" \
     && mkdir -p /opt/prisma \
     && cp "$(find / -name 'libquery_engine-*.so.node' 2>/dev/null | head -1)" /opt/prisma/libquery_engine.so.node \
+    && cp "$(find / -name 'schema-engine-*' -type f 2>/dev/null | head -1)" /opt/prisma/schema-engine \
     && chmod -R a+rX /opt/prisma \
     && npm cache clean --force
-ENV PRISMA_QUERY_ENGINE_LIBRARY=/opt/prisma/libquery_engine.so.node
+# generate pulls BOTH the query-engine library and the schema-engine; point prisma
+# at each baked binary. Set the legacy migration-engine var too for safety.
+ENV PRISMA_QUERY_ENGINE_LIBRARY=/opt/prisma/libquery_engine.so.node \
+    PRISMA_SCHEMA_ENGINE_BINARY=/opt/prisma/schema-engine \
+    PRISMA_MIGRATION_ENGINE_BINARY=/opt/prisma/schema-engine
 
 # --- Offline native-build support (untrusted sandbox: egress = Verdaccio only) ---
 # The web-ci `checks` pod can reach ONLY the npm proxy, so any dependency that
