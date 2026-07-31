@@ -48,7 +48,8 @@ spec:
         pnpm --filter "@capturly/mobile^..." --if-present build
     - name: gradle-assemble-debug
       image: $(params.toolchain-image)
-      workingDir: $(workspaces.source.path)/$(params.mobile-dir)
+      # React Native: the Gradle project (gradlew + app/) lives in <mobile-dir>/android.
+      workingDir: $(workspaces.source.path)/$(params.mobile-dir)/android
       env:
         - name: HOME
           value: $(workspaces.source.path)
