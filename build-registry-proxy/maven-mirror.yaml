@@ -47,13 +47,26 @@ data:
           proxy_pass https://repo.maven.apache.org/maven2/;
           proxy_set_header Host repo.maven.apache.org;
         }
-        # Gradle Plugin Portal — backs gradlePluginPortal(). Best-effort: the
-        # portal 302-redirects some artifacts to a CDN; gradle follows redirects
-        # itself, so this covers direct hits. Most android plugins resolve from
-        # google()/central() above.
+        # Gradle Plugin Portal — backs gradlePluginPortal() (e.g. the foojay
+        # toolchain-resolver plugin RN applies). The portal 302-redirects artifact
+        # downloads to a CDN; the build pod can't follow (no egress), so follow
+        # server-side here (the mirror has public egress).
         location /gradle-plugins/ {
           proxy_pass https://plugins.gradle.org/m2/;
           proxy_set_header Host plugins.gradle.org;
+          proxy_intercept_errors on;
+          recursive_error_pages on;
+          error_page 301 302 303 307 308 = @follow_redirect;
+        }
+        # Re-issue the upstream Location as a fresh proxied request. proxy_pass
+        # with a variable resolves via the resolver above and defaults Host to
+        # the redirect target's host ($proxy_host) — do not override it.
+        location @follow_redirect {
+          internal;
+          set $redirect_target $upstream_http_location;
+          proxy_pass $redirect_target;
+          proxy_cache maven;
+          proxy_cache_valid 200 206 7d;
         }
         location = /healthz { return 200 'ok'; add_header Content-Type text/plain; }
       }
