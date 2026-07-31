@@ -72,16 +72,18 @@ spec:
         # level, needed under FAIL_ON_PROJECT_REPOS) and buildscript/project repos.
         MIRROR=http://maven-mirror-untrusted.build-registry-proxy.svc.cluster.local:8080
         cat > "$HOME/mirror.init.gradle" <<GRADLE
+        // allowInsecureProtocol: the mirror is in-cluster http (no TLS); gradle 9
+        // rejects http repos without explicit opt-in.
         def useMirror = { org.gradle.api.artifacts.dsl.RepositoryHandler h ->
           h.clear()
-          h.maven { url = "${MIRROR}/google/" }
-          h.maven { url = "${MIRROR}/central/" }
-          h.maven { url = "${MIRROR}/gradle-plugins/" }
+          h.maven { url = "${MIRROR}/google/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/central/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/gradle-plugins/"; allowInsecureProtocol = true }
         }
         def addMirror = { org.gradle.api.artifacts.dsl.RepositoryHandler h ->
-          h.maven { url = "${MIRROR}/gradle-plugins/" }
-          h.maven { url = "${MIRROR}/central/" }
-          h.maven { url = "${MIRROR}/google/" }
+          h.maven { url = "${MIRROR}/gradle-plugins/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/central/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/google/"; allowInsecureProtocol = true }
         }
         // pluginManagement + the settings plugins{} block resolve DURING settings
         // evaluation (before settingsEvaluated), incl. for included builds like
