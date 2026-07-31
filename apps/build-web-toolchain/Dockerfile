@@ -19,6 +19,20 @@ RUN npm install -g pnpm@9.15.9 node-gyp \
     && npm cache clean --force \
     && chmod -R a+rX /usr/local/lib/node_modules
 
+# `prisma generate` (workspace postinstalls, e.g. packages/database) bundles the
+# query engine, which it fetches from binaries.prisma.sh at generate time —
+# blocked in the sandbox. Bake the engine for the consumers' Prisma version and
+# point generate at it via PRISMA_QUERY_ENGINE_LIBRARY so it runs offline. Keep
+# PRISMA_VERSION in lockstep with capturly's prisma (packages/database).
+ENV PRISMA_VERSION=5.22.0 \
+    PRISMA_CLI_QUERY_ENGINE_TYPE=library
+RUN npm install -g "@prisma/engines@${PRISMA_VERSION}" \
+    && mkdir -p /opt/prisma \
+    && cp "$(find / -name 'libquery_engine-*.so.node' 2>/dev/null | head -1)" /opt/prisma/libquery_engine.so.node \
+    && chmod -R a+rX /opt/prisma \
+    && npm cache clean --force
+ENV PRISMA_QUERY_ENGINE_LIBRARY=/opt/prisma/libquery_engine.so.node
+
 # --- Offline native-build support (untrusted sandbox: egress = Verdaccio only) ---
 # The web-ci `checks` pod can reach ONLY the npm proxy, so any dependency that
 # fetches a binary at install time fails (observed: keytar, electron). Pre-bake
