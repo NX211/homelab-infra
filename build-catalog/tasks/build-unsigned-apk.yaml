@@ -58,7 +58,31 @@ spec:
         set -euo pipefail
         # Debug build only — uses the auto-generated debug keystore, no release
         # signing material. Compiles RN + native/NDK; that's the PR-check signal.
+
+        # Route every Gradle repository at the in-cluster Maven mirror — the
+        # untrusted lane blocks public egress, so google()/mavenCentral() would
+        # fail. clear() drops the project's public repos so only the mirror is
+        # used; covers pluginManagement + dependencyResolutionManagement (settings
+        # level, needed under FAIL_ON_PROJECT_REPOS) and buildscript/project repos.
+        MIRROR=http://maven-mirror-untrusted.build-registry-proxy.svc.cluster.local:8080
+        cat > "$HOME/mirror.init.gradle" <<GRADLE
+        def useMirror = { org.gradle.api.artifacts.dsl.RepositoryHandler h ->
+          h.clear()
+          h.maven { url = "${MIRROR}/google/" }
+          h.maven { url = "${MIRROR}/central/" }
+          h.maven { url = "${MIRROR}/gradle-plugins/" }
+        }
+        settingsEvaluated { s ->
+          s.pluginManagement.repositories { useMirror(delegate) }
+          s.dependencyResolutionManagement.repositories { useMirror(delegate) }
+        }
+        allprojects {
+          buildscript.repositories { useMirror(delegate) }
+          repositories { useMirror(delegate) }
+        }
+        GRADLE
+
         # Baked gradle (toolchain image), not ./gradlew — the wrapper would
         # self-download its distribution, which the untrusted lane's egress blocks.
-        gradle assembleDebug --no-daemon
+        gradle assembleDebug --no-daemon --init-script "$HOME/mirror.init.gradle"
         ls -la app/build/outputs/apk/debug/ || true
