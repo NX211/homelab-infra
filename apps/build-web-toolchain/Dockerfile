@@ -8,6 +8,13 @@
 # so an arbitrary non-root uid can run it.
 FROM node:22-bookworm
 
+# keytar (native) links against libsecret at build time; node:bookworm ships
+# pkg-config but not the libsecret dev headers, so the offline node-gyp build
+# fails with "Package libsecret-1 was not found". Provide them.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libsecret-1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN npm install -g pnpm@9.15.9 node-gyp \
     && npm cache clean --force \
     && chmod -R a+rX /usr/local/lib/node_modules

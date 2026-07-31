@@ -17,7 +17,7 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/nx211/build-web-toolchain
-  VERSION: "0.2.0"
+  VERSION: "0.3.0"
   TASK: build-catalog/tasks/web-ci.yaml
 
 jobs:
