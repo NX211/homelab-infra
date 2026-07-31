@@ -23,6 +23,12 @@ spec:
     # Defense-in-depth on top of gVisor. Validated non-root with a smoke run of the
     # (tools-pre-baked) web + android images before enabling (3b-1).
     set-security-context: true
+    # The android lane's build TaskRun binds two PVC workspaces (source +
+    # gradle-cache). The default "workspaces" affinity mode allows only one PVC
+    # per TaskRun ("more than one PersistentVolumeClaim is bound"). "pipelineruns"
+    # co-locates all of a PipelineRun's pods on one node, so multiple (node-bound
+    # local-path) PVCs attach. Applies cluster-wide; fine for build workloads.
+    coschedule: pipelineruns
   chain:
     # Chains controller runs now; keyless Sigstore signing (Fulcio/Rekor) + SLSA
     # provenance config is wired in Phase 1 with the trusted Android pipeline
