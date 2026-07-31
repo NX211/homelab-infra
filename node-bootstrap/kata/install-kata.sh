@@ -27,11 +27,21 @@ if [ "$KATA_RELEASE" = latest ]; then
   KATA_RELEASE="$(curl -sfL https://api.github.com/repos/kata-containers/kata-containers/releases/latest \
     | python3 -c 'import sys,json;print(json.load(sys.stdin)["tag_name"])')"
 fi
-url="https://github.com/kata-containers/kata-containers/releases/download/${KATA_RELEASE}/kata-static-${KATA_RELEASE}-${KARCH}.tar.xz"
+# Resolve the kata-static asset from the release API — the compression format
+# changed across releases (.tar.xz on <=3.20, .tar.zst on >=3.28), so hardcoding
+# the extension breaks. Match kata-static-<ver>-<arch>.tar.{zst,xz} for this arch.
+url="$(curl -sfL "https://api.github.com/repos/kata-containers/kata-containers/releases/tags/${KATA_RELEASE}" \
+  | python3 -c 'import sys,json,re;d=json.load(sys.stdin);arch=sys.argv[1];u=[a["browser_download_url"] for a in d.get("assets",[]) if re.fullmatch(rf"kata-static-[^/]*-{arch}\.tar\.(zst|xz)",a["name"])];print(u[0] if u else "")' "$KARCH")"
+[ -n "$url" ] || { echo "ERROR: no kata-static asset for ${KATA_RELEASE}/${KARCH}"; exit 1; }
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT; cd "$tmp"
+fname="${url##*/}"
 echo "downloading $url"
-curl -sfL "$url" -o kata-static.tar.xz
-sudo tar -xf kata-static.tar.xz -C /                                      # extracts ./opt/kata/...
+curl -sfL "$url" -o "$fname"
+case "$fname" in                                                          # extracts ./opt/kata/...
+  *.tar.zst) sudo tar --zstd -xf "$fname" -C / ;;   # kata >= 3.28 (nodes have GNU tar --zstd + zstd)
+  *.tar.xz)  sudo tar -xf "$fname" -C / ;;          # kata <= 3.20
+  *) echo "ERROR: unknown asset format: $fname"; exit 1 ;;
+esac
 sudo ln -sf /opt/kata/bin/containerd-shim-kata-v2 /usr/local/bin/containerd-shim-kata-v2  # on containerd PATH
 cd /
 
