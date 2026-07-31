@@ -58,5 +58,7 @@ spec:
         set -euo pipefail
         # Debug build only — uses the auto-generated debug keystore, no release
         # signing material. Compiles RN + native/NDK; that's the PR-check signal.
-        ./gradlew assembleDebug --no-daemon
+        # Baked gradle (toolchain image), not ./gradlew — the wrapper would
+        # self-download its distribution, which the untrusted lane's egress blocks.
+        gradle assembleDebug --no-daemon
         ls -la app/build/outputs/apk/debug/ || true
