@@ -39,7 +39,11 @@ spec:
         #!/usr/bin/env bash
         set -euo pipefail
         cp /config/npm/.npmrc "$HOME/.npmrc"   # registry = Verdaccio, no auth
-        pnpm install --frozen-lockfile
+        # Scope to the mobile app + its workspace deps only. A full install pulls
+        # the desktop lane (electron/keytar/@parcel/watcher), whose postinstalls
+        # fetch prebuilt binaries from GitHub — blocked in the untrusted egress
+        # lane (by design). None of those are needed for the android APK build.
+        pnpm install --frozen-lockfile --filter "@capturly/mobile..."
         # Metro resolves workspace deps via their built dist/ — compile first.
         pnpm --filter "@capturly/mobile^..." --if-present build
     - name: gradle-assemble-debug
