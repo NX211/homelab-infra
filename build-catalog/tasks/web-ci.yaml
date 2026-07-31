@@ -34,7 +34,12 @@ spec:
         #!/usr/bin/env bash
         set -euo pipefail
         # pnpm is baked into the image (non-root); no corepack enable needed.
-        cp /config/npm/.npmrc "$HOME/.npmrc"   # registry = Verdaccio, no auth
+        # APPEND the Verdaccio registry — do NOT overwrite. HOME is the repo root,
+        # so `cp` would clobber the repo's committed .npmrc, which sets
+        # node-linker=hoisted. That setting is required: it hoists @types/node into
+        # the root node_modules where every package's tsc finds Node globals
+        # (Buffer/setTimeout). Overwriting it broke every package's build offline.
+        cat /config/npm/.npmrc >> "$HOME/.npmrc"   # registry = Verdaccio, no auth
         pnpm install --frozen-lockfile
         # apps/web type-checks against the compiled dist/ of its workspace deps.
         pnpm --filter "@capturly/web^..." --if-present build
