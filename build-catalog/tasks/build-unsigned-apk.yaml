@@ -42,11 +42,14 @@ spec:
         # so its checked-in .npmrc (node-linker=hoisted, required for React Native
         # to resolve @react-native/gradle-plugin) must be preserved. cp clobbered it.
         cat /config/npm/.npmrc >> "$HOME/.npmrc"   # registry = Verdaccio, no auth
-        # Scope to the mobile app + its workspace deps only. A full install pulls
-        # the desktop lane (electron/keytar/@parcel/watcher), whose postinstalls
-        # fetch prebuilt binaries from GitHub — blocked in the untrusted egress
-        # lane (by design). None of those are needed for the android APK build.
-        pnpm install --frozen-lockfile --filter "@capturly/mobile..."
+        # node-linker=hoisted installs ONE flat node_modules for the whole
+        # workspace — pnpm --filter can't isolate a subset under hoisted mode, so
+        # the desktop lane (electron/keytar/@parcel/watcher) is installed too and
+        # its postinstalls fetch prebuilt binaries from the public internet, which
+        # the untrusted lane blocks. --ignore-scripts skips all install scripts:
+        # the android gradle build needs none (native code builds via gradle
+        # autolinking, not npm postinstall; workspace dist/ is built next).
+        pnpm install --frozen-lockfile --ignore-scripts
         # Metro resolves workspace deps via their built dist/ — compile first.
         pnpm --filter "@capturly/mobile^..." --if-present build
     - name: gradle-assemble-debug
