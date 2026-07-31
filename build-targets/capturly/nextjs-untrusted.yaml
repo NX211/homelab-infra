@@ -12,3 +12,10 @@ runtimeClass: gvisor
 # does not exist in the Corey-Alan-Consulting org, and naming a missing team makes
 # the policy check 404 and deny everyone. Add a real team slug here only if one is
 # created.
+
+# On-demand branch builds via the Port build_branch action: an authorized POST to
+# the PaC /incoming endpoint runs .tekton/nextjs-incoming.yaml for the requested
+# branch (any branch, per targets glob).
+incoming:
+  secretKey: 6e103eb4-23ad-409b-8f73-b49800d3826f   # CAPTURLY_PAC_INCOMING_SECRET
+  targets: ["**"]

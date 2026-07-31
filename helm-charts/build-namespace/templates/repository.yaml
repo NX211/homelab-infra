@@ -27,4 +27,15 @@ spec:
       ok_to_test: {{ .Values.pac.policy.ok_to_test | toJson }}
 {{- end }}
 {{- end }}
+{{- if .Values.incoming.secretKey }}
+  # On-demand branch builds: an authorized POST to the PaC /incoming endpoint with
+  # this shared secret runs the matching .tekton/ incoming PipelineRun for the
+  # requested branch. Backs the Port build_branch action.
+  incoming:
+    - type: webhook-url
+      secret:
+        name: {{ .Values.project }}-pac-incoming
+        key: secret
+      targets: {{ .Values.incoming.targets | toJson }}
+{{- end }}
 {{- end }}
