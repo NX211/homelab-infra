@@ -20,7 +20,7 @@ spec:
       default: ""
     - name: toolchain-image
       type: string
-      default: ghcr.io/nx211/capturly-android-toolchain:0.1.0@sha256:37bef612e5d46a210ea22a8f17a910f9db40935b9f06be209e1b8730a9a69e7b
+      default: ghcr.io/nx211/capturly-android-toolchain:0.1.0@sha256:3b9679e1d4970b22150ce1abd0bb64dbea7285295228b8c4470db6a9bfa2550d
   workspaces:
     - name: source
     - name: npmrc
