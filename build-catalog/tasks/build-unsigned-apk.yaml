@@ -81,6 +81,7 @@ spec:
         // rejects http repos without explicit opt-in.
         def useMirror = { org.gradle.api.artifacts.dsl.RepositoryHandler h ->
           h.clear()
+          h.maven { url = "file:///opt/offline-m2" }   // baked portal plugins (foojay, ktfmt)
           h.maven { url = "${MIRROR}/google/"; allowInsecureProtocol = true }
           h.maven { url = "${MIRROR}/central/"; allowInsecureProtocol = true }
           h.maven { url = "${MIRROR}/jitpack/"; allowInsecureProtocol = true }
