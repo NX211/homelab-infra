@@ -58,16 +58,21 @@ RUN yes | sdkmanager --licenses > /dev/null \
        "ndk;${ANDROID_NDK}" \
        "cmake;3.22.1" > /dev/null
 
-# Bake the foojay toolchain-resolver plugin (applied by @react-native/gradle-plugin)
-# into a local file:// maven repo. The plugin portal 302-redirects artifact
-# downloads to a CDN, which the untrusted lane's mirror can't reliably follow;
-# a baked repo removes that flaky network hop entirely. Image build has egress.
+# Bake the Gradle Plugin Portal plugins the RN gradle-plugin buildscript applies
+# (foojay-resolver + ktfmt) into a local file:// maven repo. The portal
+# 302-redirects artifact downloads to a CDN the untrusted lane's mirror can't
+# reliably follow; a baked repo removes that flaky network hop. Transitive deps
+# resolve from Maven Central via the mirror. Image build has egress.
 RUN mkdir -p /opt/offline-m2 && cd /opt/offline-m2 \
     && for f in \
          "org/gradle/toolchains/foojay-resolver-convention/org.gradle.toolchains.foojay-resolver-convention.gradle.plugin/0.5.0/org.gradle.toolchains.foojay-resolver-convention.gradle.plugin-0.5.0.pom" \
          "org/gradle/toolchains/foojay-resolver/0.5.0/foojay-resolver-0.5.0.pom" \
          "org/gradle/toolchains/foojay-resolver/0.5.0/foojay-resolver-0.5.0.jar" \
-         "org/gradle/toolchains/foojay-resolver/0.5.0/foojay-resolver-0.5.0.module" ; do \
+         "org/gradle/toolchains/foojay-resolver/0.5.0/foojay-resolver-0.5.0.module" \
+         "com/ncorti/ktfmt/gradle/com.ncorti.ktfmt.gradle.gradle.plugin/0.22.0/com.ncorti.ktfmt.gradle.gradle.plugin-0.22.0.pom" \
+         "com/ncorti/ktfmt/gradle/plugin/0.22.0/plugin-0.22.0.pom" \
+         "com/ncorti/ktfmt/gradle/plugin/0.22.0/plugin-0.22.0.jar" \
+         "com/ncorti/ktfmt/gradle/plugin/0.22.0/plugin-0.22.0.module" ; do \
          mkdir -p "$(dirname "$f")" \
          && curl -fsSL -o "$f" "https://plugins.gradle.org/m2/$f" ; \
        done \
