@@ -45,11 +45,16 @@ RUN mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools \
     && mv ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest \
     && rm /tmp/cmdline-tools.zip
 ENV PATH=${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools
+# build-tools 34/35/36: RN modules default their build-tools via their own AGP
+# version (e.g. async-storage → 35.0.0), so bake the range the module set needs —
+# sdkmanager can't fetch them at build time in the egress-locked lane.
 RUN yes | sdkmanager --licenses > /dev/null \
     && sdkmanager --install \
        "platform-tools" \
        "platforms;${ANDROID_PLATFORM}" \
-       "build-tools;${ANDROID_BUILD_TOOLS}" \
+       "build-tools;36.0.0" \
+       "build-tools;35.0.0" \
+       "build-tools;34.0.0" \
        "ndk;${ANDROID_NDK}" > /dev/null
 
 # Gradle baked (matches apps/mobile/android/gradle/wrapper — gradle-9.0.0). The
