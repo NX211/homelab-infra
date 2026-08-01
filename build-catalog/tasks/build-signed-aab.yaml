@@ -42,10 +42,17 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
-        cp /secrets/npm/.npmrc "$HOME/.npmrc"
-        # Retry: @prisma/engines postinstall fetches binaries and can abort.
+        # APPEND (do NOT overwrite) — preserve the repo's checked-in .npmrc, which
+        # sets node-linker=hoisted (required for React Native to resolve
+        # @react-native/gradle-plugin). cp clobbered it → gradle-plugin not found.
+        cat /secrets/npm/.npmrc >> "$HOME/.npmrc"
+        # --ignore-scripts: hoisted installs the WHOLE workspace (incl. the desktop
+        # lane, electron/keytar/@parcel/watcher) since --filter can't isolate under
+        # hoisted; their postinstalls fetch prebuilt binaries the android build
+        # doesn't need (RN native links via gradle autolinking). Proven by the
+        # unsigned lane. Retry covers transient registry hiccups.
         attempt=1; max=3
-        until pnpm install --frozen-lockfile; do
+        until pnpm install --frozen-lockfile --ignore-scripts; do
           [ "$attempt" -ge "$max" ] && { echo "pnpm install failed"; exit 1; }
           echo "retry $attempt/$max"; sleep $((attempt * 15)); attempt=$((attempt + 1))
         done
@@ -53,7 +60,13 @@ spec:
         pnpm --filter "@capturly/mobile^..." --if-present build
     - name: gradle-bundle-release
       image: $(params.toolchain-image)
-      workingDir: $(workspaces.source.path)/$(params.mobile-dir)
+      # React Native: gradlew + app/ live in <mobile-dir>/android (not <mobile-dir>).
+      workingDir: $(workspaces.source.path)/$(params.mobile-dir)/android
+      # kata sizes the pod VM to the memory limit; gradle (-Xmx) + Kotlin/R8 + NDK
+      # native compilation OOMs under kata's small default. Match the unsigned lane.
+      computeResources:
+        requests: { cpu: "4", memory: 4Gi }
+        limits: { cpu: "8", memory: 8Gi }
       env:
         - name: HOME
           value: $(workspaces.source.path)
