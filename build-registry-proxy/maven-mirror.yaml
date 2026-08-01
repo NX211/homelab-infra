@@ -20,7 +20,11 @@ data:
     events { worker_connections 1024; }
     http {
       access_log off;
-      resolver 10.43.0.10 valid=300s;   # kube-dns; needed for proxy_pass to public hosts
+      # ipv6=off: the cluster has no IPv6 egress; without this nginx tries AAAA
+      # addresses first and fails "Network unreachable", intermittently disabling
+      # upstreams (flaky central/google) and corrupting the portal redirect
+      # (empty Location -> foojay 500).
+      resolver 10.43.0.10 ipv6=off valid=300s;   # kube-dns; for proxy_pass to public hosts
       proxy_temp_path  /tmp/proxy_temp;
       client_body_temp_path /tmp/client_temp;
       proxy_cache_path /tmp/cache levels=1:2 keys_zone=maven:20m max_size=8g inactive=90d use_temp_path=off;
