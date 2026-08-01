@@ -72,6 +72,16 @@ data:
           proxy_cache maven;
           proxy_cache_valid 200 206 7d;
         }
+        # JitPack — com.github.* deps built on-demand from GitHub tags (e.g.
+        # BlurView, pulled by @react-native-community/blur). Follows redirects
+        # (jitpack 302s to its artifact host) via the same handler.
+        location /jitpack/ {
+          proxy_pass https://jitpack.io/;
+          proxy_set_header Host jitpack.io;
+          proxy_intercept_errors on;
+          recursive_error_pages on;
+          error_page 301 302 303 307 308 = @follow_redirect;
+        }
         location = /healthz { return 200 'ok'; add_header Content-Type text/plain; }
       }
     }
