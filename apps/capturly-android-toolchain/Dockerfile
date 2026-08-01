@@ -58,6 +58,21 @@ RUN yes | sdkmanager --licenses > /dev/null \
        "ndk;${ANDROID_NDK}" \
        "cmake;3.22.1" > /dev/null
 
+# Bake the foojay toolchain-resolver plugin (applied by @react-native/gradle-plugin)
+# into a local file:// maven repo. The plugin portal 302-redirects artifact
+# downloads to a CDN, which the untrusted lane's mirror can't reliably follow;
+# a baked repo removes that flaky network hop entirely. Image build has egress.
+RUN mkdir -p /opt/offline-m2 && cd /opt/offline-m2 \
+    && for f in \
+         "org/gradle/toolchains/foojay-resolver-convention/org.gradle.toolchains.foojay-resolver-convention.gradle.plugin/0.5.0/org.gradle.toolchains.foojay-resolver-convention.gradle.plugin-0.5.0.pom" \
+         "org/gradle/toolchains/foojay-resolver/0.5.0/foojay-resolver-0.5.0.pom" \
+         "org/gradle/toolchains/foojay-resolver/0.5.0/foojay-resolver-0.5.0.jar" \
+         "org/gradle/toolchains/foojay-resolver/0.5.0/foojay-resolver-0.5.0.module" ; do \
+         mkdir -p "$(dirname "$f")" \
+         && curl -fsSL -o "$f" "https://plugins.gradle.org/m2/$f" ; \
+       done \
+    && chmod -R a+rX /opt/offline-m2
+
 # Gradle baked (matches apps/mobile/android/gradle/wrapper — gradle-9.0.0). The
 # untrusted lane has no egress, so the wrapper can't self-download; the task
 # invokes this `gradle` instead of ./gradlew.
