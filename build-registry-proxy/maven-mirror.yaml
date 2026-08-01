@@ -41,14 +41,25 @@ data:
         proxy_cache_lock on;
         proxy_http_version 1.1;
 
+        # NOTE: every upstream uses a VARIABLE host + rewrite, not a literal
+        # proxy_pass URL. A literal hostname is resolved once via the system
+        # resolver (musl getaddrinfo → returns AAAA), so nginx tries IPv6 and
+        # fails "Network unreachable" (the cluster has no IPv6 egress). A variable
+        # host is resolved via the `resolver` directive above, where ipv6=off
+        # forces IPv4. This is what actually fixes the flaky upstreams.
+
         # Google Maven — backs gradle google() (AGP, androidx, material).
         location /google/ {
-          proxy_pass https://dl.google.com/dl/android/maven2/;
+          set $up_google "dl.google.com";
+          rewrite ^/google/(.*)$ /dl/android/maven2/$1 break;
+          proxy_pass https://$up_google;
           proxy_set_header Host dl.google.com;
         }
         # Maven Central — backs gradle mavenCentral().
         location /central/ {
-          proxy_pass https://repo.maven.apache.org/maven2/;
+          set $up_central "repo.maven.apache.org";
+          rewrite ^/central/(.*)$ /maven2/$1 break;
+          proxy_pass https://$up_central;
           proxy_set_header Host repo.maven.apache.org;
         }
         # Gradle Plugin Portal — backs gradlePluginPortal() (e.g. the foojay
@@ -56,7 +67,9 @@ data:
         # downloads to a CDN; the build pod can't follow (no egress), so follow
         # server-side here (the mirror has public egress).
         location /gradle-plugins/ {
-          proxy_pass https://plugins.gradle.org/m2/;
+          set $up_portal "plugins.gradle.org";
+          rewrite ^/gradle-plugins/(.*)$ /m2/$1 break;
+          proxy_pass https://$up_portal;
           proxy_set_header Host plugins.gradle.org;
           proxy_intercept_errors on;
           recursive_error_pages on;
@@ -76,7 +89,9 @@ data:
         # BlurView, pulled by @react-native-community/blur). Follows redirects
         # (jitpack 302s to its artifact host) via the same handler.
         location /jitpack/ {
-          proxy_pass https://jitpack.io/;
+          set $up_jitpack "jitpack.io";
+          rewrite ^/jitpack/(.*)$ /$1 break;
+          proxy_pass https://$up_jitpack;
           proxy_set_header Host jitpack.io;
           proxy_intercept_errors on;
           recursive_error_pages on;
