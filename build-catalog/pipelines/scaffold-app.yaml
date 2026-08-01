@@ -1,9 +1,25 @@
 ---
-# Scaffolder pipeline: stand up a new app from app-template on demand (Port
-# scaffold_app action -> PaC /incoming). Mints a short-lived GitHub App ORG
-# installation token (repo-create scope), clones platform-infra, and runs
-# scripts/scaffold-app.sh with the requested inputs. Runs in the `scaffolder`
-# namespace (egress-allowed, privileged lane). Everything lands as PRs for review.
+# Scaffolder pipeline — FULL onboarding lane. Stands up a new app from
+# app-template end to end, pausing at in-cluster ApprovalTask gates wherever a
+# human or an out-of-band action is required (design: framework guides/new-app.md).
+#
+# Flow:
+#   prepare  ── rebrand → app-repo PR; onboard-app.sh --yes → platform-infra PR
+#               (TF/Helm/ArgoCD + BWS project/secrets); scaffold-dns.sh → CF zone
+#               + records + <app>-dns.tf PR; prints the registrar nameservers.
+#   ⏸ gate-1 ── APPROVE once you've: merged+applied the onboard + dns PRs AND
+#               done the registrar nameserver cutover for the new domain.
+#   finish   ── reads the new GCP project NUMBER via a read-only SA, patches
+#               apps.tfvars (platform-infra PR), and generates the staging
+#               environment (homelab-infra PR).
+#   ⏸ gate-2 ── APPROVE after reviewing the apps.tfvars + staging PRs and
+#               completing the staging TODOs (BWS staging project, credentials
+#               bootstrap, infraAppName).
+#
+# Everything lands as PRs — the lane never merges. Runs in the `scaffolder`
+# namespace (egress-allowed, privileged: creates repos, DNS zones, BWS secrets).
+# The long pipeline timeout lets gate-1 wait for the out-of-band merge/apply +
+# registrar cutover.
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
@@ -15,23 +31,38 @@ spec:
     - { name: company,     type: string }
     - { name: description, type: string, default: "" }
     - { name: database,    type: string, default: "false" }
-    - { name: github-org,  type: string, default: "Corey-Alan-Consulting" }
+    - { name: github-org,  type: string, default: "Corey-Alan-Consulting" }  # app + platform-infra
+    - { name: homelab-org, type: string, default: "NX211" }                  # homelab-infra (staging)
+    - { name: lb-ip,       type: string, default: "136.113.137.214" }        # google_compute_address.traefik_lb
+    - { name: approvers,          type: array,  default: ["corey"] }
+    - { name: approvals-required, type: string, default: "1" }
     - name: toolchain-image
       type: string
-      # node + npm + git + curl + openssl + python3 (for the App-token JWT); gh
-      # and the claude CLI are installed at run time (this lane has egress).
+      # node + npm + git + curl + openssl + python3. gh + claude installed at run time.
       default: docker.io/library/node:22-bookworm
   workspaces:
-    - name: source        # scratch (clone platform-infra + the generated repo)
-    - name: github-app    # secret: app-id + app-private-key
+    - name: source        # scratch clones
+    - name: github-app    # secret: app-id + app-private-key (installed on BOTH orgs)
     - name: anthropic     # secret: api-key
+    - name: cloudflare    # secret: api-token (Zone:Edit + DNS:Edit)
+    - name: gcp-sa        # secret: key.json (roles/viewer on the Clients folder)
+    - name: bws           # secret: access-token (BWS write, for onboard secret creation)
   tasks:
-    - name: scaffold
+    # ── prepare: rebrand + onboard + dns ────────────────────────────────────
+    - name: prepare
       workspaces:
         - { name: source, workspace: source }
         - { name: github-app, workspace: github-app }
         - { name: anthropic, workspace: anthropic }
+        - { name: cloudflare, workspace: cloudflare }
+        - { name: bws, workspace: bws }
       taskSpec:
+        workspaces:
+          - { name: source }
+          - { name: github-app }
+          - { name: anthropic }
+          - { name: cloudflare }
+          - { name: bws }
         params:
           - { name: name }
           - { name: domain }
@@ -39,13 +70,10 @@ spec:
           - { name: description }
           - { name: database }
           - { name: github-org }
+          - { name: lb-ip }
           - { name: toolchain-image }
-        workspaces:
-          - { name: source }
-          - { name: github-app }
-          - { name: anthropic }
         steps:
-          - name: scaffold
+          - name: prepare
             image: $(params.toolchain-image)
             workingDir: $(workspaces.source.path)
             env:
@@ -55,28 +83,37 @@ spec:
               #!/usr/bin/env bash
               set -euo pipefail
 
-              # --- 1. Mint a ~1h GitHub App ORG installation token (repo-create) ---
+              # --- GitHub App ORG installation token (repo create + PRs) --------
               gh_api="https://api.github.com"
-              APP_ID="$(cat $(workspaces.github-app.path)/app-id)"
-              now="$(date +%s)"
               b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
-              hdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
-              pld="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now-60))" "$((now+540))" "$APP_ID" | b64url)"
-              sig="$(printf '%s' "$hdr.$pld" | openssl dgst -sha256 -sign "$(workspaces.github-app.path)/app-private-key" -binary | b64url)"
-              jwt="$hdr.$pld.$sig"
-              inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh_api/orgs/${GH_ORG}/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
-              export GH_TOKEN="$(curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh_api/app/installations/$inst/access_tokens" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')"
+              mint_token() { # mint_token <org>  -> echoes an installation token
+                local org="$1" now hdr pld sig jwt inst
+                now="$(date +%s)"
+                hdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
+                pld="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now-60))" "$((now+540))" \
+                       "$(cat $(workspaces.github-app.path)/app-id)" | b64url)"
+                sig="$(printf '%s' "$hdr.$pld" | openssl dgst -sha256 \
+                       -sign "$(workspaces.github-app.path)/app-private-key" -binary | b64url)"
+                jwt="$hdr.$pld.$sig"
+                inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+                       "$gh_api/orgs/${org}/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
+                curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+                       "$gh_api/app/installations/$inst/access_tokens" \
+                       | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
+              }
+              export GH_TOKEN="$(mint_token "$GH_ORG")"
               git config --global credential.helper ''
               git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+              git config --global user.email "scaffolder@coreyalan.com"
+              git config --global user.name  "app-scaffolder"
 
-              # --- 2. Tooling (egress-allowed lane): gh CLI + claude CLI ---
+              # --- tooling (egress lane): gh CLI + optional claude --------------
               GH_VER=2.63.2
               curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VER}/gh_${GH_VER}_linux_amd64.tar.gz" | tar -xz -C /tmp
               export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:${HOME}/.npm-global/bin:${PATH}"
-              # Agent runs only once a real key is present; skip while placeholder.
               AGENT_FLAG=""
               if grep -q "PLACEHOLDER" "$(workspaces.anthropic.path)/api-key"; then
-                echo "ANTHROPIC key is still a placeholder -> --no-agent (deterministic scaffold + worklist PR)"
+                echo "Anthropic key placeholder -> --no-agent"
                 AGENT_FLAG="--no-agent"
               else
                 export ANTHROPIC_API_KEY="$(cat $(workspaces.anthropic.path)/api-key)"
@@ -84,19 +121,155 @@ spec:
                 npm install -g @anthropic-ai/claude-code >/dev/null 2>&1
               fi
 
-              # --- 3. Clone platform-infra (has scaffold-app.sh) + run it ---
+              # --- credentials for onboard (BWS) + dns (Cloudflare) ------------
+              export BWS_ACCESS_TOKEN="$(cat $(workspaces.bws.path)/access-token)"
+              export CLOUDFLARE_API_TOKEN="$(cat $(workspaces.cloudflare.path)/api-token)"
+
+              # --- clone platform-infra (carries all three scripts) ------------
               git clone --depth 1 "https://github.com/${GH_ORG}/platform-infra.git" "${HOME}/platform-infra"
               cd "${HOME}/platform-infra"
+
               DB_FLAG=""; [ "$(params.database)" = "true" ] && DB_FLAG="--database"
               DESC_ARGS=(); [ -n "$(params.description)" ] && DESC_ARGS=(--description "$(params.description)")
+
+              # rebrand (app-repo PR) + onboard --yes (platform-infra PR: TF/Helm/BWS)
               bash scripts/scaffold-app.sh \
                 --name "$(params.name)" --domain "$(params.domain)" --company "$(params.company)" \
-                --github-org "$GH_ORG" "${DESC_ARGS[@]}" $DB_FLAG --no-onboard $AGENT_FLAG
+                --github-org "$GH_ORG" "${DESC_ARGS[@]}" $DB_FLAG --ci $AGENT_FLAG
+
+              # dns: fresh main so the dns PR carries ONLY <app>-dns.tf
+              git checkout main && git pull --ff-only
+              bash scripts/scaffold-dns.sh \
+                --app "$(params.name)" --domain "$(params.domain)" \
+                --lb-ip "$(params.lb-ip)" --repo-root . --pr
+
+              echo "=== prepare done. Merge+apply the onboard + dns PRs, do the registrar"
+              echo "=== nameserver cutover, then APPROVE gate-1 to continue."
+
+    # ── gate-1: out-of-band merge/apply + registrar cutover ──────────────────
+    - name: gate-merge-apply
+      runAfter: [prepare]
+      taskRef:
+        apiVersion: openshift-pipelines.org/v1alpha1
+        kind: ApprovalTask
       params:
-        - { name: name,        value: $(params.name) }
-        - { name: domain,      value: $(params.domain) }
-        - { name: company,     value: $(params.company) }
-        - { name: description, value: $(params.description) }
-        - { name: database,    value: $(params.database) }
-        - { name: github-org,  value: $(params.github-org) }
-        - { name: toolchain-image, value: $(params.toolchain-image) }
+        - { name: approvers, value: $(params.approvers) }
+        - { name: numberOfApprovalsRequired, value: $(params.approvals-required) }
+        - { name: description, value: "Merge+apply onboard & dns PRs for $(params.name); complete the registrar NS cutover for $(params.domain); then approve." }
+
+    # ── finish: project-number backfill + staging ───────────────────────────
+    - name: finish
+      runAfter: [gate-merge-apply]
+      workspaces:
+        - { name: source, workspace: source }
+        - { name: github-app, workspace: github-app }
+        - { name: gcp-sa, workspace: gcp-sa }
+      taskSpec:
+        workspaces:
+          - { name: source }
+          - { name: github-app }
+          - { name: gcp-sa }
+        params:
+          - { name: name }
+          - { name: domain }
+          - { name: company }
+          - { name: database }
+          - { name: github-org }
+          - { name: homelab-org }
+          - { name: toolchain-image }
+        steps:
+          - name: finish
+            image: $(params.toolchain-image)
+            workingDir: $(workspaces.source.path)
+            env:
+              - { name: HOME, value: $(workspaces.source.path) }
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              gh_api="https://api.github.com"
+              b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
+              mint_token() { # mint_token <org>
+                local org="$1" now hdr pld sig jwt inst
+                now="$(date +%s)"
+                hdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
+                pld="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now-60))" "$((now+540))" \
+                       "$(cat $(workspaces.github-app.path)/app-id)" | b64url)"
+                sig="$(printf '%s' "$hdr.$pld" | openssl dgst -sha256 \
+                       -sign "$(workspaces.github-app.path)/app-private-key" -binary | b64url)"
+                jwt="$hdr.$pld.$sig"
+                inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+                       "$gh_api/orgs/${org}/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
+                curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+                       "$gh_api/app/installations/$inst/access_tokens" \
+                       | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
+              }
+
+              # --- GCP access token from the read-only SA key (JWT-bearer) ------
+              # Same openssl machinery as the GitHub App token above — kept in
+              # shell (not embedded python) to avoid heredoc-indentation traps.
+              SA="$(workspaces.gcp-sa.path)/key.json"
+              CE="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["client_email"])' "$SA")"
+              python3 -c 'import json,sys;open("/tmp/sa.pem","w").write(json.load(open(sys.argv[1]))["private_key"])' "$SA"
+              gnow="$(date +%s)"
+              ghdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
+              gclm="$(printf '{"iss":"%s","scope":"https://www.googleapis.com/auth/cloud-platform.read-only","aud":"https://oauth2.googleapis.com/token","iat":%s,"exp":%s}' \
+                     "$CE" "$gnow" "$((gnow+3600))" | b64url)"
+              gsig="$(printf '%s' "$ghdr.$gclm" | openssl dgst -sha256 -sign /tmp/sa.pem -binary | b64url)"
+              GCP_TOKEN="$(curl -sf -X POST "https://oauth2.googleapis.com/token" \
+                     --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
+                     --data-urlencode "assertion=$ghdr.$gclm.$gsig" \
+                     | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')"
+              rm -f /tmp/sa.pem
+
+              # --- read the new project's NUMBER (id defaults to the app name) --
+              PROJECT_ID="$(params.name)"
+              NUM="$(curl -sf -H "Authorization: Bearer ${GCP_TOKEN}" \
+                     "https://cloudresourcemanager.googleapis.com/v1/projects/${PROJECT_ID}" \
+                     | python3 -c 'import sys,json;print(json.load(sys.stdin)["projectNumber"])')"
+              [ -n "$NUM" ] || { echo "could not read projectNumber for ${PROJECT_ID} — is the onboard PR applied?"; exit 1; }
+              MOD="$(printf '%s' "$(params.name)" | tr '-' '_')"
+
+              git config --global user.email "scaffolder@coreyalan.com"
+              git config --global user.name  "app-scaffolder"
+
+              # --- platform-infra: patch apps.tfvars project number (PR) --------
+              export GH_TOKEN="$(mint_token "$(params.github-org)")"
+              git config --global credential.helper ''
+              git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+              git clone --depth 1 "https://github.com/$(params.github-org)/platform-infra.git" "${HOME}/pi"
+              cd "${HOME}/pi"
+              git checkout -b "scaffold/project-number-$(params.name)"
+              sed -i "s|^${MOD}_project_number = \"\".*|${MOD}_project_number = \"${NUM}\"|" \
+                terraform/environments/prod/apps.tfvars
+              git add terraform/environments/prod/apps.tfvars
+              git commit -q -m "chore(tfvars): $(params.name) GCP project number (${NUM})"
+              git push -u origin "scaffold/project-number-$(params.name)"
+              gh pr create --repo "$(params.github-org)/platform-infra" \
+                --title "chore(tfvars): $(params.name) GCP project number" \
+                --body "Backfills \`${MOD}_project_number = \"${NUM}\"\` (read from GCP after the onboard apply). Merge after the onboard PR is applied." \
+                || echo "  (apps.tfvars PR skipped/failed)"
+
+              # --- homelab-infra: generate the staging environment (PR) --------
+              export GH_TOKEN="$(mint_token "$(params.homelab-org)")"
+              git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+              git clone --depth 1 "https://github.com/$(params.homelab-org)/homelab-infra.git" "${HOME}/hi"
+              cd "${HOME}/hi"
+              DB_FLAG=""; [ "$(params.database)" = "true" ] && DB_FLAG="--database"
+              bash scripts/gen-staging-app.sh \
+                --name "$(params.name)" --domain "$(params.domain)" --company "$(params.company)" \
+                --gcp-project "$PROJECT_ID" $DB_FLAG --repo-root . --pr
+
+              echo "=== finish done. Review the apps.tfvars + staging PRs, complete the"
+              echo "=== staging TODOs, then APPROVE gate-2."
+
+    # ── gate-2: final review ─────────────────────────────────────────────────
+    - name: gate-final
+      runAfter: [finish]
+      taskRef:
+        apiVersion: openshift-pipelines.org/v1alpha1
+        kind: ApprovalTask
+      params:
+        - { name: approvers, value: $(params.approvers) }
+        - { name: numberOfApprovalsRequired, value: $(params.approvals-required) }
+        - { name: description, value: "Review apps.tfvars + staging PRs for $(params.name); complete staging TODOs (BWS project, credentials, infraAppName); then approve." }
