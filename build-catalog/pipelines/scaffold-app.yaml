@@ -40,6 +40,11 @@ spec:
     - { name: secondary-color, type: string, default: "#0ea5e9" }
     - { name: logo-url,        type: string, default: "" }
     - { name: enable-email,    type: string, default: "false" }
+    # Brand kit picked in the Port scaffold_app dropdown (= a coreyalan.com
+    # showcase slug). When set, the pipeline fetches the kit and its values
+    # OVERRIDE the branding params above — the app reproduces the approved demo.
+    - { name: brand-kit,       type: string, default: "" }
+    - { name: app-base-url,    type: string, default: "https://coreyalan.com" }
     # WIF provider the finish task's projected token targets (keyless GCP read).
     - { name: wif-audience, type: string, default: "//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc" }
     - { name: approvers,          type: array,  default: ["corey"] }
@@ -132,22 +137,51 @@ spec:
               DB_FLAG=""; [ "$(params.database)" = "true" ] && DB_FLAG="--database"
               DESC_ARGS=(); [ -n "$(params.description)" ] && DESC_ARGS=(--description "$(params.description)")
 
-              # Branding: colors always (they carry defaults); logo only if given.
-              BRAND_ARGS=(--primary-color "$(params.primary-color)" \
-                          --accent-color "$(params.accent-color)" \
-                          --secondary-color "$(params.secondary-color)")
-              [ -n "$(params.logo-url)" ] && BRAND_ARGS+=(--logo-url "$(params.logo-url)")
-              EMAIL_FLAG=""; [ "$(params.enable-email)" = "true" ] && EMAIL_FLAG="--enable-email"
+              # Effective branding: start from the manual params (they carry
+              # defaults), then let a picked brand kit override them.
+              EFF_PRIMARY="$(params.primary-color)"
+              EFF_ACCENT="$(params.accent-color)"
+              EFF_SECONDARY="$(params.secondary-color)"
+              EFF_LOGO="$(params.logo-url)"
+              EFF_DOMAIN="$(params.domain)"
+              EFF_EMAIL="$(params.enable-email)"
+
+              # --- Brand kit override: fetch the authoritative kit from
+              # coreyalan.com (source of truth) and reproduce the approved demo. -
+              BRAND_KIT="$(params.brand-kit)"
+              if [ -n "${BRAND_KIT}" ]; then
+                echo "Resolving brand kit '${BRAND_KIT}' from $(params.app-base-url)"
+                RT="$(cat "$(workspaces.bws.path)/scaffold-read-token" 2>/dev/null || true)"
+                [ -n "${RT}" ] || { echo "::error:: brand-kit set but no 'scaffold-read-token' key in the bws secret"; exit 1; }
+                KIT_JSON="$(curl -sf -H "Authorization: Bearer ${RT}" \
+                  "$(params.app-base-url)/api/scaffold/brand-kit/${BRAND_KIT}")" \
+                  || { echo "::error:: could not fetch brand kit '${BRAND_KIT}'"; exit 1; }
+                getk() { printf '%s' "$KIT_JSON" | python3 -c 'import sys,json; v=json.load(sys.stdin).get(sys.argv[1]); print("" if v is None else ("true" if v is True else ("false" if v is False else v)))' "$1"; }
+                v="$(getk primaryColor)";   [ -n "$v" ] && EFF_PRIMARY="$v"
+                v="$(getk accentColor)";    [ -n "$v" ] && EFF_ACCENT="$v"
+                v="$(getk secondaryColor)"; [ -n "$v" ] && EFF_SECONDARY="$v"
+                v="$(getk logoUrl)";        [ -n "$v" ] && EFF_LOGO="$v"
+                v="$(getk domain)";         [ -n "$v" ] && EFF_DOMAIN="$v"
+                v="$(getk enableEmail)";    [ "$v" = "true" ] && EFF_EMAIL="true"
+                echo "Brand kit applied: primary=${EFF_PRIMARY} domain=${EFF_DOMAIN} email=${EFF_EMAIL} logo=${EFF_LOGO:+set}"
+              fi
+
+              # Colors always (defaults); logo only if given.
+              BRAND_ARGS=(--primary-color "$EFF_PRIMARY" \
+                          --accent-color "$EFF_ACCENT" \
+                          --secondary-color "$EFF_SECONDARY")
+              [ -n "$EFF_LOGO" ] && BRAND_ARGS+=(--logo-url "$EFF_LOGO")
+              EMAIL_FLAG=""; [ "$EFF_EMAIL" = "true" ] && EMAIL_FLAG="--enable-email"
 
               # rebrand + branding (app-repo PR) + onboard --yes (platform-infra PR)
               bash scripts/scaffold-app.sh \
-                --name "$(params.name)" --domain "$(params.domain)" --company "$(params.company)" \
+                --name "$(params.name)" --domain "$EFF_DOMAIN" --company "$(params.company)" \
                 --github-org "$GH_ORG" "${DESC_ARGS[@]}" $DB_FLAG "${BRAND_ARGS[@]}" $EMAIL_FLAG --ci $AGENT_FLAG
 
               # dns: fresh main so the dns PR carries ONLY <app>-dns.tf
               git checkout main && git pull --ff-only
               bash scripts/scaffold-dns.sh \
-                --app "$(params.name)" --domain "$(params.domain)" \
+                --app "$(params.name)" --domain "$EFF_DOMAIN" \
                 --lb-ip "$(params.lb-ip)" --repo-root . --pr
 
               echo "=== prepare done. Merge+apply the onboard + dns PRs, do the registrar"
