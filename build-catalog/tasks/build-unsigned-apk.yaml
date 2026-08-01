@@ -83,6 +83,7 @@ spec:
           h.clear()
           h.maven { url = "${MIRROR}/google/"; allowInsecureProtocol = true }
           h.maven { url = "${MIRROR}/central/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/jitpack/"; allowInsecureProtocol = true }
           h.maven { url = "${MIRROR}/gradle-plugins/"; allowInsecureProtocol = true }
         }
         // gradle-plugins LAST: plugin *impls* (e.g. org.gradle.toolchains:foojay-
