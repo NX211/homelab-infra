@@ -105,27 +105,6 @@ spec:
     - secretKey: app-private-key
       remoteRef: { key: 0b01607c-cdef-4c1d-a5fa-b499004e3611 }   # SCAFFOLDER_GITHUB_APP_PRIVATE_KEY
 ---
-# Read-only GCP service-account key (roles/viewer on the Clients folder). The
-# finish task reads the new app's project NUMBER from Cloud Resource Manager to
-# backfill apps.tfvars. Mounted as the `gcp-sa` workspace, file key.json.
-apiVersion: external-secrets.io/v1
-kind: ExternalSecret
-metadata:
-  name: scaffolder-gcp-sa
-  namespace: scaffolder
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: bitwarden-build-platform
-    kind: ClusterSecretStore
-  target:
-    name: scaffolder-gcp-sa
-    creationPolicy: Owner
-    template: { engineVersion: v2 }
-  data:
-    - secretKey: key.json
-      remoteRef: { key: bfaeb4af-8c6e-44c9-a78d-b499010163eb }   # SCAFFOLDER_GCP_SA_KEY
----
 # Cloudflare API token (Zone:Edit + DNS:Edit). scaffold-dns.sh uses it to create
 # the app's zone + apex/staging records. Mounted as the `cloudflare` workspace,
 # file api-token.
