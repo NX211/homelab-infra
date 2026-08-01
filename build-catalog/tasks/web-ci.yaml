@@ -51,6 +51,18 @@ spec:
         # offline. loose env-mode passes this through to the build tasks.
         - name: PRISMA_ENGINES_MIRROR
           value: http://prisma-mirror-untrusted.build-registry-proxy.svc.cluster.local:8080
+        # Vitest's `forks` pool sizes itself from os.cpus(), which under gVisor
+        # reports the 32-core NODE, not this step's 4–8 CPU cgroup — so it spawned
+        # ~18 forks that starved each other and blew the 15s test timeout (cold
+        # files timed out; siblings then failed on leaked mock state). Cap forks
+        # to the CPU budget and widen the timeouts as a backstop. Read by
+        # apps/web/vitest.config.ts; unset elsewhere so local/GitHub is unchanged.
+        - name: VITEST_MAX_FORKS
+          value: "6"
+        - name: VITEST_TEST_TIMEOUT_MS
+          value: "30000"
+        - name: VITEST_HOOK_TIMEOUT_MS
+          value: "30000"
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
