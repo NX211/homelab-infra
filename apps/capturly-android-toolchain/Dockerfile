@@ -55,7 +55,8 @@ RUN yes | sdkmanager --licenses > /dev/null \
        "build-tools;36.0.0" \
        "build-tools;35.0.0" \
        "build-tools;34.0.0" \
-       "ndk;${ANDROID_NDK}" > /dev/null
+       "ndk;${ANDROID_NDK}" \
+       "cmake;3.22.1" > /dev/null
 
 # Gradle baked (matches apps/mobile/android/gradle/wrapper — gradle-9.0.0). The
 # untrusted lane has no egress, so the wrapper can't self-download; the task
