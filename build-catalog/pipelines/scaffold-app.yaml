@@ -34,6 +34,12 @@ spec:
     - { name: github-org,  type: string, default: "Corey-Alan-Consulting" }  # app + platform-infra
     - { name: homelab-org, type: string, default: "NX211" }                  # homelab-infra (staging)
     - { name: lb-ip,       type: string, default: "136.113.137.214" }        # google_compute_address.traefik_lb
+    # Branding + email (from the Port action inputs).
+    - { name: primary-color,   type: string, default: "#2563eb" }
+    - { name: accent-color,    type: string, default: "#7c3aed" }
+    - { name: secondary-color, type: string, default: "#0ea5e9" }
+    - { name: logo-url,        type: string, default: "" }
+    - { name: enable-email,    type: string, default: "false" }
     # WIF provider the finish task's projected token targets (keyless GCP read).
     - { name: wif-audience, type: string, default: "//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc" }
     - { name: approvers,          type: array,  default: ["corey"] }
@@ -126,10 +132,17 @@ spec:
               DB_FLAG=""; [ "$(params.database)" = "true" ] && DB_FLAG="--database"
               DESC_ARGS=(); [ -n "$(params.description)" ] && DESC_ARGS=(--description "$(params.description)")
 
-              # rebrand (app-repo PR) + onboard --yes (platform-infra PR: TF/Helm/BWS)
+              # Branding: colors always (they carry defaults); logo only if given.
+              BRAND_ARGS=(--primary-color "$(params.primary-color)" \
+                          --accent-color "$(params.accent-color)" \
+                          --secondary-color "$(params.secondary-color)")
+              [ -n "$(params.logo-url)" ] && BRAND_ARGS+=(--logo-url "$(params.logo-url)")
+              EMAIL_FLAG=""; [ "$(params.enable-email)" = "true" ] && EMAIL_FLAG="--enable-email"
+
+              # rebrand + branding (app-repo PR) + onboard --yes (platform-infra PR)
               bash scripts/scaffold-app.sh \
                 --name "$(params.name)" --domain "$(params.domain)" --company "$(params.company)" \
-                --github-org "$GH_ORG" "${DESC_ARGS[@]}" $DB_FLAG --ci $AGENT_FLAG
+                --github-org "$GH_ORG" "${DESC_ARGS[@]}" $DB_FLAG "${BRAND_ARGS[@]}" $EMAIL_FLAG --ci $AGENT_FLAG
 
               # dns: fresh main so the dns PR carries ONLY <app>-dns.tf
               git checkout main && git pull --ff-only
