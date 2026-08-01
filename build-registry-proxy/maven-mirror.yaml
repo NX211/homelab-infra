@@ -62,40 +62,36 @@ data:
           proxy_pass https://$up_central;
           proxy_set_header Host repo.maven.apache.org;
         }
-        # Gradle Plugin Portal — backs gradlePluginPortal() (e.g. the foojay
-        # toolchain-resolver plugin RN applies). The portal 302-redirects artifact
-        # downloads to a CDN; the build pod can't follow (no egress), so follow
-        # server-side here (the mirror has public egress).
-        location /gradle-plugins/ {
+        # Gradle Plugin Portal — plugins (foojay, ktfmt, …) 303-redirect their
+        # artifact downloads to a CDN the build pod can't reach, so follow the
+        # redirect server-side. Regex location with a NAMED CAPTURE + full path in
+        # proxy_pass — NOT `rewrite … break`, which clobbers $upstream_http_location
+        # in the error handler (empty Location -> 500).
+        location ~ ^/gradle-plugins/(?<gp_path>.*)$ {
           set $up_portal "plugins.gradle.org";
-          rewrite ^/gradle-plugins/(.*)$ /m2/$1 break;
-          proxy_pass https://$up_portal;
+          proxy_pass https://$up_portal/m2/$gp_path;
           proxy_set_header Host plugins.gradle.org;
           proxy_intercept_errors on;
-          recursive_error_pages on;
+          error_page 301 302 303 307 308 = @follow_redirect;
+        }
+        # JitPack — com.github.* deps built on-demand from GitHub tags (e.g.
+        # BlurView, pulled by @react-native-community/blur); also redirects.
+        location ~ ^/jitpack/(?<jp_path>.*)$ {
+          set $up_jitpack "jitpack.io";
+          proxy_pass https://$up_jitpack/$jp_path;
+          proxy_set_header Host jitpack.io;
+          proxy_intercept_errors on;
           error_page 301 302 303 307 308 = @follow_redirect;
         }
         # Re-issue the upstream Location as a fresh proxied request. proxy_pass
-        # with a variable resolves via the resolver above and defaults Host to
+        # with a variable resolves via the resolver (ipv6=off) and defaults Host to
         # the redirect target's host ($proxy_host) — do not override it.
         location @follow_redirect {
           internal;
-          set $redirect_target $upstream_http_location;
-          proxy_pass $redirect_target;
+          proxy_ssl_server_name on;
+          proxy_pass $upstream_http_location;
           proxy_cache maven;
           proxy_cache_valid 200 206 7d;
-        }
-        # JitPack — com.github.* deps built on-demand from GitHub tags (e.g.
-        # BlurView, pulled by @react-native-community/blur). Follows redirects
-        # (jitpack 302s to its artifact host) via the same handler.
-        location /jitpack/ {
-          set $up_jitpack "jitpack.io";
-          rewrite ^/jitpack/(.*)$ /$1 break;
-          proxy_pass https://$up_jitpack;
-          proxy_set_header Host jitpack.io;
-          proxy_intercept_errors on;
-          recursive_error_pages on;
-          error_page 301 302 303 307 308 = @follow_redirect;
         }
         location = /healthz { return 200 'ok'; add_header Content-Type text/plain; }
       }
