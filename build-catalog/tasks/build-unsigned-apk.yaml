@@ -79,23 +79,26 @@ spec:
         cat > "$HOME/mirror.init.gradle" <<GRADLE
         // allowInsecureProtocol: the mirror is in-cluster http (no TLS); gradle 9
         // rejects http repos without explicit opt-in.
+        // No /gradle-plugins repo: the only portal plugins the build needs
+        // (foojay, ktfmt) are baked in offline-m2; everything else lives on
+        // google/central. The portal proxy's redirect-follow 500s, and a 500
+        // ABORTS resolution (a 404 would fall through) — so keeping it in the
+        // list breaks dynamic-version lookups (e.g. AGP 8.+ from google).
         def useMirror = { org.gradle.api.artifacts.dsl.RepositoryHandler h ->
           h.clear()
           h.maven { url = "file:///opt/offline-m2" }   // baked portal plugins (foojay, ktfmt)
           h.maven { url = "${MIRROR}/google/"; allowInsecureProtocol = true }
           h.maven { url = "${MIRROR}/central/"; allowInsecureProtocol = true }
           h.maven { url = "${MIRROR}/jitpack/"; allowInsecureProtocol = true }
-          h.maven { url = "${MIRROR}/gradle-plugins/"; allowInsecureProtocol = true }
         }
         // gradle-plugins LAST: plugin *impls* (e.g. org.gradle.toolchains:foojay-
         // resolver) are on Maven Central, which serves them directly; the portal
         // proxy needs a flaky redirect-follow. Trying central/google first means
         // only the tiny plugin *marker* (portal-only, no redirect) uses the portal.
         def addMirror = { org.gradle.api.artifacts.dsl.RepositoryHandler h ->
-          h.maven { url = "file:///opt/offline-m2" }   // foojay baked in the image
+          h.maven { url = "file:///opt/offline-m2" }   // foojay + ktfmt baked in the image
           h.maven { url = "${MIRROR}/central/"; allowInsecureProtocol = true }
           h.maven { url = "${MIRROR}/google/"; allowInsecureProtocol = true }
-          h.maven { url = "${MIRROR}/gradle-plugins/"; allowInsecureProtocol = true }
         }
         // pluginManagement + the settings plugins{} block resolve DURING settings
         // evaluation (before settingsEvaluated), incl. for included builds like
