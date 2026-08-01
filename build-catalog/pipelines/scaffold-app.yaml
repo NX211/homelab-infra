@@ -9,7 +9,7 @@
 #               + records + <app>-dns.tf PR; prints the registrar nameservers.
 #   ⏸ gate-1 ── APPROVE once you've: merged+applied the onboard + dns PRs AND
 #               done the registrar nameserver cutover for the new domain.
-#   finish   ── reads the new GCP project NUMBER via a read-only SA, patches
+#   finish   ── reads the new GCP project NUMBER keyless via WIF, patches
 #               apps.tfvars (platform-infra PR), and generates the staging
 #               environment (homelab-infra PR).
 #   ⏸ gate-2 ── APPROVE after reviewing the apps.tfvars + staging PRs and
@@ -34,6 +34,8 @@ spec:
     - { name: github-org,  type: string, default: "Corey-Alan-Consulting" }  # app + platform-infra
     - { name: homelab-org, type: string, default: "NX211" }                  # homelab-infra (staging)
     - { name: lb-ip,       type: string, default: "136.113.137.214" }        # google_compute_address.traefik_lb
+    # WIF provider the finish task's projected token targets (keyless GCP read).
+    - { name: wif-audience, type: string, default: "//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc" }
     - { name: approvers,          type: array,  default: ["corey"] }
     - { name: approvals-required, type: string, default: "1" }
     - name: toolchain-image
@@ -45,7 +47,6 @@ spec:
     - name: github-app    # secret: app-id + app-private-key (installed on BOTH orgs)
     - name: anthropic     # secret: api-key
     - name: cloudflare    # secret: api-token (Zone:Edit + DNS:Edit)
-    - name: gcp-sa        # secret: key.json (roles/viewer on the Clients folder)
     - name: bws           # secret: access-token (BWS write, for onboard secret creation)
   tasks:
     # ── prepare: rebrand + onboard + dns ────────────────────────────────────
@@ -63,15 +64,8 @@ spec:
           - { name: anthropic }
           - { name: cloudflare }
           - { name: bws }
-        params:
-          - { name: name }
-          - { name: domain }
-          - { name: company }
-          - { name: description }
-          - { name: database }
-          - { name: github-org }
-          - { name: lb-ip }
-          - { name: toolchain-image }
+        # Pipeline params propagate into this inline taskSpec (no explicit
+        # declaration/passing needed — declaring them would disable propagation).
         steps:
           - name: prepare
             image: $(params.toolchain-image)
@@ -163,26 +157,27 @@ spec:
       workspaces:
         - { name: source, workspace: source }
         - { name: github-app, workspace: github-app }
-        - { name: gcp-sa, workspace: gcp-sa }
       taskSpec:
         workspaces:
           - { name: source }
           - { name: github-app }
-          - { name: gcp-sa }
-        params:
-          - { name: name }
-          - { name: domain }
-          - { name: company }
-          - { name: database }
-          - { name: github-org }
-          - { name: homelab-org }
-          - { name: toolchain-image }
+        # Pipeline params propagate into this inline taskSpec.
+        volumes:
+          - name: gcp-sts-token
+            projected:
+              sources:
+                - serviceAccountToken:
+                    audience: $(params.wif-audience)
+                    expirationSeconds: 3600
+                    path: token
         steps:
           - name: finish
             image: $(params.toolchain-image)
             workingDir: $(workspaces.source.path)
             env:
               - { name: HOME, value: $(workspaces.source.path) }
+            volumeMounts:
+              - { name: gcp-sts-token, mountPath: /var/run/secrets/gcp-sts }
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -205,22 +200,23 @@ spec:
                        | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
               }
 
-              # --- GCP access token from the read-only SA key (JWT-bearer) ------
-              # Same openssl machinery as the GitHub App token above — kept in
-              # shell (not embedded python) to avoid heredoc-indentation traps.
-              SA="$(workspaces.gcp-sa.path)/key.json"
-              CE="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["client_email"])' "$SA")"
-              python3 -c 'import json,sys;open("/tmp/sa.pem","w").write(json.load(open(sys.argv[1]))["private_key"])' "$SA"
-              gnow="$(date +%s)"
-              ghdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
-              gclm="$(printf '{"iss":"%s","scope":"https://www.googleapis.com/auth/cloud-platform.read-only","aud":"https://oauth2.googleapis.com/token","iat":%s,"exp":%s}' \
-                     "$CE" "$gnow" "$((gnow+3600))" | b64url)"
-              gsig="$(printf '%s' "$ghdr.$gclm" | openssl dgst -sha256 -sign /tmp/sa.pem -binary | b64url)"
-              GCP_TOKEN="$(curl -sf -X POST "https://oauth2.googleapis.com/token" \
-                     --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
-                     --data-urlencode "assertion=$ghdr.$gclm.$gsig" \
-                     | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')"
-              rm -f /tmp/sa.pem
+              # --- GCP access token, KEYLESS via Workload Identity Federation ---
+              # Exchange the projected k3s SA token for a federated Google token
+              # that carries roles/browser on the Clients folder (granted to the
+              # runner principal in homelab-wif.tf). Same STS flow as the
+              # ar-token-refresher; no SA key (org policy bans them).
+              SUBJECT_TOKEN="$(cat /var/run/secrets/gcp-sts/token)"
+              GCP_TOKEN="$(python3 -c 'import json,sys;print(json.dumps({
+                "audience": sys.argv[1],
+                "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+                "requestedTokenType": "urn:ietf:params:oauth:token-type:access_token",
+                "scope": "https://www.googleapis.com/auth/cloud-platform",
+                "subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
+                "subjectToken": sys.argv[2]}))' "$(params.wif-audience)" "$SUBJECT_TOKEN" \
+                | curl -sf -X POST "https://sts.googleapis.com/v1/token" \
+                    -H 'Content-Type: application/json' -d @- \
+                | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')"
+              [ -n "$GCP_TOKEN" ] || { echo "STS token exchange failed"; exit 1; }
 
               # --- read the new project's NUMBER (id defaults to the app name) --
               PROJECT_ID="$(params.name)"
