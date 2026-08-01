@@ -105,6 +105,69 @@ spec:
     - secretKey: app-private-key
       remoteRef: { key: 0b01607c-cdef-4c1d-a5fa-b499004e3611 }   # SCAFFOLDER_GITHUB_APP_PRIVATE_KEY
 ---
+# Read-only GCP service-account key (roles/viewer on the Clients folder). The
+# finish task reads the new app's project NUMBER from Cloud Resource Manager to
+# backfill apps.tfvars. Mounted as the `gcp-sa` workspace, file key.json.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-gcp-sa
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-gcp-sa
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: key.json
+      remoteRef: { key: bfaeb4af-8c6e-44c9-a78d-b499010163eb }   # SCAFFOLDER_GCP_SA_KEY
+---
+# Cloudflare API token (Zone:Edit + DNS:Edit). scaffold-dns.sh uses it to create
+# the app's zone + apex/staging records. Mounted as the `cloudflare` workspace,
+# file api-token.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-cloudflare
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-cloudflare
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: api-token
+      remoteRef: { key: a043a87a-64c3-4515-81de-b4990101641e }   # SCAFFOLDER_CLOUDFLARE_TOKEN
+---
+# BWS write token — onboard-app.sh --yes uses it to create the app's Bitwarden
+# project + secret placeholders. Distinct from ESO's own machine-account auth.
+# Mounted as the `bws` workspace, file access-token.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-bws
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-bws
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: access-token
+      remoteRef: { key: 76802c92-daef-47bb-8af7-b49901016452 }   # SCAFFOLDER_BWS_ACCESS_TOKEN
+---
 # Egress: DNS + k8s API (Tekton orchestration) + public HTTPS (GitHub, Anthropic,
 # npm for the claude/gh CLIs). Private ranges excluded (anti lateral-movement),
 # except the in-cluster API server/service CIDRs above. This lane is privileged
