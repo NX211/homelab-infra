@@ -1,0 +1,102 @@
+---
+# Scaffolder pipeline: stand up a new app from app-template on demand (Port
+# scaffold_app action -> PaC /incoming). Mints a short-lived GitHub App ORG
+# installation token (repo-create scope), clones platform-infra, and runs
+# scripts/scaffold-app.sh with the requested inputs. Runs in the `scaffolder`
+# namespace (egress-allowed, privileged lane). Everything lands as PRs for review.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: scaffold-app
+spec:
+  params:
+    - { name: name,        type: string }
+    - { name: domain,      type: string }
+    - { name: company,     type: string }
+    - { name: description, type: string, default: "" }
+    - { name: database,    type: string, default: "false" }
+    - { name: github-org,  type: string, default: "Corey-Alan-Consulting" }
+    - name: toolchain-image
+      type: string
+      # node + npm + git + curl + openssl + python3 (for the App-token JWT); gh
+      # and the claude CLI are installed at run time (this lane has egress).
+      default: docker.io/library/node:22-bookworm
+  workspaces:
+    - name: source        # scratch (clone platform-infra + the generated repo)
+    - name: github-app    # secret: app-id + app-private-key
+    - name: anthropic     # secret: api-key
+  tasks:
+    - name: scaffold
+      workspaces:
+        - { name: source, workspace: source }
+        - { name: github-app, workspace: github-app }
+        - { name: anthropic, workspace: anthropic }
+      taskSpec:
+        params:
+          - { name: name }
+          - { name: domain }
+          - { name: company }
+          - { name: description }
+          - { name: database }
+          - { name: github-org }
+          - { name: toolchain-image }
+        workspaces:
+          - { name: source }
+          - { name: github-app }
+          - { name: anthropic }
+        steps:
+          - name: scaffold
+            image: $(params.toolchain-image)
+            workingDir: $(workspaces.source.path)
+            env:
+              - { name: HOME, value: $(workspaces.source.path) }
+              - { name: GH_ORG, value: $(params.github-org) }
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              # --- 1. Mint a ~1h GitHub App ORG installation token (repo-create) ---
+              gh_api="https://api.github.com"
+              APP_ID="$(cat $(workspaces.github-app.path)/app-id)"
+              now="$(date +%s)"
+              b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+              hdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
+              pld="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now-60))" "$((now+540))" "$APP_ID" | b64url)"
+              sig="$(printf '%s' "$hdr.$pld" | openssl dgst -sha256 -sign "$(workspaces.github-app.path)/app-private-key" -binary | b64url)"
+              jwt="$hdr.$pld.$sig"
+              inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh_api/orgs/${GH_ORG}/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
+              export GH_TOKEN="$(curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" "$gh_api/app/installations/$inst/access_tokens" | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')"
+              git config --global credential.helper ''
+              git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+              # --- 2. Tooling (egress-allowed lane): gh CLI + claude CLI ---
+              GH_VER=2.63.2
+              curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VER}/gh_${GH_VER}_linux_amd64.tar.gz" | tar -xz -C /tmp
+              export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:${HOME}/.npm-global/bin:${PATH}"
+              # Agent runs only once a real key is present; skip while placeholder.
+              AGENT_FLAG=""
+              if grep -q "PLACEHOLDER" "$(workspaces.anthropic.path)/api-key"; then
+                echo "ANTHROPIC key is still a placeholder -> --no-agent (deterministic scaffold + worklist PR)"
+                AGENT_FLAG="--no-agent"
+              else
+                export ANTHROPIC_API_KEY="$(cat $(workspaces.anthropic.path)/api-key)"
+                npm config set prefix "${HOME}/.npm-global"
+                npm install -g @anthropic-ai/claude-code >/dev/null 2>&1
+              fi
+
+              # --- 3. Clone platform-infra (has scaffold-app.sh) + run it ---
+              git clone --depth 1 "https://github.com/${GH_ORG}/platform-infra.git" "${HOME}/platform-infra"
+              cd "${HOME}/platform-infra"
+              DB_FLAG=""; [ "$(params.database)" = "true" ] && DB_FLAG="--database"
+              DESC_ARGS=(); [ -n "$(params.description)" ] && DESC_ARGS=(--description "$(params.description)")
+              bash scripts/scaffold-app.sh \
+                --name "$(params.name)" --domain "$(params.domain)" --company "$(params.company)" \
+                --github-org "$GH_ORG" "${DESC_ARGS[@]}" $DB_FLAG --no-onboard $AGENT_FLAG
+      params:
+        - { name: name,        value: $(params.name) }
+        - { name: domain,      value: $(params.domain) }
+        - { name: company,     value: $(params.company) }
+        - { name: description, value: $(params.description) }
+        - { name: database,    value: $(params.database) }
+        - { name: github-org,  value: $(params.github-org) }
+        - { name: toolchain-image, value: $(params.toolchain-image) }
