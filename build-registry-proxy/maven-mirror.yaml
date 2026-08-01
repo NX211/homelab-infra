@@ -88,6 +88,12 @@ data:
         # the redirect target's host ($proxy_host) — do not override it.
         location @follow_redirect {
           internal;
+          # If the intercepted redirect had no capturable Location, return 404
+          # (not an "invalid URL prefix" 500). A 404 lets gradle fall through to
+          # the next repo (critical for dynamic-version maven-metadata.xml lookups
+          # like AGP 8.+ from google); a 500 aborts the whole resolution. Nothing
+          # actually needs this redirect to succeed — portal-only impls are baked.
+          if ($upstream_http_location = "") { return 404; }
           proxy_ssl_server_name on;
           proxy_pass $upstream_http_location;
           proxy_cache maven;
