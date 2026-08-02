@@ -54,11 +54,12 @@ spec:
       # node + npm + git + curl + openssl + python3. gh + claude installed at run time.
       default: docker.io/library/node:22-bookworm
   workspaces:
-    - name: source        # scratch clones
-    - name: github-app    # secret: app-id + app-private-key (installed on BOTH orgs)
-    - name: anthropic     # secret: WIF identifiers (federation-rule/service-account/org/workspace ids)
-    - name: cloudflare    # secret: api-token (Zone:Edit + DNS:Edit)
-    - name: bws           # secret: access-token (BWS write, for onboard secret creation)
+    - name: source            # scratch clones
+    - name: github-app        # CAC app: app-id + app-private-key (repo creation + platform-infra)
+    - name: homelab-github-app # NX211 app: app-id + app-private-key (homelab-infra staging PRs)
+    - name: anthropic         # secret: WIF identifiers (federation-rule/service-account/org/workspace ids)
+    - name: cloudflare        # secret: api-token (Zone:Edit + DNS:Edit)
+    - name: bws               # secret: access-token (BWS write, for onboard secret creation)
   tasks:
     # ── prepare: rebrand + onboard + dns ────────────────────────────────────
     - name: prepare
@@ -227,10 +228,12 @@ spec:
       workspaces:
         - { name: source, workspace: source }
         - { name: github-app, workspace: github-app }
+        - { name: homelab-github-app, workspace: homelab-github-app }
       taskSpec:
         workspaces:
           - { name: source }
           - { name: github-app }
+          - { name: homelab-github-app }
         # Pipeline params propagate into this inline taskSpec.
         volumes:
           - name: gcp-sts-token
@@ -265,6 +268,24 @@ spec:
                 jwt="$hdr.$pld.$sig"
                 inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
                        "$gh_api/orgs/${org}/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
+                curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+                       "$gh_api/app/installations/$inst/access_tokens" \
+                       | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
+              }
+
+              # NX211 homelab app (App B): repo-scoped installation lookup, which
+              # works for a USER-owned install (unlike /orgs/<user>, which 404s).
+              mint_repo_token() { # mint_repo_token <owner> <repo>
+                local owner="$1" repo="$2" now hdr pld sig jwt inst
+                now="$(date +%s)"
+                hdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
+                pld="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now-60))" "$((now+540))" \
+                       "$(cat $(workspaces.homelab-github-app.path)/app-id)" | b64url)"
+                sig="$(printf '%s' "$hdr.$pld" | openssl dgst -sha256 \
+                       -sign "$(workspaces.homelab-github-app.path)/app-private-key" -binary | b64url)"
+                jwt="$hdr.$pld.$sig"
+                inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+                       "$gh_api/repos/${owner}/${repo}/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
                 curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
                        "$gh_api/app/installations/$inst/access_tokens" \
                        | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
@@ -317,7 +338,8 @@ spec:
                 || echo "  (apps.tfvars PR skipped/failed)"
 
               # --- homelab-infra: generate the staging environment (PR) --------
-              export GH_TOKEN="$(mint_token "$(params.homelab-org)")"
+              # App B (NX211-owned), repo-scoped — homelab-org is a USER account.
+              export GH_TOKEN="$(mint_repo_token "$(params.homelab-org)" homelab-infra)"
               git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
               git clone --depth 1 "https://github.com/$(params.homelab-org)/homelab-infra.git" "${HOME}/hi"
               cd "${HOME}/hi"
