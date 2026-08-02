@@ -180,6 +180,12 @@ spec:
   data:
     - secretKey: access-token
       remoteRef: { key: 76802c92-daef-47bb-8af7-b49901016452 }   # SCAFFOLDER_BWS_ACCESS_TOKEN
+    # Bearer for coreyalan.com /api/scaffold/brand-kit/<slug> — the brand-kit
+    # resolve step reads it from the `bws` workspace file `scaffold-read-token`.
+    # MIRROR of the app-side SCAFFOLD_READ_TOKEN (Corey Alan Consulting project);
+    # same value on purpose. Rotate both together.
+    - secretKey: scaffold-read-token
+      remoteRef: { key: a8408b74-c87f-4518-a436-b49a011a5112 }   # SCAFFOLDER_READ_TOKEN (Build Platform)
 ---
 # Egress: DNS + k8s API (Tekton orchestration) + public HTTPS (GitHub, Anthropic,
 # npm for the claude/gh CLIs). Private ranges excluded (anti lateral-movement),
