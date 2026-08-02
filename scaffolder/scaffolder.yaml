@@ -62,8 +62,11 @@ spec:
     - secretKey: secret
       remoteRef: { key: 6e103eb4-23ad-409b-8f73-b49800d3826f }   # CAPTURLY_PAC_INCOMING_SECRET
 ---
-# Anthropic API key for the agent pass (mounted as env ANTHROPIC_API_KEY). Fill
-# the placeholder BWS value with a real, scaffolding-scoped key.
+# Anthropic Workload Identity Federation config for the agent pass. These are
+# NOT credentials — they're the WIF identifiers the Claude SDK needs; auth is the
+# projected SA token (see the anthropic-oidc-token volume in scaffold-app.yaml),
+# which the SDK exchanges for a short-lived Anthropic token. Replaces the old
+# static SCAFFOLDER_ANTHROPIC_API_KEY (now retired in BWS).
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
@@ -79,8 +82,14 @@ spec:
     creationPolicy: Owner
     template: { engineVersion: v2 }
   data:
-    - secretKey: api-key
-      remoteRef: { key: 00787b4f-b9c5-4b84-b8be-b499004e35ad }   # SCAFFOLDER_ANTHROPIC_API_KEY
+    - secretKey: federation-rule-id
+      remoteRef: { key: f6d79c8f-0e33-42a4-afa0-b49a004002f1 }   # SCAFFOLDER_ANTHROPIC_FEDERATION_RULE_ID
+    - secretKey: service-account-id
+      remoteRef: { key: 2f505149-9f58-4263-8a8a-b49a004024c2 }   # SCAFFOLDER_ANTHROPIC_SERVICE_ACCOUNT_ID
+    - secretKey: organization-id
+      remoteRef: { key: b07ea975-9fb4-4a38-ae36-b49a00404981 }   # SCAFFOLDER_ANTHROPIC_ORGANIZATION_ID
+    - secretKey: workspace-id
+      remoteRef: { key: 9d1aadfa-2edf-4d3b-9aa7-b49a00405a8f }   # SCAFFOLDER_ANTHROPIC_WORKSPACE_ID
 ---
 # Scaffolder GitHub App credentials (Administration:write + Contents:write + PRs).
 # The task mints a ~1h ORG installation token from these — no static git secret.

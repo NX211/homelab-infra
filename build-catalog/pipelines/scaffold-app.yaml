@@ -56,7 +56,7 @@ spec:
   workspaces:
     - name: source        # scratch clones
     - name: github-app    # secret: app-id + app-private-key (installed on BOTH orgs)
-    - name: anthropic     # secret: api-key
+    - name: anthropic     # secret: WIF identifiers (federation-rule/service-account/org/workspace ids)
     - name: cloudflare    # secret: api-token (Zone:Edit + DNS:Edit)
     - name: bws           # secret: access-token (BWS write, for onboard secret creation)
   tasks:
@@ -75,12 +75,27 @@ spec:
           - { name: anthropic }
           - { name: cloudflare }
           - { name: bws }
+        # Per-run projected identity for keyless Claude (WIF). Audience MUST equal
+        # the Anthropic federation rule's audience; sub is
+        # system:serviceaccount:scaffolder:scaffolder-runner (the run SA).
+        volumes:
+          - name: anthropic-oidc-token
+            projected:
+              sources:
+                - serviceAccountToken:
+                    path: token
+                    expirationSeconds: 3600
+                    audience: https://api.anthropic.com
         # Pipeline params propagate into this inline taskSpec (no explicit
         # declaration/passing needed — declaring them would disable propagation).
         steps:
           - name: prepare
             image: $(params.toolchain-image)
             workingDir: $(workspaces.source.path)
+            volumeMounts:
+              - name: anthropic-oidc-token
+                mountPath: /var/run/anthropic
+                readOnly: true
             env:
               - { name: HOME, value: $(workspaces.source.path) }
               - { name: GH_ORG, value: $(params.github-org) }
@@ -116,12 +131,20 @@ spec:
               GH_VER=2.63.2
               curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VER}/gh_${GH_VER}_linux_amd64.tar.gz" | tar -xz -C /tmp
               export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:${HOME}/.npm-global/bin:${PATH}"
+              # Keyless Claude via Workload Identity Federation: the SDK exchanges
+              # the projected SA token (aud api.anthropic.com, mounted below) for a
+              # short-lived Anthropic token — no static API key. Placeholder IDs
+              # (WIF not provisioned yet) fall back to --no-agent.
               AGENT_FLAG=""
-              if grep -q "PLACEHOLDER" "$(workspaces.anthropic.path)/api-key"; then
-                echo "Anthropic key placeholder -> --no-agent"
+              if grep -q "PLACEHOLDER" "$(workspaces.anthropic.path)/federation-rule-id"; then
+                echo "Anthropic WIF not configured -> --no-agent"
                 AGENT_FLAG="--no-agent"
               else
-                export ANTHROPIC_API_KEY="$(cat $(workspaces.anthropic.path)/api-key)"
+                export ANTHROPIC_IDENTITY_TOKEN_FILE=/var/run/anthropic/token
+                export ANTHROPIC_FEDERATION_RULE_ID="$(cat $(workspaces.anthropic.path)/federation-rule-id)"
+                export ANTHROPIC_SERVICE_ACCOUNT_ID="$(cat $(workspaces.anthropic.path)/service-account-id)"
+                export ANTHROPIC_ORGANIZATION_ID="$(cat $(workspaces.anthropic.path)/organization-id)"
+                export ANTHROPIC_WORKSPACE_ID="$(cat $(workspaces.anthropic.path)/workspace-id)"
                 npm config set prefix "${HOME}/.npm-global"
                 npm install -g @anthropic-ai/claude-code >/dev/null 2>&1
               fi
