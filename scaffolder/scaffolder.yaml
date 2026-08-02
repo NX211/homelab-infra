@@ -114,6 +114,31 @@ spec:
     - secretKey: app-private-key
       remoteRef: { key: 0b01607c-cdef-4c1d-a5fa-b499004e3611 }   # SCAFFOLDER_GITHUB_APP_PRIVATE_KEY
 ---
+# Second GitHub App — owned by the NX211 personal account, installed on
+# NX211/homelab-infra (Contents:write + PRs:write). The Corey-Alan-Consulting
+# app can't install on a personal account (enterprise policy) and
+# /orgs/<user>/installation 404s for a user account, so homelab-infra staging
+# PRs mint their token from THIS app via a repo-scoped installation lookup.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-homelab-github-app
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-homelab-github-app
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: app-id
+      remoteRef: { key: 197dbff7-53ac-46bc-a198-b49a00eeb310 }   # SCAFFOLDER_HOMELAB_GITHUB_APP_ID
+    - secretKey: app-private-key
+      remoteRef: { key: ada0a469-ad93-4de6-b91e-b49a00eee853 }   # SCAFFOLDER_HOMELAB_GITHUB_APP_PRIVATE_KEY
+---
 # Cloudflare API token (Zone:Edit + DNS:Edit). scaffold-dns.sh uses it to create
 # the app's zone + apex/staging records. Mounted as the `cloudflare` workspace,
 # file api-token.
