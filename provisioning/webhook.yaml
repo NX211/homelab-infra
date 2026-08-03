@@ -178,10 +178,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: webhook
-          # Digest-pinned: the floating tag had frozen on a digest whose bundled npm
-          # vendored a critically-vulnerable tar (CVE-2026-59873).
-          image: node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
-          command: ["node", "/app/server.mjs"]
+          # Distroless: no npm/shell, so the bundled-npm tar CVE (CVE-2026-59873)
+          # and the whole package-manager surface are gone. The webhook only uses
+          # node:http/node:crypto. Digest-pinned + Renovate-tracked so it can't
+          # freeze on a stale build (the old node:22-alpine pin did exactly that).
+          # renovate: datasource=docker depName=gcr.io/distroless/nodejs22-debian12
+          image: gcr.io/distroless/nodejs22-debian12@sha256:8a3e96fe3345b5d83ecec2066e7c498139a02a6d1214e4f6c39f9ce359f3f5bc
+          command: ["/nodejs/bin/node", "/app/server.mjs"]
           ports:
             - containerPort: 8080
           env:

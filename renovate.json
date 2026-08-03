@@ -3,5 +3,23 @@
   "extends": [
     "config:recommended",
     "helpers:pinGitHubActionDigests"
+  ],
+  "argocd": {
+    "fileMatch": ["argocd/applications/cloudnativepg-operator\\.yaml$"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track annotated image/imageName pins in raw manifests so digest/tag pins can't freeze on a vulnerable build",
+      "fileMatch": [
+        "provisioning/webhook\\.yaml$",
+        "provisioning/control-db\\.yaml$"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\s+(?:image|imageName): [^\\s@:]+(?::(?<currentValue>[^\\s@]+))?(?:@(?<currentDigest>sha256:[a-f0-9]+))?"
+      ],
+      "datasourceTemplate": "{{{datasource}}}",
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}docker{{/if}}"
+    }
   ]
 }
