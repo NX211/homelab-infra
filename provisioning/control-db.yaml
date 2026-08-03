@@ -14,6 +14,9 @@ spec:
   # Pinned minor on the current "system" image line (legacy-compatible layout,
   # Debian trixie packages). The floating :16 tag had frozen on an ancient
   # bullseye digest whose 15 criticals were all fix:NONE in-distro.
+  # Renovate-tracked so a fixed rebuild lands automatically (today's criticals
+  # are upstream openssl/gnutls/perl/libxml2 with no patched image published yet).
+  # renovate: datasource=docker depName=ghcr.io/cloudnative-pg/postgresql
   imageName: ghcr.io/cloudnative-pg/postgresql:16.11-system-trixie
   storage:
     size: 2Gi
