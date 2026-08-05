@@ -50,7 +50,7 @@ coturn:
   host: turn.live.capturly.app
   image:
     repository: coturn/coturn
-    tag: "4.15.0-alpine"
+    tag: "4.17.0-alpine"
     pullPolicy: IfNotPresent
   # Public IP guests reach the relay on (UniFi WAN). If relay candidates
   # come out wrong, use the "public/private" form with the proxy node's
