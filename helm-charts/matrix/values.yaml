@@ -43,7 +43,7 @@ postgres:
 # In-cluster only; no persistence needed (replication state is ephemeral).
 # --------------------------------------------------------------------------
 redis:
-  image: redis:7-alpine
+  image: redis:8-alpine
   maxmemory: "256mb"
   authSecretName: matrix-redis-auth
   passwordRemoteKey: synapse-redis-password
