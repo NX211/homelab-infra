@@ -40,6 +40,9 @@ spec:
     - { name: secondary-color, type: string, default: "#0ea5e9" }
     - { name: logo-url,        type: string, default: "" }
     - { name: enable-email,    type: string, default: "false" }
+    # Native platform targets (comma-separated: desktop,mobile,extension). Empty
+    # = web-only; unlisted targets are stripped from the scaffold after clone.
+    - { name: targets,         type: string, default: "" }
     # Brand kit picked in the Port scaffold_app dropdown (= a coreyalan.com
     # showcase slug). When set, the pipeline fetches the kit and its values
     # OVERRIDE the branding params above — the app reproduces the approved demo.
@@ -200,7 +203,8 @@ spec:
               # rebrand + branding (app-repo PR) + onboard --yes (platform-infra PR)
               bash scripts/scaffold-app.sh \
                 --name "$(params.name)" --domain "$EFF_DOMAIN" --company "$(params.company)" \
-                --github-org "$GH_ORG" "${DESC_ARGS[@]}" $DB_FLAG "${BRAND_ARGS[@]}" $EMAIL_FLAG --ci $AGENT_FLAG
+                --github-org "$GH_ORG" "${DESC_ARGS[@]}" $DB_FLAG "${BRAND_ARGS[@]}" $EMAIL_FLAG \
+                --targets "$(params.targets)" --ci $AGENT_FLAG
 
               # dns: fresh main so the dns PR carries ONLY <app>-dns.tf
               git checkout main && git pull --ff-only
