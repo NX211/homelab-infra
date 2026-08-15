@@ -81,6 +81,12 @@ staging-app:
       value: "true"
     - name: S3_TRANSFER_BUCKET
       value: capturly-transfer
+    # Studio cover art. Shares the prod bucket the same way GCP_TRANSFER_BUCKET
+    # does, and reuses the capturly-transfer-staging SA key already mounted
+    # below — no second long-lived credential. A bucket name is not a secret,
+    # so it rides here rather than through Bitwarden.
+    - name: GCP_STUDIO_ASSETS_BUCKET
+      value: capturly-studio-assets
     # Coreyalan integration — staging Capturly talks to staging Coreyalan
     # so contact + campaign data does not pollute production. API_KEY and
     # WEBHOOK_SECRET come from Bitwarden via the externalSecrets block below.
