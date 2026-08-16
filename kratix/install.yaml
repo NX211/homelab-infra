@@ -2675,10 +2675,24 @@ spec:
             drop:
             - ALL
           privileged: false
+          # LOCAL DEVIATION from the vendored upstream manifest (KSV-0014).
+          # Upstream ships no readOnlyRootFilesystem. Every write the manager
+          # makes lands under os.TempDir(): util/git/git.go createLocalDirectory
+          # does os.MkdirTemp("", "kratix-repo"), and the git state-store writer
+          # (lib/writers/git.go) plus the repository cache write beneath that
+          # root. The emptyDir below keeps those paths writable while the rest
+          # of the root filesystem is sealed. Re-vendoring drops this — the
+          # Trivy config gate fails on KSV-0014 if it goes missing, so the loss
+          # is caught rather than silent.
+          readOnlyRootFilesystem: true
           runAsNonRoot: true
           seccompProfile:
             type: RuntimeDefault
         volumeMounts:
+        # Parent of the two serving-cert mounts below; the kubelet orders nested
+        # mounts parent-first, so those Secrets still land inside it read-only.
+        - mountPath: /tmp
+          name: tmp
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
           readOnly: true
@@ -2690,6 +2704,11 @@ spec:
       serviceAccountName: kratix-platform-controller-manager
       terminationGracePeriodSeconds: 10
       volumes:
+      # Backs the read-only root filesystem above: git worktrees and the
+      # repository cache live here. Ephemeral by design — Kratix re-clones the
+      # state store on start, so nothing here needs to survive a restart.
+      - name: tmp
+        emptyDir: {}
       - name: cert
         secret:
           defaultMode: 420
