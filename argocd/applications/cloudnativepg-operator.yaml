@@ -11,7 +11,14 @@ spec:
   source:
     repoURL: https://cloudnative-pg.github.io/charts
     chart: cloudnative-pg
-    targetRevision: 0.23.0
+    # 0.23.0 pinned appVersion 1.25.0 (Dec 2024). CNPG injects the operator
+    # image into every instance pod as the `bootstrap-controller` init
+    # container, so the operator's own CVEs land in the provisioning
+    # namespace's trivy reports: 1.25.0 carries 8 criticals (pgx CVE-2026-33815
+    # /33816, grpc CVE-2026-33186, Go stdlib CVE-2025-68121, counted once per
+    # arch binary). 0.29.0 (appVersion 1.30.0) scans clean.
+    # Requires k8s >=1.29.0 — homelab runs k3s v1.32.x.
+    targetRevision: 0.29.0
     helm:
       valuesObject:
         # Monitoring enabled for Prometheus integration

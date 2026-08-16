@@ -14,10 +14,16 @@ spec:
   # Pinned minor on the current "system" image line (legacy-compatible layout,
   # Debian trixie packages). The floating :16 tag had frozen on an ancient
   # bullseye digest whose 15 criticals were all fix:NONE in-distro.
-  # Renovate-tracked so a fixed rebuild lands automatically (today's criticals
-  # are upstream openssl/gnutls/perl/libxml2 with no patched image published yet).
+  # Renovate-tracked so a fixed rebuild lands automatically.
+  #
+  # 16.11 -> 16.15 clears the five criticals that actually had fixes published
+  # (openssl CVE-2026-31789 x3, gnutls CVE-2026-33845 + CVE-2026-42010).
+  # The 17 that remain are perl (x4 CVEs across 4 packages) and libxml2, all
+  # marked fix:NONE / fix_deferred by Debian trixie — verified identical on the
+  # minimal- and standard- image lines, so there is no variant to switch to.
+  # They clear when Debian ships fixes; nothing to do here until then.
   # renovate: datasource=docker depName=ghcr.io/cloudnative-pg/postgresql
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.11-system-trixie
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.15-system-trixie
   storage:
     size: 2Gi
     storageClass: local-path

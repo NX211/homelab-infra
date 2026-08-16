@@ -12,7 +12,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.5
   labels:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
@@ -29,7 +29,20 @@ spec:
     singular: bucketstatestore
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Name of the bucket
+      jsonPath: .spec.bucketName
+      name: Name
+      type: string
+    - description: Endpoint of the bucket
+      jsonPath: .spec.endpoint
+      name: Endpoint
+      type: string
+    - description: Indicates the state store is ready to use
+      jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: BucketStateStore is the Schema for the bucketstatestores API
@@ -56,16 +69,24 @@ spec:
             properties:
               authMethod:
                 default: accessKey
-                description: AuthMethod used to access the StateStore
+                description: |-
+                  Authentication method used to access the StateStore.
+                  Default to accessKey; options are accessKey and IAM.
                 enum:
                 - accessKey
                 - IAM
                 type: string
               bucketName:
+                description: Name of the bucket; required field.
                 type: string
               endpoint:
+                description: |-
+                  Endpoint to access the bucket.
+                  Required field.
                 type: string
               insecure:
+                description: Toggle to turn off or on SSL verification when connecting
+                  to the bucket.
                 type: boolean
               path:
                 description: |-
@@ -88,12 +109,86 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
+              useDualStack:
+                description: |-
+                  Toggle to use AWS S3 dual-stack (IPv4/IPv6) endpoints. Only has an effect
+                  on Amazon S3 endpoints; ignored by other S3-compatible providers.
+                  Defaults to false, meaning the endpoint is used exactly as configured.
+                type: boolean
             required:
             - bucketName
             - endpoint
             type: object
           status:
-            description: BucketStateStoreStatus defines the observed state of BucketStateStore
+            description: StateStoreStatus defines the observed state of a state store
+            properties:
+              conditions:
+                description: Current conditions of the StateStore. Includes a Ready
+                  condition indicating whether Kratix can access the store
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                description: The generation last observed by the controller
+                format: int64
+                type: integer
+              status:
+                description: Overall status of the StateStore
+                type: string
+            required:
+            - status
             type: object
         type: object
     served: true
@@ -105,7 +200,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.5
   labels:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
@@ -119,10 +214,26 @@ spec:
     kind: Destination
     listKind: DestinationList
     plural: destinations
+    shortNames:
+    - dest
+    - dests
     singular: destination
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: State store kind.
+      jsonPath: .spec.stateStoreRef.kind
+      name: StateStoreKind
+      type: string
+    - description: State store name.
+      jsonPath: .spec.stateStoreRef.name
+      name: StateStoreName
+      type: string
+    - description: Indicates the destination is ready to use.
+      jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Destination is the Schema for the Destinations API
@@ -145,57 +256,79 @@ spec:
           metadata:
             type: object
           spec:
-            description: DestinationSpec defines the desired state of Destination
+            description: DestinationSpec defines the desired state of Destination.
             properties:
+              cleanup:
+                default: none
+                description: |-
+                  cleanup can be set to either:
+                  - none (default): no cleanup after removing the destination
+                  - all: workplacements and statestore contents will be removed after removing the destination
+                enum:
+                - none
+                - all
+                type: string
               filepath:
                 default:
                   mode: nestedByMetadata
                 description: The filepath mode to use when writing files to the destination.
                 properties:
+                  filename:
+                    description: |-
+                      If filepath.mode is set to aggregatedYAML, this field can be set to
+                      specify the filename of the aggregated YAML file.  Defaults to
+                      "aggregated.yaml"
+                    type: string
                   mode:
                     description: |-
                       filepath.mode can be set to either:
                       - nestedByMetadata (default): files from the pipeline will be placed in a nested directory structure
+                      - aggregatedYAML: all files from all pipelines will be aggregated into a single YAML file
                       - none: file from the pipeline will be placed in a flat directory structure
                       filepath.mode is immutable
                     enum:
                     - nestedByMetadata
+                    - aggregatedYAML
                     - none
                     type: string
                     x-kubernetes-validations:
                     - message: filepath.mode is immutable
                       rule: self == oldSelf
                 type: object
+              initWorkloads:
+                default: {}
+                description: InitWorkloads controls whether Kratix writes initial
+                  placeholder files to the StateStore for this Destination
+                properties:
+                  enabled:
+                    default: true
+                    description: When true, Kratix will write initial directory structure
+                      to the StateStore on Destination creation
+                    type: boolean
+                type: object
               path:
                 description: |-
-                  Path within the StateStore to write documents. This path should be allocated
-                  to Kratix as it will create, update, and delete files within this path.
-                  Path structure begins with provided path and ends with namespaced destination name:
-                    <StateStore.Spec.Path>/<Destination.Spec.Path>/<Destination.Metadata.Namespace>/<Destination.Metadata.Name>/
+                  Path within StateStore to write documents, this will be appended to any
+                  specficed Spec.Path provided in the referenced StateStore.
+                  The Path structure will be:
+                    <StateStore.Spec.Path>/<Destination.Spec.Path>/
+                  Kratix may create other subdirectories, depending on the Filepath.mode you select.
+                  To write to the root of the StateStore.Spec.Path, set Path to "." or "/".
+                  Defaults to the Destination name
                 type: string
-              secretRef:
-                description: SecretRef specifies the Secret containing authentication
-                  credentials
-                properties:
-                  name:
-                    description: name is unique within a namespace to reference a
-                      secret resource.
-                    type: string
-                  namespace:
-                    description: namespace defines the space within which the secret
-                      name must be unique.
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
               stateStoreRef:
-                description: StateStoreReference is a reference to a StateStore
+                description: Reference to the StateStore (GitStateStore or BucketStateStore)
+                  used to persist resources for this Destination
                 properties:
                   kind:
+                    description: Kind of the StateStore resource. Must be either BucketStateStore
+                      or GitStateStore
                     enum:
                     - BucketStateStore
                     - GitStateStore
                     type: string
                   name:
+                    description: Name of the StateStore resource
                     type: string
                 required:
                 - kind
@@ -210,9 +343,70 @@ spec:
                   destinationSelectors. An empty label set on the work won't be scheduled
                   to this destination, unless the destination label set is also empty
                 type: boolean
+            required:
+            - path
             type: object
           status:
             description: DestinationStatus defines the observed state of Destination
+            properties:
+              conditions:
+                description: Current conditions of the Destination. Includes a Ready
+                  condition indicating whether the StateStore is accessible
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
             type: object
         type: object
     served: true
@@ -224,7 +418,197 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.5
+  labels:
+    app.kubernetes.io/component: kratix-manager
+    app.kubernetes.io/instance: kratix-platform
+    app.kubernetes.io/part-of: kratix
+  name: dryruns.platform.kratix.io
+spec:
+  group: platform.kratix.io
+  names:
+    categories:
+    - kratix
+    kind: DryRun
+    listKind: DryRunList
+    plural: dryruns
+    singular: dryrun
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          DryRun previews the output of a resource request without applying it to a real Destination.
+          Note that DryRun as a feature is under preview; its API is subject to breaking changes.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DryRunSpec defines the desired state of DryRun.
+            properties:
+              promiseRef:
+                description: PromiseRef is the name of the Promise.
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+              resource:
+                description: Resource is the spec to dry-run, in the shape expected
+                  by the Promise's resource API.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              resourceRequestRef:
+                description: |-
+                  ResourceRequestRef identifies the live ResourceRequest to diff against.
+                  When the referenced object is not found, the diff treats the request as new (all files added).
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    description: Namespace of the live ResourceRequest. Defaults to
+                      the DryRun's own namespace when omitted.
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - promiseRef
+            - resource
+            - resourceRequestRef
+            type: object
+          status:
+            description: DryRunStatus defines the observed state of DryRun.
+            properties:
+              components:
+                description: |-
+                  Components reports all components DryRun created by this DryRun.
+                  Empty for a non-compound request.
+                items:
+                  description: DryRunComponentStatus reports a single component dry
+                    run raised by a compound one.
+                  properties:
+                    dryRun:
+                      description: DryRun is the name of the DryRun raised for this
+                        component.
+                      type: string
+                    message:
+                      description: Message carries the detail when Phase is Failed.
+                      type: string
+                    namespace:
+                      description: Namespace of the component resource request.
+                      type: string
+                    phase:
+                      description: Phase is Pending, Succeeded or Failed.
+                      type: string
+                    promise:
+                      description: Promise serving the component request.
+                      type: string
+                    request:
+                      description: Request is the name of the component resource request.
+                      type: string
+                  required:
+                  - dryRun
+                  - phase
+                  - promise
+                  - request
+                  type: object
+                type: array
+              conditions:
+                description: |-
+                  Conditions holds status conditions.
+
+                  "Completed" is True once the summary has been written. For a compound request it
+                  stays True even when a component failed, because a partial summary is still
+                  useful -- so do not gate on it alone.
+
+                  "ComponentsSucceeded" is set only for compound requests, and is False when any
+                  component failed or did not finish. That is the condition to gate on: it
+                  distinguishes "the run finished" from "the preview is complete".
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
   labels:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
@@ -241,7 +625,20 @@ spec:
     singular: gitstatestore
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: URL of the git repository
+      jsonPath: .spec.url
+      name: URL
+      type: string
+    - description: Branch of the git repository
+      jsonPath: .spec.branch
+      name: Branch
+      type: string
+    - description: Indicates the state store is ready to use
+      jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: GitStateStore is the Schema for the gitstatestores API
@@ -268,13 +665,17 @@ spec:
             properties:
               authMethod:
                 default: basicAuth
-                description: AuthMethod used to access the StateStore
+                description: |-
+                  Authentication method used to access the StateStore.
+                  Default to basicAuth; options are basicAuth, ssh, and githubApp.
                 enum:
                 - basicAuth
                 - ssh
+                - githubApp
                 type: string
               branch:
                 default: main
+                description: Branch of the git repository; default to main.
                 type: string
               gitAuthor:
                 default:
@@ -283,8 +684,10 @@ spec:
                   store; name defaults to 'kratix'
                 properties:
                   email:
+                    description: Email of the Git commit author
                     type: string
                   name:
+                    description: Name of the Git commit author
                     type: string
                 type: object
               path:
@@ -309,10 +712,79 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               url:
+                description: URL of the git repository.
                 type: string
             type: object
           status:
-            description: GitStateStoreStatus defines the observed state of GitStateStore
+            description: StateStoreStatus defines the observed state of a state store
+            properties:
+              conditions:
+                description: Current conditions of the StateStore. Includes a Ready
+                  condition indicating whether Kratix can access the store
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                description: The generation last observed by the controller
+                format: int64
+                type: integer
+              status:
+                description: Overall status of the StateStore
+                type: string
+            required:
+            - status
             type: object
         type: object
     served: true
@@ -324,7 +796,115 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.5
+  labels:
+    app.kubernetes.io/component: kratix-manager
+    app.kubernetes.io/instance: kratix-platform
+    app.kubernetes.io/part-of: kratix
+  name: healthrecords.platform.kratix.io
+spec:
+  group: platform.kratix.io
+  names:
+    kind: HealthRecord
+    listKind: HealthRecordList
+    plural: healthrecords
+    singular: healthrecord
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Shows the HealthRecord state
+      jsonPath: .data.state
+      name: Status
+      type: string
+    - description: When was the HealthRecord created
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: HealthRecord is the Schema for the healthrecords API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          data:
+            description: HealthRecordData defines the desired state of HealthRecord
+            properties:
+              details:
+                description: Arbitrary JSON details from the healthcheck pipeline
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              lastRun:
+                description: Unix timestamp of the last healthcheck run
+                format: int64
+                type: integer
+              promiseRef:
+                description: Reference to the Promise this health record belongs to
+                properties:
+                  name:
+                    description: Name of the referenced Promise
+                    type: string
+                required:
+                - name
+                type: object
+              resourceRef:
+                description: Reference to the Resource Request this health record
+                  belongs to. Required when the HealthRecord is for a resource request
+                properties:
+                  generation:
+                    description: Generation of the Resource Request at the time of
+                      recording
+                    type: integer
+                  name:
+                    description: Name of the Resource Request
+                    type: string
+                  namespace:
+                    description: Namespace of the Resource Request
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              state:
+                default: unknown
+                description: Health state of the resource; one of unknown, ready,
+                  unhealthy, healthy, or degraded
+                enum:
+                - unknown
+                - ready
+                - unhealthy
+                - healthy
+                - degraded
+                type: string
+            required:
+            - promiseRef
+            - state
+            type: object
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
   labels:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
@@ -376,17 +956,38 @@ spec:
               sourceRef:
                 default:
                   type: http
+                description: Reference to the source from which the Promise will be
+                  fetched
                 properties:
+                  secretRef:
+                    description: |-
+                      Reference a secret with credentials to access the source.
+                      For more details on the secret format, see the documentation:
+                        https://docs.kratix.io/main/reference/promises/releases#promise-release
+                    properties:
+                      name:
+                        description: name is unique within a namespace to reference
+                          a secret resource.
+                        type: string
+                      namespace:
+                        description: namespace defines the space within which the
+                          secret name must be unique.
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
                   type:
+                    description: Type of the source; currently only "http" is supported
                     enum:
                     - http
                     type: string
                   url:
+                    description: URL from which to fetch the Promise definition
                     type: string
                 required:
                 - type
                 type: object
               version:
+                description: Version of the Promise to install
                 type: string
             required:
             - sourceRef
@@ -395,17 +996,10 @@ spec:
             description: PromiseReleaseStatus defines the observed state of PromiseRelease
             properties:
               conditions:
+                description: Current conditions of the PromiseRelease
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -446,12 +1040,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -464,6 +1053,8 @@ spec:
                   type: object
                 type: array
               status:
+                description: Overall status of the PromiseRelease (e.g. Installed,
+                  Failed)
                 type: string
             type: object
         type: object
@@ -476,8 +1067,266 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
+  labels:
+    app.kubernetes.io/component: kratix-manager
+    app.kubernetes.io/instance: kratix-platform
+    app.kubernetes.io/part-of: kratix
+  name: promiserevisions.platform.kratix.io
+spec:
+  group: platform.kratix.io
+  names:
+    categories:
+    - kratix
+    kind: PromiseRevision
+    listKind: PromiseRevisionList
+    plural: promiserevisions
+    singular: promiserevision
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - description: The name of the Promise this revision is based on.
+      jsonPath: .spec.promiseRef.name
+      name: Promise
+      type: string
+    - description: The version of the Promise this revision is based on.
+      jsonPath: .spec.version
+      name: Version
+      type: string
+    - description: Indicates if this PromiseRevision is the latest.
+      jsonPath: .status.latest
+      name: Latest
+      type: boolean
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: PromiseRevision is the Schema for the promiserevisions API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of PromiseRevision
+            properties:
+              promiseRef:
+                description: PromiseRef is the reference to the Promise this revision
+                  is based on.
+                properties:
+                  name:
+                    description: Name of the referenced Promise
+                    type: string
+                required:
+                - name
+                type: object
+              promiseSpec:
+                description: PromiseSpec is the Spec of the Promise this revision
+                  is based on.
+                properties:
+                  api:
+                    description: |-
+                      API an application developers will use to request a Resource from this Promise.
+                      Must be a valid kubernetes custom resource definition.
+                    type: object
+                    x-kubernetes-embedded-resource: true
+                    x-kubernetes-preserve-unknown-fields: true
+                  dependencies:
+                    description: A collection of prerequisites that enable the creation
+                      of a Resource.
+                    items:
+                      description: Resources represents the manifest workload to be
+                        deployed on Destinations
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    type: array
+                  destinationSelectors:
+                    description: A list of key and value pairs (labels) used for scheduling.
+                    items:
+                      description: PromiseScheduling defines label selectors for matching
+                        Destinations where Resources should be scheduled
+                      properties:
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          description: Labels that a Destination must match for Resources
+                            from this Promise to be scheduled to it
+                          type: object
+                      type: object
+                    type: array
+                  requiredPromises:
+                    description: |-
+                      A list of Promises that are required by this Promise.
+                      All required Promises must be present and available for this promise to be made available.
+                    items:
+                      description: RequiredPromise defines a dependency on another
+                        Promise that must be installed and available
+                      properties:
+                        name:
+                          description: Name of the required Promise
+                          type: string
+                        version:
+                          description: Version of the required Promise. If empty,
+                            any version is accepted
+                          type: string
+                      type: object
+                    type: array
+                  workflows:
+                    description: A list of pipelines to be executed at different stages
+                      of the Promise lifecycle.
+                    properties:
+                      config:
+                        description: Configuration options that apply to all workflows
+                          defined in this Promise
+                        properties:
+                          pipelineNamespace:
+                            description: Namespace for all workflow jobs (promise
+                              and resource) to run in; needs to be an existing namespace
+                              or else workflow won't start
+                            type: string
+                        type: object
+                      promise:
+                        description: Pipelines triggered when the Promise itself is
+                          created, updated, or deleted
+                        properties:
+                          configure:
+                            description: Pipelines to execute when the resource or
+                              Promise is created or updated
+                            items:
+                              type: object
+                            type: array
+                            x-kubernetes-preserve-unknown-fields: true
+                          delete:
+                            description: Pipelines to execute when the resource or
+                              Promise is deleted
+                            items:
+                              type: object
+                            type: array
+                            x-kubernetes-preserve-unknown-fields: true
+                        type: object
+                      resource:
+                        description: Pipelines triggered when a Resource Request (instance
+                          of the Promise API) is created, updated, or deleted
+                        properties:
+                          configure:
+                            description: Pipelines to execute when the resource or
+                              Promise is created or updated
+                            items:
+                              type: object
+                            type: array
+                            x-kubernetes-preserve-unknown-fields: true
+                          delete:
+                            description: Pipelines to execute when the resource or
+                              Promise is deleted
+                            items:
+                              type: object
+                            type: array
+                            x-kubernetes-preserve-unknown-fields: true
+                        type: object
+                    type: object
+                type: object
+              version:
+                description: Version is the version of the Promise this revision is
+                  based on.
+                type: string
+            required:
+            - promiseRef
+            - promiseSpec
+            - version
+            type: object
+          status:
+            description: status defines the observed state of PromiseRevision
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              latest:
+                description: Latest is true if this revision is the latest revision
+                  for the Promise. Only one revision can be the latest at a time.
+                type: boolean
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
     cert-manager.io/inject-ca-from: kratix-platform-system/kratix-platform-serving-cert
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.5
   labels:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
@@ -518,6 +1367,9 @@ spec:
     - jsonPath: .status.version
       name: Version
       type: string
+    - jsonPath: .status.message
+      name: Message
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -544,10 +1396,15 @@ spec:
             description: PromiseSpec defines the desired state of Promise
             properties:
               api:
+                description: |-
+                  API an application developers will use to request a Resource from this Promise.
+                  Must be a valid kubernetes custom resource definition.
                 type: object
                 x-kubernetes-embedded-resource: true
                 x-kubernetes-preserve-unknown-fields: true
               dependencies:
+                description: A collection of prerequisites that enable the creation
+                  of a Resource.
                 items:
                   description: Resources represents the manifest workload to be deployed
                     on Destinations
@@ -555,49 +1412,83 @@ spec:
                   x-kubernetes-preserve-unknown-fields: true
                 type: array
               destinationSelectors:
+                description: A list of key and value pairs (labels) used for scheduling.
                 items:
-                  description: For Promise spec
+                  description: PromiseScheduling defines label selectors for matching
+                    Destinations where Resources should be scheduled
                   properties:
                     matchLabels:
                       additionalProperties:
                         type: string
+                      description: Labels that a Destination must match for Resources
+                        from this Promise to be scheduled to it
                       type: object
                   type: object
                 type: array
               requiredPromises:
+                description: |-
+                  A list of Promises that are required by this Promise.
+                  All required Promises must be present and available for this promise to be made available.
                 items:
+                  description: RequiredPromise defines a dependency on another Promise
+                    that must be installed and available
                   properties:
                     name:
-                      description: Name of Promise
+                      description: Name of the required Promise
                       type: string
                     version:
-                      description: Version of Promise
+                      description: Version of the required Promise. If empty, any
+                        version is accepted
                       type: string
                   type: object
                 type: array
               workflows:
+                description: A list of pipelines to be executed at different stages
+                  of the Promise lifecycle.
                 properties:
+                  config:
+                    description: Configuration options that apply to all workflows
+                      defined in this Promise
+                    properties:
+                      pipelineNamespace:
+                        description: Namespace for all workflow jobs (promise and
+                          resource) to run in; needs to be an existing namespace or
+                          else workflow won't start
+                        type: string
+                    type: object
                   promise:
+                    description: Pipelines triggered when the Promise itself is created,
+                      updated, or deleted
                     properties:
                       configure:
+                        description: Pipelines to execute when the resource or Promise
+                          is created or updated
                         items:
                           type: object
                         type: array
                         x-kubernetes-preserve-unknown-fields: true
                       delete:
+                        description: Pipelines to execute when the resource or Promise
+                          is deleted
                         items:
                           type: object
                         type: array
                         x-kubernetes-preserve-unknown-fields: true
                     type: object
                   resource:
+                    description: Pipelines triggered when a Resource Request (instance
+                      of the Promise API) is created, updated, or deleted
                     properties:
                       configure:
+                        description: Pipelines to execute when the resource or Promise
+                          is created or updated
                         items:
                           type: object
                         type: array
                         x-kubernetes-preserve-unknown-fields: true
                       delete:
+                        description: Pipelines to execute when the resource or Promise
+                          is deleted
                         items:
                           type: object
                         type: array
@@ -609,19 +1500,15 @@ spec:
             description: PromiseStatus defines the observed state of Promise
             properties:
               apiVersion:
+                description: The API version of the Resource API defined by this Promise
+                  (e.g. "marketplace.kratix.io/v1alpha1")
                 type: string
               conditions:
+                description: Current conditions of the Promise. Includes Available,
+                  WorksSucceeded, and Reconciled conditions
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -662,12 +1549,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -680,39 +1562,144 @@ spec:
                   type: object
                 type: array
               kind:
+                description: The Kind of the Resource API defined by this Promise
+                  (e.g. "Database")
+                type: string
+              kratix:
+                description: Kratix-managed status for this Promise. This field contains
+                  fields set by Kratix controllers.
+                properties:
+                  apiVersion:
+                    description: The API version of the Resource API defined by this
+                      Promise (e.g. "marketplace.kratix.io/v1alpha1")
+                    type: string
+                  kind:
+                    description: The Kind of the Resource API defined by this Promise
+                      (e.g. "Database")
+                    type: string
+                  lastAvailableTime:
+                    description: Timestamp of when this Promise was last in an Available
+                      state
+                    format: date-time
+                    type: string
+                  status:
+                    description: 'Overall status of the Promise: Available or Unavailable'
+                    type: string
+                  version:
+                    description: Version of the Promise, derived from the PromiseRelease
+                      if installed via one
+                    type: string
+                  workflows:
+                    description: Status of the Workflow execution
+                    properties:
+                      pipelines:
+                        description: Status of the Pipeline execution
+                        items:
+                          properties:
+                            attempts:
+                              format: int64
+                              type: integer
+                            lastTransitionTime:
+                              description: Last transition time of the workflow
+                              format: date-time
+                              type: string
+                            message:
+                              description: Message from the suspended pipeline
+                              type: string
+                            name:
+                              description: Name of the workflow
+                              type: string
+                            nextRetryAt:
+                              type: string
+                            phase:
+                              description: Phase of the workflow
+                              type: string
+                          type: object
+                        type: array
+                      suspendedGeneration:
+                        description: Generation at which the workflow was suspended
+                        format: int64
+                        type: integer
+                    type: object
+                type: object
+              lastAvailableTime:
+                description: Timestamp of when this Promise was last in an Available
+                  state
+                format: date-time
+                type: string
+              message:
+                description: Message set by Promise configure workflow
                 type: string
               observedGeneration:
+                description: The generation last observed by the controller
                 format: int64
                 type: integer
               requiredBy:
+                description: List of other Promises that depend on this Promise
                 items:
+                  description: RequiredBy indicates another Promise depends on this
+                    one
                   properties:
                     promise:
+                      description: The Promise that requires this Promise
                       properties:
                         name:
+                          description: Name of the Promise
                           type: string
                         version:
+                          description: Version of the Promise
                           type: string
                       type: object
                     requiredVersion:
+                      description: The specific version required by the dependent
+                        Promise
                       type: string
                   type: object
                 type: array
               requiredPromises:
+                description: Status of each required Promise dependency
                 items:
+                  description: RequiredPromiseStatus tracks the availability of a
+                    required Promise dependency
                   properties:
                     name:
+                      description: Name of the required Promise
                       type: string
                     state:
+                      description: Current state of the required Promise (e.g. "Available",
+                        "Unavailable")
                       type: string
                     version:
+                      description: Version of the required Promise that this Promise
+                        requires
                       type: string
                   type: object
                 type: array
               status:
+                description: 'Overall status of the Promise: Available or Unavailable'
                 type: string
               version:
+                description: Version of the Promise, derived from the PromiseRelease
+                  if installed via one
                 type: string
+              workflows:
+                description: Total number of Promise-level workflow pipelines
+                format: int64
+                type: integer
+              workflowsFailed:
+                description: Number of Promise-level workflow pipelines that have
+                  failed
+                format: int64
+                type: integer
+              workflowsSucceeded:
+                description: Number of Promise-level workflow pipelines that have
+                  completed successfully
+                format: int64
+                type: integer
+            required:
+            - workflows
+            - workflowsFailed
+            - workflowsSucceeded
             type: object
         type: object
     served: true
@@ -724,7 +1711,188 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.5
+  labels:
+    app.kubernetes.io/component: kratix-manager
+    app.kubernetes.io/instance: kratix-platform
+    app.kubernetes.io/part-of: kratix
+  name: resourcebindings.platform.kratix.io
+spec:
+  group: platform.kratix.io
+  names:
+    categories:
+    - kratix
+    kind: ResourceBinding
+    listKind: ResourceBindingList
+    plural: resourcebindings
+    singular: resourcebinding
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Resource using a Promise
+      jsonPath: .spec.resourceRef.name
+      name: Resource
+      type: string
+    - description: Promise being used by the Resource
+      jsonPath: .spec.promiseRef.name
+      name: Promise
+      type: string
+    - description: Promise version the resource should be reconciled with
+      jsonPath: .spec.version
+      name: Desired
+      type: string
+    - description: Promise version the resource was last reconciled with
+      jsonPath: .status.lastAppliedVersion
+      name: Applied
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ResourceBinding is the Schema for the resourcebindings API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of ResourceBinding
+            properties:
+              promiseRef:
+                description: Reference to the Promise that this binding tracks
+                properties:
+                  name:
+                    description: Name of the referenced Promise
+                    type: string
+                required:
+                - name
+                type: object
+              resourceRef:
+                description: Reference to the Resource Request that this binding tracks
+                properties:
+                  generation:
+                    description: Generation of the Resource Request at the time of
+                      recording
+                    type: integer
+                  name:
+                    description: Name of the Resource Request
+                    type: string
+                  namespace:
+                    description: Namespace of the Resource Request
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              version:
+                description: Version is the version of the Promise that this ResourceRequest
+                  was last reconciled with.
+                type: string
+            required:
+            - promiseRef
+            - resourceRef
+            - version
+            type: object
+          status:
+            description: status defines the observed state of ResourceBinding
+            properties:
+              conditions:
+                description: The status of each condition is one of True, False, or
+                  Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              failedVersion:
+                description: |-
+                  The promise version that was being attempted when the last upgrade failure occurred.
+                  Cleared when an upgrade succeeds or a new upgrade attempt begins.
+                type: string
+              lastAppliedVersion:
+                description: Reference to the Resource Request version
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    selectableFields:
+    - jsonPath: .spec.version
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
   labels:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
@@ -738,10 +1906,22 @@ spec:
     kind: WorkPlacement
     listKind: WorkPlacementList
     plural: workplacements
+    shortNames:
+    - wp
+    - wps
     singular: workplacement
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Destination this Workplacement is scheduled to.
+      jsonPath: .spec.targetDestinationName
+      name: DESTINATION
+      type: string
+    - description: Status of this Workplacement
+      jsonPath: .status.conditions[?(@.type=="Ready")].message
+      name: STATUS
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: WorkPlacement is the Schema for the workplacements API
@@ -766,22 +1946,39 @@ spec:
           spec:
             description: WorkPlacementSpec defines the desired state of WorkPlacement
             properties:
+              generation:
+                description: Generation of the parent Work
+                format: int64
+                type: integer
               id:
+                description: Unique identifier for the workload group this WorkPlacement
+                  represents
                 type: string
               promiseName:
+                description: Name of the Promise that generated the parent Work
                 type: string
               resourceName:
+                description: Name of the Resource Request that generated the parent
+                  Work. Empty for Promise-level dependencies
                 type: string
               targetDestinationName:
+                description: Name of the Destination this WorkPlacement is assigned
+                  to
                 type: string
               workloads:
+                description: List of workloads to be written to the target Destination's
+                  StateStore
                 items:
-                  description: Workload represents the manifest workload to be deployed
-                    on destination
+                  description: Workload represents a single manifest file to be written
+                    to a Destination StateStore
                   properties:
                     content:
+                      description: Content of the workload manifest, base64 encoded
+                        and gzip compressed
                       type: string
                     filepath:
+                      description: Path of the file relative to the workload group
+                        directory
                       type: string
                   type: object
                 type: array
@@ -790,17 +1987,11 @@ spec:
             description: WorkPlacementStatus defines the observed state of WorkPlacement
             properties:
               conditions:
+                description: Current conditions of the WorkPlacement. Includes a Ready
+                  condition indicating all workloads are written to the StateStore
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -841,12 +2032,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -875,7 +2061,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.5
   labels:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
@@ -892,7 +2078,12 @@ spec:
     singular: work
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Status of this Work.
+      jsonPath: .status.conditions[?(@.type=="Ready")].message
+      name: STATUS
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Work is the Schema for the works API
@@ -917,41 +2108,66 @@ spec:
           spec:
             description: WorkSpec defines the desired state of Work
             properties:
+              lastExecutionTimestamp:
+                description: Timestamp of the creation of this work
+                format: date-time
+                type: string
               promiseName:
+                description: Name of the Promise that generated this Work
                 type: string
               resourceName:
+                description: Name of the Resource Request that generated this Work.
+                  Empty for Promise-level dependencies
                 type: string
               workloadGroups:
-                description: Workload represents the manifest workload to be deployed
-                  on destination
+                description: Groups of workloads to be scheduled to Destinations.
+                  Each group can target different Destinations via label selectors
                 items:
                   description: |-
-                    WorkloadGroup represents the workloads in a particular directory that should
-                    be scheduled to a Destination
+                    WorkloadGroup represents a set of workloads in a particular directory that should
+                    be scheduled to a Destination.
                   properties:
                     destinationSelectors:
+                      description: Label selectors used to determine which Destinations
+                        should receive this workload group
                       items:
+                        description: WorkloadGroupScheduling defines label-based scheduling
+                          for a workload group
                         properties:
                           matchLabels:
                             additionalProperties:
                               type: string
+                            description: Labels that a Destination must match to receive
+                              this workload group
                             type: object
                           source:
+                            description: Origin of these selectors (e.g. "promise"
+                              or "resource")
                             type: string
                         type: object
                       type: array
                     directory:
+                      description: Directory within the pipeline output where these
+                        workloads originated
                       type: string
                     id:
+                      description: Unique identifier for this workload group, derived
+                        from a hash of the directory
                       type: string
                     workloads:
+                      description: List of workloads to be written to the Destination
+                        StateStore
                       items:
-                        description: Workload represents the manifest workload to
-                          be deployed on destination
+                        description: Workload represents a single manifest file to
+                          be written to a Destination StateStore
                         properties:
                           content:
+                            description: Content of the workload manifest, base64
+                              encoded and gzip compressed
                             type: string
                           filepath:
+                            description: Path of the file relative to the workload
+                              group directory
                             type: string
                         type: object
                       type: array
@@ -962,17 +2178,11 @@ spec:
             description: WorkStatus defines the observed state of Work
             properties:
               conditions:
+                description: Current conditions of the Work. Includes a Ready condition
+                  indicating all WorkPlacements are written successfully
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -1013,12 +2223,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -1030,6 +2235,14 @@ spec:
                   - type
                   type: object
                 type: array
+              workPlacements:
+                description: Number of WorkPlacements currently scheduled for this
+                  Work
+                type: integer
+              workPlacementsCreated:
+                description: Total number of WorkPlacements that have been created
+                  for this Work
+                type: integer
             type: object
         type: object
     served: true
@@ -1111,10 +2324,12 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - events
+  - pods
   verbs:
-  - create
-  - patch
+  - delete
+  - get
+  - list
+  - watch
 - apiGroups:
   - ""
   resources:
@@ -1134,6 +2349,14 @@ rules:
   - list
   - update
   - watch
+- apiGroups:
+  - ""
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 - apiGroups:
   - apiextensions.k8s.io
   resources:
@@ -1162,118 +2385,15 @@ rules:
   - platform.kratix.io
   resources:
   - bucketstatestores
-  - gitstatestores
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - platform.kratix.io
-  resources:
   - destinations
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - platform.kratix.io
-  resources:
-  - destinations/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - platform.kratix.io
-  resources:
-  - destinations/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - platform.kratix.io
-  resources:
+  - dryruns
+  - gitstatestores
+  - healthrecords
   - promisereleases
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - platform.kratix.io
-  resources:
-  - promisereleases/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - platform.kratix.io
-  resources:
-  - promisereleases/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - platform.kratix.io
-  resources:
+  - promiserevisions
   - promises
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - platform.kratix.io
-  resources:
-  - promises/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - platform.kratix.io
-  resources:
-  - promises/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - platform.kratix.io
-  resources:
+  - resourcebindings
   - workplacements
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - platform.kratix.io
-  resources:
-  - workplacements/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - platform.kratix.io
-  resources:
-  - workplacements/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - platform.kratix.io
-  resources:
   - works
   verbs:
   - create
@@ -1286,12 +2406,32 @@ rules:
 - apiGroups:
   - platform.kratix.io
   resources:
+  - bucketstatestores/finalizers
+  - destinations/finalizers
+  - dryruns/finalizers
+  - gitstatestores/finalizers
+  - healthrecords/finalizers
+  - promisereleases/finalizers
+  - promiserevisions/finalizers
+  - promises/finalizers
+  - resourcebindings/finalizers
+  - workplacements/finalizers
   - works/finalizers
   verbs:
   - update
 - apiGroups:
   - platform.kratix.io
   resources:
+  - bucketstatestores/status
+  - destinations/status
+  - dryruns/status
+  - gitstatestores/status
+  - healthrecords/status
+  - promisereleases/status
+  - promiserevisions/status
+  - promises/status
+  - resourcebindings/status
+  - workplacements/status
   - works/status
   verbs:
   - get
@@ -1301,29 +2441,6 @@ rules:
   - rbac.authorization.k8s.io
   resources:
   - clusterrolebindings
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - update
-  - watch
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
-  - clusterroles
-  verbs:
-  - bind
-  - create
-  - delete
-  - escalate
-  - get
-  - list
-  - update
-  - watch
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
   - rolebindings
   verbs:
   - create
@@ -1335,6 +2452,7 @@ rules:
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
+  - clusterroles
   - roles
   verbs:
   - bind
@@ -1353,21 +2471,7 @@ metadata:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
     app.kubernetes.io/part-of: kratix
-  name: kratix-platform-metrics-reader
-rules:
-- nonResourceURLs:
-  - /metrics
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/component: kratix-manager
-    app.kubernetes.io/instance: kratix-platform
-    app.kubernetes.io/part-of: kratix
-  name: kratix-platform-proxy-role
+  name: kratix-platform-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io
@@ -1381,6 +2485,20 @@ rules:
   - subjectaccessreviews
   verbs:
   - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: kratix-manager
+    app.kubernetes.io/instance: kratix-platform
+    app.kubernetes.io/part-of: kratix
+  name: kratix-platform-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -1424,11 +2542,11 @@ metadata:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
     app.kubernetes.io/part-of: kratix
-  name: kratix-platform-proxy-rolebinding
+  name: kratix-platform-metrics-auth-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kratix-platform-proxy-role
+  name: kratix-platform-metrics-auth-role
 subjects:
 - kind: ServiceAccount
   name: kratix-platform-controller-manager
@@ -1436,23 +2554,22 @@ subjects:
 ---
 apiVersion: v1
 data:
-  WC_IMG: docker.io/syntasso/kratix-platform-pipeline-adapter:v0.125.0
+  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:4f6f14adf08a5e263dba7b7793401b247e3f9e3482e4391d0653a12755a4890d
 kind: ConfigMap
 metadata:
   labels:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
     app.kubernetes.io/part-of: kratix
-  name: kratix-platform-wc-img-config
+  name: kratix-platform-pipeline-adapter-config
   namespace: kratix-platform-system
 ---
 apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app.kubernetes.io/component: kratix-manager
-    app.kubernetes.io/instance: kratix-platform
-    app.kubernetes.io/part-of: kratix
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: k8s-health-agent
     control-plane: controller-manager
   name: kratix-platform-controller-manager-metrics-service
   namespace: kratix-platform-system
@@ -1460,20 +2577,18 @@ spec:
   ports:
   - name: https
     port: 8443
-    targetPort: https
+    protocol: TCP
+    targetPort: 8443
   selector:
-    app.kubernetes.io/component: kratix-manager
-    app.kubernetes.io/instance: kratix-platform
-    app.kubernetes.io/part-of: kratix
     control-plane: controller-manager
 ---
 apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app.kubernetes.io/component: webhook
+    app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/created-by: kratix
-    app.kubernetes.io/instance: webhook-service
+    app.kubernetes.io/instance: kratix-platform
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: service
     app.kubernetes.io/part-of: kratix
@@ -1485,6 +2600,9 @@ spec:
     protocol: TCP
     targetPort: 9443
   selector:
+    app.kubernetes.io/component: kratix-manager
+    app.kubernetes.io/instance: kratix-platform
+    app.kubernetes.io/part-of: kratix
     control-plane: controller-manager
 ---
 apiVersion: apps/v1
@@ -1515,18 +2633,18 @@ spec:
     spec:
       containers:
       - args:
+        - --metrics-bind-address=:8443
         - --health-probe-bind-address=:8081
-        - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
         command:
         - /manager
         env:
-        - name: WC_IMG
+        - name: PIPELINE_ADAPTER_IMG
           valueFrom:
             configMapKeyRef:
-              key: WC_IMG
-              name: kratix-platform-wc-img-config
-        image: docker.io/syntasso/kratix-platform:v0.125.0
+              key: PIPELINE_ADAPTER_IMG
+              name: kratix-platform-pipeline-adapter-config
+        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:4f6f14adf08a5e263dba7b7793401b247e3f9e3482e4391d0653a12755a4890d
         livenessProbe:
           httpGet:
             path: /healthz
@@ -1547,26 +2665,26 @@ spec:
         resources:
           limits:
             cpu: 100m
-            memory: 100Mi
+            memory: 256Mi
           requests:
             cpu: 100m
-            memory: 100Mi
+            memory: 256Mi
         securityContext:
           allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
           readOnly: true
-      - args:
-        - --secure-listen-address=0.0.0.0:8443
-        - --upstream=http://127.0.0.1:8080/
-        - --logtostderr=true
-        - --v=10
-        image: quay.io/brancz/kube-rbac-proxy:v0.8.0
-        name: kube-rbac-proxy
-        ports:
-        - containerPort: 8443
-          name: https
+        - mountPath: /tmp/k8s-metrics-server/serving-certs
+          name: metrics-certs
+          readOnly: true
       securityContext:
         runAsNonRoot: true
       serviceAccountName: kratix-platform-controller-manager
@@ -1576,6 +2694,38 @@ spec:
         secret:
           defaultMode: 420
           secretName: webhook-server-cert
+      - name: metrics-certs
+        secret:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          optional: false
+          secretName: metrics-server-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/component: certificate
+    app.kubernetes.io/created-by: kratix
+    app.kubernetes.io/instance: metrics-server-cert
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: certificate
+    app.kubernetes.io/part-of: kratix
+  name: kratix-platform-metrics-server-cert
+  namespace: kratix-platform-system
+spec:
+  dnsNames:
+  - kratix-platform-controller-manager-metrics-service.kratix-platform-system.svc
+  - kratix-platform-controller-manager-metrics-service.kratix-platform-system.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: kratix-platform-selfsigned-issuer
+  secretName: metrics-server-cert
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -1633,6 +2783,26 @@ webhooks:
     service:
       name: kratix-platform-webhook-service
       namespace: kratix-platform-system
+      path: /mutate-platform-kratix-io-v1alpha1-destination
+  failurePolicy: Fail
+  name: mdestination.kb.io
+  rules:
+  - apiGroups:
+    - platform.kratix.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - destinations
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: kratix-platform-webhook-service
+      namespace: kratix-platform-system
       path: /mutate-platform-kratix-io-v1alpha1-promise
   failurePolicy: Fail
   name: mpromise.kb.io
@@ -1662,6 +2832,46 @@ metadata:
     app.kubernetes.io/part-of: kratix
   name: kratix-platform-validating-webhook-configuration
 webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: kratix-platform-webhook-service
+      namespace: kratix-platform-system
+      path: /validate-platform-kratix-io-v1alpha1-bucketstatestore
+  failurePolicy: Fail
+  name: vbucketstatestore-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - platform.kratix.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - bucketstatestores
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: kratix-platform-webhook-service
+      namespace: kratix-platform-system
+      path: /validate-platform-kratix-io-v1alpha1-destination
+  failurePolicy: Fail
+  name: vdestination.kb.io
+  rules:
+  - apiGroups:
+    - platform.kratix.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - destinations
+  sideEffects: None
 - admissionReviewVersions:
   - v1
   clientConfig:
@@ -1701,4 +2911,25 @@ webhooks:
     - UPDATE
     resources:
     - promisereleases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: kratix-platform-webhook-service
+      namespace: kratix-platform-system
+      path: /validate-platform-kratix-io-v1alpha1-promiserevision
+  failurePolicy: Fail
+  name: vpromiserevision-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - platform.kratix.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - promiserevisions
   sideEffects: None
