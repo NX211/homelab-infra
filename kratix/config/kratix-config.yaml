@@ -1,11 +1,18 @@
 ---
 # KratixConfig (read from kratix-platform-system/kratix key "config" at
 # controller startup — restart the controller-manager after changing).
+#
 # numberOfJobsToKeep: 1 keeps a single completed workflow job per resource
-# instead of the default 5 — the drift-reconcile CronJob spawns a pipeline
-# pod every 15 min, and each retained completed pod drags the pipeline
-# adapter image's CVEs into the provisioning namespace's trivy reports
-# (5 pods x 6 criticals gated provisioning-engine's Gold).
+# instead of the default 5. NOTE: this key was inert until the Kratix bump that
+# lands alongside it — on v0.125.0 the value was a hardcoded Go const
+# (lib/workflow/reconciler.go: `const numberOfJobsToKeep = 5`), so the drift
+# reconcile kept 5 completed pipeline pods and trivy scanned every one of them.
+#
+# podTTLSecondsAfterFinished deletes the pod once it finishes, which is the
+# part that actually clears the reports: a retained pod is a scan target, and
+# the reconcile fires every 15 min, so pods (and their VulnerabilityReports)
+# accumulate faster than the weekly rescan retires them. 300s leaves a
+# five-minute window to `kubectl logs` a failed pipeline before it is reaped.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,3 +21,6 @@ metadata:
 data:
   config: |
     numberOfJobsToKeep: 1
+    workflows:
+      jobOptions:
+        podTTLSecondsAfterFinished: 300
