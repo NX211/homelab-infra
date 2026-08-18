@@ -211,7 +211,7 @@ staging-app:
     replicas: 1
     image:
       repository: us-central1-docker.pkg.dev/dispatchr-social/dispatchr-social/dispatchr-worker
-      digest: "sha256:23e53b5f9aab34c1715e181718a87b2034c44168e62dbb78066c0c7b24040195" # v0.4.3; updated by CI/CD (seeded to prod parity 2026-08-17)
+      digest: "sha256:0393126f174a51cb4f28db046d129dc0e4cf5f12bbfef5bb4802638d522c8fdb" # v0.4.3; updated by CI/CD (seeded to prod parity 2026-08-17)
     command: ["tsx", "packages/core/src/jobs/worker.ts"]
     healthPort: 8080
     healthPath: /healthz
