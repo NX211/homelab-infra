@@ -19,6 +19,9 @@ argo-cd:
       timeout.reconciliation: 180s
       # Enable API key generation for admin account
       accounts.admin: apiKey, login
+      # Read-only account for the Port Ocean ArgoCD integration (token minted for
+      # it, stored via ESO). Granted role:readonly below — never admin.
+      accounts.port-ocean-user: apiKey
       # Argo ships no built-in health assessment for the CloudNativePG Cluster
       # CR, so the `postgresql` app perpetually reported "Unknown" health even
       # while the database was up. This Lua check reads the CR's `Ready`
@@ -101,6 +104,12 @@ argo-cd:
           - .spec.selector
           - .spec.template.metadata.labels
 
+    rbac:
+      # Grant the Port integration account read-only access (admin stays admin;
+      # no policy.default change so other accounts are unaffected).
+      policy.csv: |
+        g, port-ocean-user, role:readonly
+
     params:
       # Run server without TLS (Traefik handles TLS termination)
       server.insecure: true
@@ -173,59 +182,13 @@ argo-cd:
         cpu: 100m
         memory: 128Mi
 
-    # The argocd-notifications-secret is populated by ExternalSecret (see
-    # templates/externalsecret-notifications.yaml), not by the Helm chart.
+    # No notifiers are configured. The previous on-staging-deployed ->
+    # gitops-trigger /promote webhook path was retired when promotion moved
+    # to the staging-promote.yml -> platform-infra staging/ok check_run
+    # chain; its notifier/template/trigger and the promote-token
+    # ExternalSecret were removed with it.
     secret:
       create: false
-
-    # Webhook service definition — called by the gitops-trigger-promote
-    # notifier below. Bearer token is read from the notifications secret
-    # at template evaluation time via `.secret.promote-token`.
-    notifiers:
-      service.webhook.gitops-trigger-promote: |
-        url: https://gitops-trigger.coreyalan.com/promote
-        headers:
-          - name: Content-Type
-            value: application/json
-          - name: Authorization
-            value: "Bearer $promote-token"
-
-    # Message templates
-    templates:
-      # Posts the currently-rolled-out image refs to gitops-trigger
-      # /promote so it can dispatch the deferred prod image-push event
-      # for any matching pending promotion. The prod app name comes from
-      # the staging Application's promotion.gitops-trigger/prod-app-name
-      # annotation so staging and prod app names don't have to match.
-      template.app-promote: |
-        webhook:
-          gitops-trigger-promote:
-            method: POST
-            body: |
-              {
-                "appName": "{{ index .app.metadata.annotations "promotion.gitops-trigger/prod-app-name" }}",
-                "images": {{ .app.status.summary.images | toJson }}
-              }
-
-    # Trigger conditions — fire the promotion webhook once per Git
-    # revision whenever a staging-* app reaches Healthy + Synced and has
-    # the prod-app-name annotation set. `oncePer` keyed on the sync
-    # revision prevents us from re-promoting on every reconcile.
-    triggers:
-      trigger.on-staging-deployed: |
-        - when: >-
-            app.metadata.name matches '^staging-.*'
-            and app.status.health.status == 'Healthy'
-            and app.status.sync.status == 'Synced'
-            and app.metadata.annotations != nil
-            and app.metadata.annotations["promotion.gitops-trigger/prod-app-name"] != ""
-          send: [app-promote]
-          oncePer: app.status.sync.revision
-
-    # Intentionally no default subscriptions — apps opt in via annotation:
-    #   notifications.argoproj.io/subscribe.on-staging-deployed.gitops-trigger-promote: ""
-    # See argocd/applications/staging-dispatchr.yaml for the pattern.
-    subscriptions: []
 
   # Dex - OAuth/SSO (disabled, using Authelia instead)
   dex:

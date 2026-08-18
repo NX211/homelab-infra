@@ -74,7 +74,7 @@ jobs:
 
       - name: Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.GITOPS_APP_ID }}
           private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
@@ -192,6 +192,9 @@ jobs:
           declare -A SMOKE_REPOS=(
             ["coreyalan-com"]="Corey-Alan-Consulting/coreyalan.com"
             ["blue-skysolutions-com"]="Corey-Alan-Consulting/blue-skysolutions.com"
+            ["dispatchr-social"]="Corey-Alan-Consulting/dispatchr.social"
+            ["jlshaw-link"]="Corey-Alan-Consulting/jlshaw.link"
+            ["capturly-web"]="Corey-Alan-Consulting/capturly.app"
           )
           # Per-app staging URL forwarded to the smoke workflow. Must have an
           # entry for every SMOKE_REPOS key (was hardcoded to coreyalan's host,
@@ -199,6 +202,9 @@ jobs:
           declare -A SMOKE_URLS=(
             ["coreyalan-com"]="https://staging.coreyalan.com"
             ["blue-skysolutions-com"]="https://staging.blue-skysolutions.com"
+            ["dispatchr-social"]="https://staging.dispatchr.social"
+            ["jlshaw-link"]="https://staging.jlshawconsulting.com"
+            ["capturly-web"]="https://staging.capturly.app"
           )
 
           REPO="${SMOKE_REPOS[$APP_NAME]:-}"
@@ -210,6 +216,11 @@ jobs:
           echo "skipped=false" >> "$GITHUB_OUTPUT"
           echo "smoke_repo=${REPO}" >> "$GITHUB_OUTPUT"
 
+          # NB: no pre-smoke health poll here — this job runs on a GitHub-hosted
+          # runner, which the staging IP-allowlist 403s, so any curl to staging
+          # from here always fails. Rollout-timing is handled inside the smoke
+          # suite itself, which now runs on the in-cluster homelab-staging runner
+          # (allowlisted) with Playwright retries.
           echo "Dispatching smoke tests to ${REPO}..."
           gh api "repos/${REPO}/dispatches" \
             -f event_type=staging-smoke-test \

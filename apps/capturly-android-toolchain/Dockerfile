@@ -5,9 +5,13 @@
 # Phase 0 cleanup). Bakes exactly what release-android needs so the ephemeral
 # build pod IS the environment and nothing is downloaded per run. Versions pinned
 # to apps/mobile/android/build.gradle: compileSdk 36 · buildToolsVersion 36.0.0 ·
-# ndkVersion 28.2.13676358 · JDK 17. Gradle comes from the repo wrapper (cached
-# on a PVC). Node/pnpm match the repo's packageManager.
-FROM eclipse-temurin:26-jdk-jammy
+# ndkVersion 28.2.13676358 · JDK 17. Gradle 9.0.0 is baked (matches the repo
+# wrapper) so the egress-locked untrusted lane needs no distribution download.
+# Node/pnpm match the repo's packageManager.
+# JDK 17 — required by Gradle 9 / AGP / React Native. The base had drifted to
+# temurin:26 (Java 26 = class-file major 70), which Gradle can't run on:
+# "Unsupported class file major version 70".
+FROM eclipse-temurin:17-jdk-jammy
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
@@ -41,12 +45,48 @@ RUN mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools \
     && mv ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest \
     && rm /tmp/cmdline-tools.zip
 ENV PATH=${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools
+# build-tools 34/35/36: RN modules default their build-tools via their own AGP
+# version (e.g. async-storage → 35.0.0), so bake the range the module set needs —
+# sdkmanager can't fetch them at build time in the egress-locked lane.
 RUN yes | sdkmanager --licenses > /dev/null \
     && sdkmanager --install \
        "platform-tools" \
        "platforms;${ANDROID_PLATFORM}" \
-       "build-tools;${ANDROID_BUILD_TOOLS}" \
-       "ndk;${ANDROID_NDK}" > /dev/null
+       "build-tools;36.0.0" \
+       "build-tools;35.0.0" \
+       "build-tools;34.0.0" \
+       "ndk;${ANDROID_NDK}" \
+       "cmake;3.22.1" > /dev/null
+
+# Bake the Gradle Plugin Portal plugins the RN gradle-plugin buildscript applies
+# (foojay-resolver + ktfmt) into a local file:// maven repo. The portal
+# 302-redirects artifact downloads to a CDN the untrusted lane's mirror can't
+# reliably follow; a baked repo removes that flaky network hop. Transitive deps
+# resolve from Maven Central via the mirror. Image build has egress.
+RUN mkdir -p /opt/offline-m2 && cd /opt/offline-m2 \
+    && for f in \
+         "org/gradle/toolchains/foojay-resolver-convention/org.gradle.toolchains.foojay-resolver-convention.gradle.plugin/0.5.0/org.gradle.toolchains.foojay-resolver-convention.gradle.plugin-0.5.0.pom" \
+         "org/gradle/toolchains/foojay-resolver/0.5.0/foojay-resolver-0.5.0.pom" \
+         "org/gradle/toolchains/foojay-resolver/0.5.0/foojay-resolver-0.5.0.jar" \
+         "org/gradle/toolchains/foojay-resolver/0.5.0/foojay-resolver-0.5.0.module" \
+         "com/ncorti/ktfmt/gradle/com.ncorti.ktfmt.gradle.gradle.plugin/0.22.0/com.ncorti.ktfmt.gradle.gradle.plugin-0.22.0.pom" \
+         "com/ncorti/ktfmt/gradle/plugin/0.22.0/plugin-0.22.0.pom" \
+         "com/ncorti/ktfmt/gradle/plugin/0.22.0/plugin-0.22.0.jar" \
+         "com/ncorti/ktfmt/gradle/plugin/0.22.0/plugin-0.22.0.module" ; do \
+         mkdir -p "$(dirname "$f")" \
+         && curl -fsSL -o "$f" "https://plugins.gradle.org/m2/$f" ; \
+       done \
+    && chmod -R a+rX /opt/offline-m2
+
+# Gradle baked (matches apps/mobile/android/gradle/wrapper — gradle-9.0.0). The
+# untrusted lane has no egress, so the wrapper can't self-download; the task
+# invokes this `gradle` instead of ./gradlew.
+ARG GRADLE_VERSION=9.0.0
+RUN curl -fsSL -o /tmp/gradle.zip \
+      https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip \
+    && unzip -q /tmp/gradle.zip -d /opt \
+    && ln -s /opt/gradle-${GRADLE_VERSION}/bin/gradle /usr/local/bin/gradle \
+    && rm /tmp/gradle.zip
 
 ENV CMAKE_C_COMPILER_LAUNCHER=ccache
 ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache

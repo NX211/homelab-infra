@@ -43,6 +43,7 @@ spec:
     - name: source
     - name: gcp-wif      # external_account WIF config → keyless AR push
     - name: github-app   # App key → ~1h clone token; no static git credential
+    - name: npmrc        # Verdaccio-proxy .npmrc → private @scope install, no token
   tasks:
     - name: clone
       workspaces:
@@ -50,11 +51,15 @@ spec:
           workspace: source
         - name: github-app
           workspace: github-app
+        - name: npmrc
+          workspace: npmrc
       taskSpec:
         workspaces:
           - name: output
           - name: github-app
             mountPath: /github-app
+          - name: npmrc
+            mountPath: /npmrc
         steps:
           - name: git-clone
             # Toolchain image (openssl + python3 + curl + git pre-baked) so the
@@ -85,6 +90,14 @@ spec:
               git clone "https://x-access-token:${token}@github.com/${slug}.git" .
               git remote set-url origin "https://github.com/${slug}.git"   # drop the token from .git/config
               [ -n "$(params.git-revision)" ] && git checkout "$(params.git-revision)" || true
+
+              # Drop a SCOPED-ONLY .npmrc into the build context: route only the
+              # private @scope through the Verdaccio proxy (no token in the image),
+              # leaving public deps (prisma, restate-sdk, …) on npmjs direct. The
+              # trusted tier has public egress; proxying large public tarballs
+              # through a cold Verdaccio cache is slow and flaky (ECONNRESET on
+              # @prisma/client). Keeping only the `@scope:registry=` line does that.
+              grep ':registry=' /npmrc/.npmrc > "$(workspaces.output.path)/.npmrc" 2>/dev/null || true
     - name: build
       runAfter: [clone]
       taskRef:

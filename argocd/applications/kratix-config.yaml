@@ -1,0 +1,35 @@
+---
+# Kratix state store + Destinations + git creds. Separate from the install app so
+# ArgoCD retries these until the CRDs + validating webhook are ready. Positive
+# sync-wave so the app-of-apps creates it after the install app.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kratix-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/nx211/homelab-infra.git
+    targetRevision: main
+    path: kratix/config
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kratix-platform-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

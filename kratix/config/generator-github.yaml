@@ -1,0 +1,21 @@
+---
+# Keyless state-store credential: mints a 1h GitHub App installation token scoped
+# to kratix-state (contents:write), refreshed before expiry — no static PAT.
+# TODO: after creating the dedicated App, fill appID + installID below.
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: GithubAccessToken
+metadata:
+  name: kratix-state-token
+  namespace: kratix-platform-system
+spec:
+  appID: "4415431"
+  installID: "149595521"
+  repositories:
+    - kratix-state
+  permissions:
+    contents: write
+  auth:
+    privateKey:
+      secretRef:
+        name: kratix-state-app-key
+        key: privateKey

@@ -38,7 +38,17 @@ spec:
           type: RuntimeDefault
       containers:
         - name: engine
-          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine:0.1.0
+          # Channel-built (Tekton container-build, tag v0.1.11) — v0.1.10 islands
+          # + sentry error tracking behind SENTRY_DSN. All five islands
+          # (spine/dns/email/app/staging) with reverse-order TEARDOWN (Registrar
+          # zones retained, teardown retries bounded) + reconcile VO +
+          # provisionOnboarding + provisionDecommission + GitOps Tenant CR commit.
+          # digest-pinned. RE-REGISTER Restate after this syncs (apply
+          # examples/restate-register-job.yaml) so provisionDecommission + the
+          # updated provisionTenant are discoverable. The app island also needs a
+          # GitHub App (actions:write) + PLATFORM_INFRA_REPO + ONBOARD_WORKFLOW_ID
+          # (and ONBOARD_TEARDOWN_WORKFLOW_ID for app teardown) before it dispatches.
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:3d20e8cbd33caa579718db705863cfb96795541b3427abb5b65abed137787d6a
           ports:
             - containerPort: 9080
           env:
@@ -49,6 +59,73 @@ spec:
                   key: uri
             - name: RESTATE_ADMIN
               value: http://restate.restate.svc.cluster.local:9070
+            # Error tracking (Port operational_readiness Gold signal). DSN is a
+            # public client key; inert until an engine image with the sentry
+            # init ships (provisioning-engine#10).
+            - name: SENTRY_DSN
+              value: https://3fc73fa33407a09fee6fbd768b5cd773@o4511020580995072.ingest.us.sentry.io/4511819698995200
+            - name: SENTRY_ENVIRONMENT
+              value: production
+            # Cloudflare (dns island). Read lazily at first reconcile, so the
+            # engine still boots if the secret isn't populated yet.
+            - name: CLOUDFLARE_API_TOKEN
+              valueFrom:
+                secretKeyRef: { name: provisioning-cloudflare, key: api-token }
+            - name: CLOUDFLARE_ACCOUNT_ID
+              valueFrom:
+                secretKeyRef: { name: provisioning-cloudflare, key: account-id }
+            # Mailgun + field cipher (email island). optional:true so the engine
+            # boots before the secrets land; the island only needs them when a
+            # tenant with provisionEmail reconciles.
+            - name: MAILGUN_API_KEY
+              valueFrom:
+                secretKeyRef: { name: provisioning-mailgun, key: api-key, optional: true }
+            - name: MAILGUN_ADMIN_KEY
+              valueFrom:
+                secretKeyRef: { name: provisioning-mailgun, key: admin-key, optional: true }
+            - name: STAGING_ACCESS_SECRET
+              valueFrom:
+                secretKeyRef: { name: provisioning-mailgun, key: cipher-secret, optional: true }
+            # Optional: when set, the dns island points the app hostname at this
+            # ingress. Unset = ensure the zone only (island handles absence).
+            # - name: PLATFORM_INGRESS_TARGET
+            #   value: staging-k8s.coreyalan.com
+            # GitOps handoff (onboarding workflow) — commits Tenant CRs to
+            # homelab-infra with a dedicated Contents:write App. optional:true so
+            # the engine boots before the Bitwarden secrets land; the onboarding
+            # commit throws a TerminalError if they're still missing when it runs.
+            - name: GIT_APP_ID
+              valueFrom:
+                secretKeyRef: { name: provisioning-git, key: app-id, optional: true }
+            - name: GIT_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef: { name: provisioning-git, key: app-private-key, optional: true }
+            - name: TENANTS_REPO
+              value: NX211/homelab-infra
+            - name: TENANTS_PATH
+              value: provisioning/tenants
+            - name: TENANTS_BRANCH
+              value: main
+            # App island — dispatches the GitHub Actions onboarding workflow.
+            # Needs a GitHub App with actions:write on PLATFORM_INFRA_REPO
+            # (distinct from the onboarding commit App). optional:true so the
+            # engine boots before the secrets land; the island only needs them
+            # when a tenant with appName+githubRepo reconciles.
+            - name: GITHUB_APP_ID
+              valueFrom:
+                secretKeyRef: { name: provisioning-app, key: github-app-id, optional: true }
+            - name: GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef: { name: provisioning-app, key: github-app-private-key, optional: true }
+            - name: GITHUB_APP_INSTALLATION_ID
+              valueFrom:
+                secretKeyRef: { name: provisioning-app, key: github-app-installation-id, optional: true }
+            - name: PLATFORM_INFRA_REPO
+              valueFrom:
+                secretKeyRef: { name: provisioning-app, key: platform-infra-repo, optional: true }
+            - name: ONBOARD_WORKFLOW_ID
+              valueFrom:
+                secretKeyRef: { name: provisioning-app, key: onboard-workflow-id, optional: true }
           resources:
             requests: { cpu: 25m, memory: 64Mi }
             limits: { cpu: 250m, memory: 256Mi }

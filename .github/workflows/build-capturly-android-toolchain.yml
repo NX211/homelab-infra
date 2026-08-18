@@ -27,21 +27,22 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write # keyless cosign signing (OIDC)
     steps:
       - name: Mint app token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.GITOPS_APP_ID }}
           private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           token: ${{ steps.app-token.outputs.token }}
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      - uses: docker/login-action@v4
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -49,7 +50,7 @@ jobs:
 
       - name: Build & push
         id: push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: apps/capturly-android-toolchain
           platforms: linux/amd64
@@ -61,7 +62,16 @@ jobs:
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:sha-${{ github.sha }}
 
-      - uses: mikefarah/yq@v4
+      # Keyless cosign signature so verify-image-signatures-business can verify
+      # ghcr.io/nx211/* by this workflow's OIDC identity. Sign by digest.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Sign image (keyless)
+        env:
+          IMAGE_DIGEST: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$IMAGE_DIGEST"
+
+      - uses: mikefarah/yq@1b9b4ac5187171d2e5e3129be0cfa827c7f9d53d # v4
 
       - name: Pin digest into the android-build pipeline
         env:
@@ -79,4 +89,12 @@ jobs:
           fi
           git add "$PIPELINE"
           git commit -m "chore(android-toolchain): pin image ${{ steps.push.outputs.digest }}"
-          git push
+          # Concurrent image builds each push a pin-back to main; rebase + retry
+          # so a non-fast-forward rejection self-heals (each build pins a
+          # different file, so the rebase never conflicts).
+          for attempt in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            echo "push rejected (attempt ${attempt}); rebasing onto origin/main"
+            git pull --rebase origin main
+          done
+          echo "::error::pin-back push failed after 5 attempts"; exit 1

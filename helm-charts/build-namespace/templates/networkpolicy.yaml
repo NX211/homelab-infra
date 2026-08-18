@@ -20,7 +20,9 @@ spec:
     - to: [{ namespaceSelector: {} }]
       ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
 ---
-# `checks` (arbitrary PR code): Verdaccio ONLY — no public egress, no lateral.
+# `checks` + `build` (arbitrary PR code): Verdaccio ONLY — no public egress, no
+# lateral. Both tasks run untrusted PR code that installs npm deps through the
+# proxy (nextjs in `checks`, android pnpm-workspace-deps in `build`).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -28,13 +30,14 @@ metadata:
   namespace: {{ include "bn.namespace" . }}
 spec:
   podSelector:
-    matchLabels: { tekton.dev/pipelineTask: checks }
+    matchExpressions:
+      - { key: tekton.dev/pipelineTask, operator: In, values: [checks, build] }
   policyTypes: [Egress]
   egress:
     - to:
         - namespaceSelector:
             matchLabels: { build.capturly/component: registry-proxy }
-      ports: [{ protocol: TCP, port: 4873 }]
+      ports: [{ protocol: TCP, port: 4873 }, { protocol: TCP, port: 8080 }]  # 4873 verdaccio (npm), 8080 prisma-engines mirror
 ---
 # `clone` (no PR code, git only): public HTTPS for the GitHub clone. Private
 # ranges + link-local (169.254 metadata) excluded (anti lateral-movement / SSRF).
@@ -89,6 +92,15 @@ spec:
         - ipBlock: { cidr: {{ .Values.cluster.serviceCidr }} }
       ports:
         - { protocol: TCP, port: 443 }
+    # Tekton Triggers core interceptors (github HMAC + CEL) live in tekton-pipelines
+    # on :8443. The EventListener sink runs in this namespace under the blanket
+    # podSelector, so without this its interceptor call is dropped and no trigger
+    # ever fires (the PipelineRun is never created).
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: tekton-pipelines }
+      ports:
+        - { protocol: TCP, port: 8443 }
     # Verdaccio npm registry proxy (in-cluster) — private-dep install, no token.
     - to:
         - namespaceSelector:

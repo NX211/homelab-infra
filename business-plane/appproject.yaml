@@ -36,6 +36,9 @@ spec:
     # Phase 2 Verdaccio npm registry proxy (untrusted-tier private-dep install).
     - server: https://kubernetes.default.svc
       namespace: build-registry-proxy
+    # Scaffolder lane (Port scaffold_app action → new app from app-template).
+    - server: https://kubernetes.default.svc
+      namespace: scaffolder
   # Tekton (operator + PaC + MAG) installs cluster-scoped CRDs/RBAC/webhooks; the
   # untrusted tier needs RuntimeClass; our apps apply the cluster-scoped
   # TektonConfig. First sync may surface an additional cluster kind an upstream
@@ -57,6 +60,11 @@ spec:
       kind: RuntimeClass
     - group: operator.tekton.dev
       kind: TektonConfig
+    # The untrusted build tier ships a Kyverno mutating ClusterPolicy
+    # (fix-tekton-entrypoint-perms-untrusted) so gVisor can exec Tekton's
+    # entrypoint — tekton-config manages it.
+    - group: kyverno.io
+      kind: ClusterPolicy
   namespaceResourceWhitelist:
     - group: "*"
       kind: "*"

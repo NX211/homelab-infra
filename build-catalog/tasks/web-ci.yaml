@@ -15,7 +15,7 @@ spec:
       type: string
       # Node+pnpm pre-baked (apps/build-web-toolchain) so the step runs non-root
       # (no `corepack enable` write to /usr/local). Digest pinned by CI.
-      default: ghcr.io/nx211/build-web-toolchain:0.1.0@sha256:acf668f6f9a7bbb9839b2eaef560efeeb88089cdcb0ce680c4c75062e10c4b45
+      default: ghcr.io/nx211/build-web-toolchain:0.6.0@sha256:b4e260cf5157d0bb2ece67236e072be7cb5199676e483045484faf7ed6ec36bd
   workspaces:
     - name: source
     - name: npmrc # configmap: .npmrc pointing at Verdaccio (no token)
@@ -24,17 +24,65 @@ spec:
     - name: checks
       image: $(params.node-image)
       workingDir: $(workspaces.source.path)
+      # Guaranteed CPU so the vitest suite doesn't starve under node contention.
+      # With no request, the step got scheduled with zero reserved CPU and, on a
+      # busy node under gVisor, tests hit their 15s wall-clock timeout. 4 cores
+      # reserved (burst to 8) gives the parallel test/build workers real time;
+      # well within the 32-core build nodes.
+      computeResources:
+        requests: { cpu: "4", memory: 4Gi }
+        limits: { cpu: "8", memory: 8Gi }
       env:
+        # A neutral, writable home — NOT the source workspace. With HOME at the
+        # repo root, ESLint's eslintrc mode treats the repo's root .eslintrc.*
+        # as a personal (home-dir) config and SUPPRESSES it for any package
+        # that carries its own .eslintrc layer; that package then lints without
+        # the shared TypeScript parser and every file fails to parse.
         - name: HOME
-          value: $(workspaces.source.path)
+          value: /tmp/build-home
+        # Keep pnpm's content-addressable store on the same filesystem as the
+        # workspace node_modules so installs hardlink instead of copying.
+        - name: npm_config_store_dir
+          value: $(workspaces.source.path)/.pnpm-store
         # Turbo/CI hints; no secrets.
         - name: CI
           value: "true"
+        # turbo 2.x defaults to strict env mode, which strips the toolchain's
+        # baked offline-build vars (PRISMA_QUERY_ENGINE_LIBRARY, ELECTRON_SKIP_*)
+        # from task processes, so `prisma generate` in a build task can't find the
+        # baked engine and tries to download it (blocked). loose passes the pod env
+        # through to tasks. Safe here: the untrusted tier is zero-secret by design.
+        - name: TURBO_ENV_MODE
+          value: loose
+        # prisma generate fetches engines from the per-tier prisma-engines mirror
+        # (a caching reverse-proxy to binaries.prisma.sh) instead of a version-
+        # pinned bake in the toolchain image — so any prisma version resolves
+        # offline. loose env-mode passes this through to the build tasks.
+        - name: PRISMA_ENGINES_MIRROR
+          value: http://prisma-mirror-untrusted.build-registry-proxy.svc.cluster.local:8080
+        # Vitest's `forks` pool sizes itself from os.cpus(), which under gVisor
+        # reports the 32-core NODE, not this step's 4–8 CPU cgroup — so it spawned
+        # ~18 forks that starved each other and blew the 15s test timeout (cold
+        # files timed out; siblings then failed on leaked mock state). Cap forks
+        # to the CPU budget and widen the timeouts as a backstop. Read by
+        # apps/web/vitest.config.ts; unset elsewhere so local/GitHub is unchanged.
+        - name: VITEST_MAX_FORKS
+          value: "6"
+        - name: VITEST_TEST_TIMEOUT_MS
+          value: "30000"
+        - name: VITEST_HOOK_TIMEOUT_MS
+          value: "30000"
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
         # pnpm is baked into the image (non-root); no corepack enable needed.
-        cp /config/npm/.npmrc "$HOME/.npmrc"   # registry = Verdaccio, no auth
+        mkdir -p "$HOME"
+        # Registry goes in the USER-level .npmrc. pnpm merges it with the repo's
+        # committed .npmrc (project scope wins per-key), so node-linker=hoisted
+        # stays intact — required: it hoists @types/node into the root
+        # node_modules where every package's tsc finds Node globals
+        # (Buffer/setTimeout) — and the repo file is never mutated.
+        cat /config/npm/.npmrc >> "$HOME/.npmrc"   # registry = Verdaccio, no auth
         pnpm install --frozen-lockfile
         # apps/web type-checks against the compiled dist/ of its workspace deps.
         pnpm --filter "@capturly/web^..." --if-present build

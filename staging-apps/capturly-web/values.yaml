@@ -27,11 +27,11 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web-migrate
-    digest: "sha256:835540cb1b60773bde4d5db1d3053ec4969078b37a457edc9a354e21e5d4339f" # Updated by CI/CD
+    digest: "sha256:e01debd73aa7a5ed9544ed462fd5bac1594a23efd15eeb8f2998ea580a6594d3" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
     pullPolicy: IfNotPresent
-    digest: "sha256:b931e1014a4ff7cfd134c884a9d45b468b4fcfd6d330e10275b843f62791ea13" # Updated by CI/CD
+    digest: "sha256:2def4eb6ae31f1fe3728d9941885436459dba6976a92260de758294b30f59cb1" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-capturly-web
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
@@ -81,6 +81,12 @@ staging-app:
       value: "true"
     - name: S3_TRANSFER_BUCKET
       value: capturly-transfer
+    # Studio cover art. Shares the prod bucket the same way GCP_TRANSFER_BUCKET
+    # does, and reuses the capturly-transfer-staging SA key already mounted
+    # below — no second long-lived credential. A bucket name is not a secret,
+    # so it rides here rather than through Bitwarden.
+    - name: GCP_STUDIO_ASSETS_BUCKET
+      value: capturly-studio-assets
     # Coreyalan integration — staging Capturly talks to staging Coreyalan
     # so contact + campaign data does not pollute production. API_KEY and
     # WEBHOOK_SECRET come from Bitwarden via the externalSecrets block below.

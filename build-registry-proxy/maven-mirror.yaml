@@ -1,0 +1,194 @@
+---
+# Maven/Gradle caching mirror (UNTRUSTED tier). nginx reverse-proxy to the three
+# upstreams an android assembleDebug resolves — Google Maven (AGP + androidx),
+# Maven Central (deps), Gradle Plugin Portal — so untrusted build pods fetch JVM
+# artifacts offline-from-mirror instead of the public internet (egress-locked by
+# design). Same pattern + per-tier isolation as verdaccio/prisma-mirror (H3):
+# untrusted-only ingress; its own egress to the public repos. Consumed via a
+# gradle init script in build-unsigned-apk that points every repository at the
+# mirror path prefixes below (/google, /central, /gradle-plugins).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: maven-mirror-config
+  namespace: build-registry-proxy
+data:
+  nginx.conf: |
+    worker_processes 1;
+    error_log /dev/stderr warn;
+    pid /tmp/nginx.pid;
+    events { worker_connections 1024; }
+    http {
+      access_log off;
+      # ipv6=off: the cluster has no IPv6 egress; without this nginx tries AAAA
+      # addresses first and fails "Network unreachable", intermittently disabling
+      # upstreams (flaky central/google) and corrupting the portal redirect
+      # (empty Location -> foojay 500).
+      resolver 10.43.0.10 ipv6=off valid=300s;   # kube-dns; for proxy_pass to public hosts
+      proxy_temp_path  /tmp/proxy_temp;
+      client_body_temp_path /tmp/client_temp;
+      proxy_cache_path /tmp/cache levels=1:2 keys_zone=maven:20m max_size=8g inactive=90d use_temp_path=off;
+
+      server {
+        listen 8080;
+        proxy_ssl_server_name on;
+        proxy_cache maven;
+        # Android release deps are immutable version-pinned artifacts; a flat TTL
+        # is fine for a CI cache (proxy_cache_valid takes no variable).
+        proxy_cache_valid 200 206 7d;
+        proxy_cache_valid 404 1m;
+        proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+        proxy_cache_lock on;
+        proxy_http_version 1.1;
+
+        # NOTE: every upstream uses a VARIABLE host + rewrite, not a literal
+        # proxy_pass URL. A literal hostname is resolved once via the system
+        # resolver (musl getaddrinfo → returns AAAA), so nginx tries IPv6 and
+        # fails "Network unreachable" (the cluster has no IPv6 egress). A variable
+        # host is resolved via the `resolver` directive above, where ipv6=off
+        # forces IPv4. This is what actually fixes the flaky upstreams.
+
+        # Google Maven — backs gradle google() (AGP, androidx, material).
+        location /google/ {
+          set $up_google "dl.google.com";
+          rewrite ^/google/(.*)$ /dl/android/maven2/$1 break;
+          proxy_pass https://$up_google;
+          proxy_set_header Host dl.google.com;
+        }
+        # Maven Central — backs gradle mavenCentral().
+        location /central/ {
+          set $up_central "repo.maven.apache.org";
+          rewrite ^/central/(.*)$ /maven2/$1 break;
+          proxy_pass https://$up_central;
+          proxy_set_header Host repo.maven.apache.org;
+        }
+        # Gradle Plugin Portal — plugins (foojay, ktfmt, …) 303-redirect their
+        # artifact downloads to a CDN the build pod can't reach, so follow the
+        # redirect server-side. Regex location with a NAMED CAPTURE + full path in
+        # proxy_pass — NOT `rewrite … break`, which clobbers $upstream_http_location
+        # in the error handler (empty Location -> 500).
+        location ~ ^/gradle-plugins/(?<gp_path>.*)$ {
+          set $up_portal "plugins.gradle.org";
+          proxy_pass https://$up_portal/m2/$gp_path;
+          proxy_set_header Host plugins.gradle.org;
+          proxy_intercept_errors on;
+          error_page 301 302 303 307 308 = @follow_redirect;
+        }
+        # JitPack — com.github.* deps built on-demand from GitHub tags (e.g.
+        # BlurView, pulled by @react-native-community/blur); also redirects.
+        location ~ ^/jitpack/(?<jp_path>.*)$ {
+          set $up_jitpack "jitpack.io";
+          proxy_pass https://$up_jitpack/$jp_path;
+          proxy_set_header Host jitpack.io;
+          proxy_intercept_errors on;
+          error_page 301 302 303 307 308 = @follow_redirect;
+        }
+        # Re-issue the upstream Location as a fresh proxied request. proxy_pass
+        # with a variable resolves via the resolver (ipv6=off) and defaults Host to
+        # the redirect target's host ($proxy_host) — do not override it.
+        location @follow_redirect {
+          internal;
+          # If the intercepted redirect had no capturable Location, return 404
+          # (not an "invalid URL prefix" 500). A 404 lets gradle fall through to
+          # the next repo (critical for dynamic-version maven-metadata.xml lookups
+          # like AGP 8.+ from google); a 500 aborts the whole resolution. Nothing
+          # actually needs this redirect to succeed — portal-only impls are baked.
+          if ($upstream_http_location = "") { return 404; }
+          proxy_ssl_server_name on;
+          proxy_pass $upstream_http_location;
+          proxy_cache maven;
+          proxy_cache_valid 200 206 7d;
+        }
+        location = /healthz { return 200 'ok'; add_header Content-Type text/plain; }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maven-mirror-untrusted
+  namespace: build-registry-proxy
+  labels: { app: maven-mirror-untrusted, app.kubernetes.io/name: maven-mirror }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: maven-mirror-untrusted }
+  template:
+    metadata:
+      labels: { app: maven-mirror-untrusted, app.kubernetes.io/name: maven-mirror }
+    spec:
+      enableServiceLinks: false
+      # uid/gid > 10000 (KSV-0020/0021), matches verdaccio/prisma-mirror.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: nginx
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+            seccompProfile: { type: RuntimeDefault }
+          ports: [{ containerPort: 8080, name: http }]
+          volumeMounts:
+            - { name: config, mountPath: /etc/nginx/nginx.conf, subPath: nginx.conf, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+            - { name: cache, mountPath: /var/cache/nginx }
+            - { name: confd, mountPath: /etc/nginx/conf.d }
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 3
+      volumes:
+        - { name: config, configMap: { name: maven-mirror-config } }
+        - { name: tmp, emptyDir: {} }
+        - { name: cache, emptyDir: {} }
+        - { name: confd, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maven-mirror-untrusted
+  namespace: build-registry-proxy
+spec:
+  selector: { app: maven-mirror-untrusted }
+  ports: [{ port: 8080, targetPort: 8080, name: http }]
+---
+# Egress: DNS + public HTTPS (the three Maven upstreams) only — mirrors prisma-mirror.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: maven-mirror-egress
+  namespace: build-registry-proxy
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: maven-mirror } }
+  policyTypes: [Egress]
+  egress:
+    - to: [{ namespaceSelector: {} }]
+      ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports: [{ protocol: TCP, port: 443 }]
+---
+# Per-tier ingress (H3): only untrusted-tier build namespaces may reach it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: maven-mirror-untrusted-ingress
+  namespace: build-registry-proxy
+spec:
+  podSelector: { matchLabels: { app: maven-mirror-untrusted } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { build.capturly/tier: untrusted }
+      ports: [{ protocol: TCP, port: 8080 }]

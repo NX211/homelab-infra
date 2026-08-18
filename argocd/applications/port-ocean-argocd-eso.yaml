@@ -1,0 +1,28 @@
+---
+# Creds ExternalSecret for the homelab Ocean ArgoCD integration. Split from the
+# Helm app so the Secret lands before the exporter pod. (Named -eso, not
+# -secret, because the repo .gitignore blocks *-secret.yaml.)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: port-ocean-argocd-eso
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: HEAD
+    path: port-ocean-argocd
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: port-ocean-argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

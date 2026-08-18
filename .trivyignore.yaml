@@ -1,0 +1,25 @@
+# Accepted misconfigurations. Scope each to its path so the CRITICAL gate still
+# catches new findings elsewhere.
+misconfigurations:
+  # Kratix platform controller (vendored install manifest). Its manager
+  # ClusterRole must manage tenant Secrets and bind/escalate Roles to provision
+  # tenants — that is the controller's job. Accepted, path-scoped.
+  - id: KSV-0041
+    paths:
+      - "kratix/install.yaml"
+  - id: KSV-0050
+    paths:
+      - "kratix/install.yaml"
+  # ar-token-refresher's Role must create/update the pull-secret it writes into
+  # each consuming namespace — that is the whole point of the component (same as
+  # the accepted staging/provisioning Roles). Accepted, path-scoped.
+  - id: KSV-0113
+    paths:
+      - "ar-token-refresher/rbac.yaml"
+  # prisma-engines + maven mirrors pull the upstream nginx-unprivileged image
+  # from docker.io (same as the sibling verdaccio proxy). No ghcr re-mirror yet;
+  # accepted, path-scoped. All other KSV findings on these files are hardened.
+  - id: KSV-0125
+    paths:
+      - "build-registry-proxy/prisma-mirror.yaml"
+      - "build-registry-proxy/maven-mirror.yaml"

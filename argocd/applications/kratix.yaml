@@ -1,0 +1,41 @@
+---
+# Kratix (L3, ADR-0018) — the platform-framework operator + CRDs, vendored from
+# the upstream `latest` release (github.com/syntasso/kratix, kratix.yaml asset).
+# Upstream stopped cutting semver tags after v0.125.0 (Jul 2024) and now ships a
+# rolling `latest`, so there is no version to pin to — re-vendor to refresh:
+#   curl -sL https://github.com/syntasso/kratix/releases/download/latest/kratix.yaml \
+#     -o kratix/install.yaml
+# Needs cert-manager (homelab has it) for the webhook serving cert.
+# ServerSideApply for the large CRDs; negative sync-wave so the operator + CRDs
+# land before the kratix-config app's CRs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kratix
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/nx211/homelab-infra.git
+    targetRevision: main
+    path: kratix
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

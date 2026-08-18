@@ -1,0 +1,47 @@
+---
+# ARC runner scale set "homelab-staging" — ephemeral GitHub Actions runners
+# that live in-cluster (arc-runners ns). They run the staging smoke suite so
+# it hits staging from an allowlisted in-cluster network instead of a
+# GitHub-hosted runner (which the staging Traefik IP-allowlist 403s).
+#
+# `runnerScaleSetName: homelab-staging` IS the `runs-on:` label in the app
+# repos' staging-smoke.yml. githubConfigSecret is created by ESO from the
+# staging-arc-runners GitHub App creds (Workbench BWS project).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-scaleset-staging
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set
+    targetRevision: 0.14.2
+    helm:
+      releaseName: homelab-staging
+      valuesObject:
+        githubConfigUrl: https://github.com/Corey-Alan-Consulting
+        # Pre-created by ESO (business-plane/arc-github-config-externalsecret.yaml)
+        githubConfigSecret: staging-arc-github-config
+        runnerScaleSetName: homelab-staging
+        minRunners: 0
+        maxRunners: 2
+        # Point the scale set at the controller installed above so its
+        # listener RBAC is granted to the right ServiceAccount.
+        controllerServiceAccount:
+          namespace: arc-systems
+          name: arc-gha-rs-controller
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-runners
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

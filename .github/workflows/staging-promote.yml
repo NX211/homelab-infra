@@ -13,17 +13,23 @@ on:
 jobs:
   promote:
     name: Dispatch prod gitops update
+    # `promote` is set by gitops-staging-update.yml only on the PR whose
+    # dispatch carried a v<semver> release tag — one per release. Without it,
+    # the git-SHA tag pubsub event for the same push produced a second
+    # staging PR and a duplicate prod promotion (paired promote_to_production
+    # Port runs, moved prod-PR heads, announce builds failing ALREADY_SENT).
     if: >
       github.event.pull_request.merged == true &&
-      contains(github.event.pull_request.labels.*.name, 'staging')
+      contains(github.event.pull_request.labels.*.name, 'staging') &&
+      contains(github.event.pull_request.labels.*.name, 'promote')
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install yq
-        uses: mikefarah/yq@v4
+        uses: mikefarah/yq@1b9b4ac5187171d2e5e3129be0cfa827c7f9d53d # v4
 
       - name: Extract app info from PR
         id: app-info
@@ -63,14 +69,25 @@ jobs:
             exit 1
           fi
 
-          # The staging chart currently only exposes the web image under
-          # .staging-app.image.*. When worker staging support is added,
-          # this step will need to select the correct values path based
-          # on IMAGE_SHORT (e.g. worker → .worker.image.*).
-          DIGEST=$(yq eval '.["staging-app"].image.digest' "${VALUES_FILE}")
-          IMAGE=$(yq eval '.["staging-app"].image.repository' "${VALUES_FILE}")
+          # Select the values path by IMAGE_SHORT — worker images live under
+          # .staging-app.worker.image.* and have no migrate sibling (mirror of
+          # the routing in gitops-staging-update.yml and platform-infra's
+          # gitops-update.yml).
+          if [[ "$IMAGE_SHORT" == *-worker ]]; then
+            DIGEST=$(yq eval '.["staging-app"].worker.image.digest' "${VALUES_FILE}")
+            IMAGE=$(yq eval '.["staging-app"].worker.image.repository' "${VALUES_FILE}")
+            MIGRATE_DIGEST=""
+          else
+            DIGEST=$(yq eval '.["staging-app"].image.digest' "${VALUES_FILE}")
+            IMAGE=$(yq eval '.["staging-app"].image.repository' "${VALUES_FILE}")
+            MIGRATE_DIGEST=$(yq eval '.["staging-app"].migration.digest // ""' "${VALUES_FILE}")
+          fi
           TAG=$(yq eval '.appVersion' "${CHART_FILE}" 2>/dev/null || echo "")
-          MIGRATE_DIGEST=$(yq eval '.["staging-app"].migration.digest // ""' "${VALUES_FILE}")
+
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+            echo "ERROR: No digest found at the ${IMAGE_SHORT} values path in ${VALUES_FILE}"
+            exit 1
+          fi
 
           echo "app_name=${APP_NAME}" >> "$GITHUB_OUTPUT"
           echo "image_short=${IMAGE_SHORT}" >> "$GITHUB_OUTPUT"
@@ -83,7 +100,7 @@ jobs:
 
       - name: Generate GitHub App token for production dispatch
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
           app-id: ${{ secrets.GITOPS_APP_ID }}
           private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}

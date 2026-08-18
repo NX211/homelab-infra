@@ -1,0 +1,127 @@
+---
+# Reusable catalog Task: build an UNSIGNED Android debug APK for the untrusted
+# PR / branch-check tier. It answers "does this branch compile?" — pnpm workspace
+# deps (via the per-tier Verdaccio proxy, no npm token) → gradle assembleDebug
+# (debug signing config only; NO release keystore, NO Sentry, NO Play publish).
+# The signed release flow is build-signed-aab.yaml (trusted tier). Zero-secret:
+# this Task mounts no keystore/WIF/GitHub-App workspace.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: build-unsigned-apk
+  labels:
+    app.kubernetes.io/part-of: build-catalog
+spec:
+  params:
+    - name: toolchain-image
+      description: Node+pnpm+JDK17+Android SDK/NDK image the build runs in.
+      type: string
+    - name: mobile-dir
+      description: Path to the mobile app within the repo.
+      type: string
+      default: apps/mobile
+  workspaces:
+    - name: source        # cloned repo
+    - name: gradle-cache  # persistent ~/.gradle (baked offline deps land here)
+      optional: true
+    - name: npmrc         # configMap: .npmrc pointing at Verdaccio (no token)
+      mountPath: /config/npm
+  steps:
+    - name: pnpm-workspace-deps
+      image: $(params.toolchain-image)
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: HOME
+          value: $(workspaces.source.path)
+        - name: CI
+          value: "true"
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        # APPEND the Verdaccio registry — do NOT overwrite. HOME is the repo root,
+        # so its checked-in .npmrc (node-linker=hoisted, required for React Native
+        # to resolve @react-native/gradle-plugin) must be preserved. cp clobbered it.
+        cat /config/npm/.npmrc >> "$HOME/.npmrc"   # registry = Verdaccio, no auth
+        # node-linker=hoisted installs ONE flat node_modules for the whole
+        # workspace — pnpm --filter can't isolate a subset under hoisted mode, so
+        # the desktop lane (electron/keytar/@parcel/watcher) is installed too and
+        # its postinstalls fetch prebuilt binaries from the public internet, which
+        # the untrusted lane blocks. --ignore-scripts skips all install scripts:
+        # the android gradle build needs none (native code builds via gradle
+        # autolinking, not npm postinstall; workspace dist/ is built next).
+        pnpm install --frozen-lockfile --ignore-scripts
+        # Metro resolves workspace deps via their built dist/ — compile first.
+        pnpm --filter "@capturly/mobile^..." --if-present build
+    - name: gradle-assemble-debug
+      image: $(params.toolchain-image)
+      # React Native: the Gradle project (gradlew + app/) lives in <mobile-dir>/android.
+      workingDir: $(workspaces.source.path)/$(params.mobile-dir)/android
+      # kata sizes the pod VM to the memory limit; gradle (-Xmx2048m) + Kotlin/R8/
+      # NDK native compilation OOMs under kata's small default. Match web-ci.
+      computeResources:
+        requests: { cpu: "4", memory: 4Gi }
+        limits: { cpu: "8", memory: 8Gi }
+      env:
+        - name: HOME
+          value: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        # Debug build only — uses the auto-generated debug keystore, no release
+        # signing material. Compiles RN + native/NDK; that's the PR-check signal.
+
+        # Route every Gradle repository at the in-cluster Maven mirror — the
+        # untrusted lane blocks public egress, so google()/mavenCentral() would
+        # fail. clear() drops the project's public repos so only the mirror is
+        # used; covers pluginManagement + dependencyResolutionManagement (settings
+        # level, needed under FAIL_ON_PROJECT_REPOS) and buildscript/project repos.
+        MIRROR=http://maven-mirror-untrusted.build-registry-proxy.svc.cluster.local:8080
+        cat > "$HOME/mirror.init.gradle" <<GRADLE
+        // allowInsecureProtocol: the mirror is in-cluster http (no TLS); gradle 9
+        // rejects http repos without explicit opt-in.
+        // /gradle-plugins is LAST and used ONLY for plugin markers, which the
+        // portal serves directly (200, no redirect). Portal-only plugin *impls*
+        // that DO 303-redirect (foojay, ktfmt) are baked in offline-m2 (first);
+        // every other impl (e.g. spotless) is on central/google. So no impl ever
+        // reaches the portal's flaky redirect-follow — only 200 marker fetches do.
+        def useMirror = { org.gradle.api.artifacts.dsl.RepositoryHandler h ->
+          h.clear()
+          h.maven { url = "file:///opt/offline-m2" }   // baked portal plugin impls (foojay, ktfmt)
+          h.maven { url = "${MIRROR}/google/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/central/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/jitpack/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/gradle-plugins/"; allowInsecureProtocol = true }   // markers only (200)
+        }
+        // gradle-plugins LAST: plugin *impls* (e.g. org.gradle.toolchains:foojay-
+        // resolver) are on Maven Central, which serves them directly; the portal
+        // proxy needs a flaky redirect-follow. Trying central/google first means
+        // only the tiny plugin *marker* (portal-only, no redirect) uses the portal.
+        def addMirror = { org.gradle.api.artifacts.dsl.RepositoryHandler h ->
+          h.maven { url = "file:///opt/offline-m2" }   // foojay + ktfmt baked in the image
+          h.maven { url = "${MIRROR}/central/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/google/"; allowInsecureProtocol = true }
+          h.maven { url = "${MIRROR}/gradle-plugins/"; allowInsecureProtocol = true }   // markers only (200)
+        }
+        // pluginManagement + the settings plugins{} block resolve DURING settings
+        // evaluation (before settingsEvaluated), incl. for included builds like
+        // @react-native/gradle-plugin (which applies foojay-resolver). Inject the
+        // mirror in beforeSettings so it's present in time; settingsEvaluated then
+        // clear()s the public repos the script added.
+        beforeSettings { s ->
+          s.pluginManagement.repositories { addMirror(delegate) }
+          s.dependencyResolutionManagement.repositories { addMirror(delegate) }
+        }
+        settingsEvaluated { s ->
+          s.pluginManagement.repositories { useMirror(delegate) }
+          s.dependencyResolutionManagement.repositories { useMirror(delegate) }
+        }
+        allprojects {
+          buildscript.repositories { useMirror(delegate) }
+          repositories { useMirror(delegate) }
+        }
+        GRADLE
+
+        # Baked gradle (toolchain image), not ./gradlew — the wrapper would
+        # self-download its distribution, which the untrusted lane's egress blocks.
+        gradle assembleDebug --no-daemon --init-script "$HOME/mirror.init.gradle"
+        ls -la app/build/outputs/apk/debug/ || true

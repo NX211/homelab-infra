@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "argocd": {
+    "fileMatch": ["argocd/applications/cloudnativepg-operator\\.yaml$"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track annotated image/imageName pins in raw manifests so digest/tag pins can't freeze on a vulnerable build",
+      "fileMatch": [
+        "provisioning/webhook\\.yaml$",
+        "provisioning/control-db\\.yaml$"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\s+(?:image|imageName): [^\\s@:]+(?::(?<currentValue>[^\\s@]+))?(?:@(?<currentDigest>sha256:[a-f0-9]+))?"
+      ],
+      "datasourceTemplate": "{{{datasource}}}",
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}docker{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "Track the vendored Kratix distribution image. Upstream ships one image that serves as both the controller-manager and the pipeline adapter, referenced twice in install.yaml (Deployment image + PIPELINE_ADAPTER_IMG); both carry the same digest and must move together, so one matchString covers both. Not comment-annotated because install.yaml is vendored wholesale and in-file comments do not survive a re-vendor. Digests are resolved from canonical Docker Hub, not from the syntasso-community.docker.reo.dev vanity host the manifest pulls through: that host is a third-party 307 redirector to registry-1.docker.io, and letting it decide which digest we trust would put it in a position to hand Renovate an attacker-chosen image. Resolving upstream keeps it a transport only — the digest pin means a substituted image fails the content check rather than running. This keeps the image (the part that carries CVEs) current; the CRDs/RBAC around it still need a periodic re-vendor per the procedure in argocd/applications/kratix.yaml.",
+      "fileMatch": [
+        "kratix/install\\.yaml$"
+      ],
+      "matchStrings": [
+        "(?:image|PIPELINE_ADAPTER_IMG): syntasso-community\\.docker\\.reo\\.dev/syntasso/kratix-platform@(?<currentDigest>sha256:[a-f0-9]+)"
+      ],
+      "depNameTemplate": "docker.io/syntasso/kratix-platform",
+      "packageNameTemplate": "docker.io/syntasso/kratix-platform",
+      "datasourceTemplate": "docker",
+      "currentValueTemplate": "latest",
+      "versioningTemplate": "docker"
+    }
+  ]
+}

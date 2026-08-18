@@ -60,3 +60,29 @@ subjects:
   - kind: ServiceAccount
     name: ar-token-refresher
     namespace: ar-pull-system
+---
+# capturly-live (live.capturly.app web + signaling) pulls from the capturly AR —
+# the refresher writes its pull secret here too.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ar-pull-secret-writer
+  namespace: capturly-live
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ar-token-refresher
+  namespace: capturly-live
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ar-pull-secret-writer
+subjects:
+  - kind: ServiceAccount
+    name: ar-token-refresher
+    namespace: ar-pull-system

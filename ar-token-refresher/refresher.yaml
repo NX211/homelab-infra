@@ -84,6 +84,21 @@ data:
       "  .dockerconfigjson: ${DOCKERCFG_B64}" \
       | kubectl apply -f -
     echo "refreshed provisioning: gcr-pull-secret-provisioning-engine"
+
+    # capturly-live (live.capturly.app web + signaling, capturly AR) — same token.
+    printf '%s\n' \
+      'apiVersion: v1' \
+      'kind: Secret' \
+      'metadata:' \
+      '  name: gcr-pull-secret-capturly-live' \
+      '  namespace: capturly-live' \
+      '  annotations:' \
+      '    reloader.stakater.com/ignore: "true"' \
+      'type: kubernetes.io/dockerconfigjson' \
+      'data:' \
+      "  .dockerconfigjson: ${DOCKERCFG_B64}" \
+      | kubectl apply -f -
+    echo "refreshed capturly-live: gcr-pull-secret-capturly-live"
 ---
 apiVersion: batch/v1
 kind: CronJob

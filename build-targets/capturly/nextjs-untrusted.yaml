@@ -1,14 +1,29 @@
-# Inventory entry: capturly web/nextjs PR checks (untrusted tier).
+# Inventory entry: capturly untrusted build namespace (PR / branch checks).
 # Rendered by charts/build-namespace via the build-targets ApplicationSet.
 # namespace -> capturly-builds-untrusted ; pipeline SA -> capturly-nextjs-untrusted.
+# This one target owns the shared capturly-builds-untrusted namespace + the single
+# `capturly` PaC Repository; BOTH the nextjs (.tekton/nextjs-*.yaml, gVisor) and
+# android (.tekton/android-*.yaml, kata) untrusted lanes run here, routed by PaC
+# to the right .tekton PipelineRun. gradleCache serves the android assembleDebug.
 project: capturly
 channel: nextjs
 tier: untrusted
 repo: Corey-Alan-Consulting/capturly.app
 runtimeClass: gvisor
 
+# Persistent ~/.gradle for the android untrusted assembleDebug (shared namespace).
+gradleCache:
+  enabled: true
+
 # No pac.policy: use PaC's default ACL (owner + write-collaborators auto-run;
 # external/fork PRs need a maintainer /ok-to-test). The capturly-maintainers team
 # does not exist in the Corey-Alan-Consulting org, and naming a missing team makes
 # the policy check 404 and deny everyone. Add a real team slug here only if one is
 # created.
+
+# On-demand branch builds via the Port build_branch action: an authorized POST to
+# the PaC /incoming endpoint runs .tekton/nextjs-incoming.yaml for the requested
+# branch (any branch, per targets glob).
+incoming:
+  secretKey: 6e103eb4-23ad-409b-8f73-b49800d3826f   # CAPTURLY_PAC_INCOMING_SECRET
+  targets: ["**"]

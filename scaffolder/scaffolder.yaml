@@ -1,0 +1,213 @@
+---
+# Scaffolder lane — a bespoke PRIVILEGED build namespace (not a build-namespace
+# chart target). Unlike the per-project build lanes it needs BOTH an incoming
+# webhook (triggered by Port's scaffold_app action) AND egress (GitHub API to
+# create repos, Anthropic API for the agent). So it's hand-rolled here rather
+# than rendered from helm-charts/build-namespace (which couples incoming↔untrusted
+# and egress↔trusted). Runs scaffold-app.sh from platform-infra.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scaffolder
+  labels:
+    build.capturly/lane: scaffolder
+    # restricted-but-permitted: the pipeline runs non-root; no privileged pods.
+    pod-security.kubernetes.io/enforce: baseline
+---
+# Pipeline ServiceAccount. No cloud identity, no linked git secret: the scaffold
+# task mints a short-lived GitHub App installation token at run time.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scaffolder-runner
+  namespace: scaffolder
+---
+# Pipelines-as-Code Repository for the scaffolder. INCOMING-ONLY: Port's
+# scaffold_app action POSTs to the PaC /incoming endpoint with the shared secret
+# and the scaffold inputs, running .tekton/scaffold-app-incoming.yaml on
+# platform-infra's main. No PR events run here (the PipelineRun is on-event:
+# [incoming] only). The PaC GitHub App must be installed on platform-infra.
+apiVersion: pipelinesascode.tekton.dev/v1alpha1
+kind: Repository
+metadata:
+  name: scaffolder
+  namespace: scaffolder
+spec:
+  url: https://github.com/Corey-Alan-Consulting/platform-infra
+  incoming:
+    - type: webhook-url
+      secret:
+        name: scaffolder-pac-incoming
+        key: secret
+      targets: ["main"]
+---
+# Shared PaC /incoming secret — the SAME value the Port scaffold_app action sends
+# as {{ .secrets.PAC_INCOMING_SECRET }} (BWS CAPTURLY_PAC_INCOMING_SECRET, also
+# used by build_branch). Build Platform project has the working store.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-pac-incoming
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-pac-incoming
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: secret
+      remoteRef: { key: 6e103eb4-23ad-409b-8f73-b49800d3826f }   # CAPTURLY_PAC_INCOMING_SECRET
+---
+# Anthropic Workload Identity Federation config for the agent pass. These are
+# NOT credentials — they're the WIF identifiers the Claude SDK needs; auth is the
+# projected SA token (see the anthropic-oidc-token volume in scaffold-app.yaml),
+# which the SDK exchanges for a short-lived Anthropic token. Replaces the old
+# static SCAFFOLDER_ANTHROPIC_API_KEY (now retired in BWS).
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-anthropic
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-anthropic
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: federation-rule-id
+      remoteRef: { key: f6d79c8f-0e33-42a4-afa0-b49a004002f1 }   # SCAFFOLDER_ANTHROPIC_FEDERATION_RULE_ID
+    - secretKey: service-account-id
+      remoteRef: { key: 2f505149-9f58-4263-8a8a-b49a004024c2 }   # SCAFFOLDER_ANTHROPIC_SERVICE_ACCOUNT_ID
+    - secretKey: organization-id
+      remoteRef: { key: b07ea975-9fb4-4a38-ae36-b49a00404981 }   # SCAFFOLDER_ANTHROPIC_ORGANIZATION_ID
+    - secretKey: workspace-id
+      remoteRef: { key: 9d1aadfa-2edf-4d3b-9aa7-b49a00405a8f }   # SCAFFOLDER_ANTHROPIC_WORKSPACE_ID
+---
+# Scaffolder GitHub App credentials (Administration:write + Contents:write + PRs).
+# The task mints a ~1h ORG installation token from these — no static git secret.
+# Fill the placeholders after creating + installing the App on the org.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-github-app
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-github-app
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: app-id
+      remoteRef: { key: f9b73dcd-32fa-4973-841d-b499004e35de }   # SCAFFOLDER_GITHUB_APP_ID
+    - secretKey: app-private-key
+      remoteRef: { key: 0b01607c-cdef-4c1d-a5fa-b499004e3611 }   # SCAFFOLDER_GITHUB_APP_PRIVATE_KEY
+---
+# Second GitHub App — owned by the NX211 personal account, installed on
+# NX211/homelab-infra (Contents:write + PRs:write). The Corey-Alan-Consulting
+# app can't install on a personal account (enterprise policy) and
+# /orgs/<user>/installation 404s for a user account, so homelab-infra staging
+# PRs mint their token from THIS app via a repo-scoped installation lookup.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-homelab-github-app
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-homelab-github-app
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: app-id
+      remoteRef: { key: 197dbff7-53ac-46bc-a198-b49a00eeb310 }   # SCAFFOLDER_HOMELAB_GITHUB_APP_ID
+    - secretKey: app-private-key
+      remoteRef: { key: ada0a469-ad93-4de6-b91e-b49a00eee853 }   # SCAFFOLDER_HOMELAB_GITHUB_APP_PRIVATE_KEY
+---
+# Cloudflare API token (Zone:Edit + DNS:Edit). scaffold-dns.sh uses it to create
+# the app's zone + apex/staging records. Mounted as the `cloudflare` workspace,
+# file api-token.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-cloudflare
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-cloudflare
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: api-token
+      remoteRef: { key: a043a87a-64c3-4515-81de-b4990101641e }   # SCAFFOLDER_CLOUDFLARE_TOKEN
+---
+# BWS write token — onboard-app.sh --yes uses it to create the app's Bitwarden
+# project + secret placeholders. Distinct from ESO's own machine-account auth.
+# Mounted as the `bws` workspace, file access-token.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-bws
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-bws
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: access-token
+      remoteRef: { key: 76802c92-daef-47bb-8af7-b49901016452 }   # SCAFFOLDER_BWS_ACCESS_TOKEN
+    # Bearer for coreyalan.com /api/scaffold/brand-kit/<slug> — the brand-kit
+    # resolve step reads it from the `bws` workspace file `scaffold-read-token`.
+    # MIRROR of the app-side SCAFFOLD_READ_TOKEN (Corey Alan Consulting project);
+    # same value on purpose. Rotate both together.
+    - secretKey: scaffold-read-token
+      remoteRef: { key: a8408b74-c87f-4518-a436-b49a011a5112 }   # SCAFFOLDER_READ_TOKEN (Build Platform)
+---
+# Egress: DNS + k8s API (Tekton orchestration) + public HTTPS (GitHub, Anthropic,
+# npm for the claude/gh CLIs). Private ranges excluded (anti lateral-movement),
+# except the in-cluster API server/service CIDRs above. This lane is privileged
+# by nature (it creates repos) — kept to 443 out + the two cluster CIDRs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scaffolder-egress
+  namespace: scaffolder
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to: [{ namespaceSelector: {} }]
+      ports: [{ protocol: UDP, port: 53 }, { protocol: TCP, port: 53 }]
+    - to: [{ ipBlock: { cidr: 10.20.0.250/32 } }]   # kube-apiserver
+      ports: [{ protocol: TCP, port: 6443 }]
+    - to: [{ ipBlock: { cidr: 10.43.0.1/32 } }]     # in-cluster kubernetes Service
+      ports: [{ protocol: TCP, port: 443 }]
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports: [{ protocol: TCP, port: 443 }]

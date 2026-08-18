@@ -25,8 +25,12 @@ superseded). Design: [ADR-0017](../../../framework/decisions/0017-tekton-build-p
    needs the runsc binary + a containerd runtime entry. The tracked installer +
    template live in **`node-bootstrap/gvisor/`** (which nodes, exact steps,
    verification, and the optional full-GitOps DaemonSet/SUC path). A rebuilt node
-   silently loses the sandbox until re-run. Kata (for the Android/NDK untrusted
-   channel) is added later via `kata-deploy`.
+   silently loses the sandbox until re-run. Kata (for the Android/NDK channels —
+   trusted release + untrusted branch check) installs the same way: the tracked
+   installer + steps live in **`node-bootstrap/kata/`** (`install-kata.sh`, KVM
+   preflight, per-node run, verification). Run it on every build node before
+   using `runtimeClassName: kata`, or android pods fail with
+   `no runtime for "kata" is configured`.
 2. **Pin/verify release versions** before first sync:
    - operator `tekton/operator/kustomization.yaml` (v0.78.0 LTS)
    - PaC `tekton/pac/kustomization.yaml` (`release.k8s.yaml`, v0.41.1)

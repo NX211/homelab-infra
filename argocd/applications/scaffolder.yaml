@@ -1,0 +1,45 @@
+---
+# Scaffolder lane — namespace + PaC Repository (incoming) + ExternalSecrets +
+# egress netpol for the Port scaffold_app self-service action. Privileged (creates
+# repos via a GitHub App); runs scaffold-app.sh from platform-infra. Syncs after
+# the registry proxy (wave 0, like the build targets).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: scaffolder
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: scaffolder
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: scaffolder
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  # ESO / PaC admission webhooks default fields the chart doesn't set.
+  ignoreDifferences:
+    - group: external-secrets.io
+      kind: ExternalSecret
+      jqPathExpressions:
+        - '.spec.data[].remoteRef.conversionStrategy'
+        - '.spec.data[].remoteRef.decodingStrategy'
+        - '.spec.data[].remoteRef.metadataPolicy'

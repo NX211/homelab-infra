@@ -13,8 +13,14 @@ metadata:
   name: arc-systems
   labels:
     plane: business
-    pod-security.kubernetes.io/audit: restricted
-    pod-security.kubernetes.io/warn: restricted
+    # ARC-managed pods can't satisfy 'restricted': the ephemeral runners
+    # apt-install at job time (playwright install --with-deps) and the ARC
+    # listener pod sets no securityContext. Baseline is the level ARC documents
+    # for its namespaces. These are TRUSTED first-party smoke runners; the
+    # untrusted build lane keeps gVisor + restricted separately via Tekton.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
 ---
 apiVersion: v1
 kind: Namespace
@@ -22,5 +28,11 @@ metadata:
   name: arc-runners
   labels:
     plane: business
-    pod-security.kubernetes.io/audit: restricted
-    pod-security.kubernetes.io/warn: restricted
+    # ARC-managed pods can't satisfy 'restricted': the ephemeral runners
+    # apt-install at job time (playwright install --with-deps) and the ARC
+    # listener pod sets no securityContext. Baseline is the level ARC documents
+    # for its namespaces. These are TRUSTED first-party smoke runners; the
+    # untrusted build lane keeps gVisor + restricted separately via Tekton.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline

@@ -39,6 +39,16 @@ pac:
     pull_request: []
     ok_to_test: []
 
+# PaC incoming webhook (untrusted): lets an authorized caller (e.g. the Port
+# build_branch self-service action) POST to the PaC /incoming endpoint to build
+# an arbitrary branch on demand, reusing the .tekton/ incoming PipelineRun — no
+# PR required. The shared secret is synced from Bitwarden into <project>-pac-incoming;
+# the caller must present the same value. Empty secretKey => no incoming block.
+incoming:
+  store: bitwarden-build-platform
+  secretKey: ""              # Bitwarden UUID of the shared incoming secret
+  targets: ["**"]           # glob branches the incoming webhook may build
+
 # ---------------- trusted tier ------------------
 # Dedicated Contents:read build App (H4). The clone step mints a ~1h installation
 # token from these at build time — no static git credential.
@@ -54,7 +64,7 @@ webhook:
 
 # Channel signing material (e.g. Android keystore). Empty list => no signing ES.
 signing:
-  store: bitwarden-capturly
+  store: bitwarden-capturly-signing
   keys: []              # list of { secretKey, remoteRef, comment? }
 
 # Keyless GCP via Workload Identity Federation (external_account, no downloaded key).
@@ -76,6 +86,7 @@ triggers:
   host: ""                    # tekton-trusted.<project>.example (public, webhook sink)
   tagPrefix: ""               # refs/tags/@capturly/mobile@
   sourceWorkspaceSize: 8Gi
+  sourceWorkspaceStorageClass: local-path   # local-path is not the default SC; unset never binds
   pipeline:                   # git-resolved channel pipeline (design §4)
     url: https://github.com/NX211/homelab-infra.git
     revision: main

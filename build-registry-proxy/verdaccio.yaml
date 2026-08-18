@@ -58,14 +58,16 @@ spec:
           ports: [{ containerPort: 4873, name: http }]
           env:
             - { name: VERDACCIO_PORT, value: "4873" }
+            # Node caps old-space ~256MB by default; installs OOM'd the pod.
+            - { name: NODE_OPTIONS, value: "--max-old-space-size=768" }
             - name: NPM_TOKEN
               valueFrom: { secretKeyRef: { name: verdaccio-npm-uplink, key: npm-token } }
           volumeMounts:
             - { name: config, mountPath: /verdaccio/conf }
             - { name: storage, mountPath: /verdaccio/storage }
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
-            limits: { cpu: "1", memory: 512Mi }
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: "1", memory: 2Gi }
           readinessProbe:
             httpGet: { path: /-/ping, port: 4873 }
             initialDelaySeconds: 5
@@ -104,14 +106,16 @@ spec:
           ports: [{ containerPort: 4873, name: http }]
           env:
             - { name: VERDACCIO_PORT, value: "4873" }
+            # Node caps old-space ~256MB by default; installs OOM'd the pod.
+            - { name: NODE_OPTIONS, value: "--max-old-space-size=768" }
             - name: NPM_TOKEN
               valueFrom: { secretKeyRef: { name: verdaccio-npm-uplink, key: npm-token } }
           volumeMounts:
             - { name: config, mountPath: /verdaccio/conf }
             - { name: storage, mountPath: /verdaccio/storage }
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
-            limits: { cpu: "1", memory: 512Mi }
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: "1", memory: 2Gi }
           readinessProbe:
             httpGet: { path: /-/ping, port: 4873 }
             initialDelaySeconds: 5

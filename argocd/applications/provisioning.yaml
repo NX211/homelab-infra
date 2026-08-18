@@ -8,6 +8,8 @@ kind: Application
 metadata:
   name: provisioning
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: provisioning-engine
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/compare-options: ServerSideDiff=true
@@ -19,8 +21,6 @@ spec:
     repoURL: https://github.com/nx211/homelab-infra.git
     targetRevision: main
     path: provisioning
-    directory:
-      recurse: false
   destination:
     server: https://kubernetes.default.svc
     namespace: provisioning

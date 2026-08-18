@@ -8,6 +8,36 @@
 # so an arbitrary non-root uid can run it.
 FROM node:22-bookworm
 
-RUN npm install -g pnpm@9.15.9 \
+# keytar (native) links against libsecret at build time; node:bookworm ships
+# pkg-config but not the libsecret dev headers, so the offline node-gyp build
+# fails with "Package libsecret-1 was not found". Provide them.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libsecret-1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g pnpm@9.15.9 node-gyp \
     && npm cache clean --force \
     && chmod -R a+rX /usr/local/lib/node_modules
+
+# NOTE: prisma engines are NO LONGER baked here (that pinned the image to one
+# prisma version). `prisma generate` now fetches them offline from the per-tier
+# prisma-engines mirror (build-registry-proxy/prisma-mirror.yaml) via
+# PRISMA_ENGINES_MIRROR, set on the web-ci `checks` step — so any prisma version
+# resolves without a toolchain rebuild. See build-catalog/tasks/web-ci.yaml.
+
+# --- Offline native-build support (untrusted sandbox: egress = proxies only) ---
+# The web-ci `checks` pod can reach ONLY the npm proxy, so any dependency that
+# fetches a binary at install time fails (observed: keytar, electron). Pre-bake
+# those inputs here, where the network IS available, so postinstall/node-gyp
+# resolve entirely offline. Made world-readable for the arbitrary non-root uid.
+
+# node-gyp headers for THIS image's Node version, so native modules (e.g. keytar)
+# build from source offline instead of fetching headers from nodejs.org. python3/
+# make/g++ already ship in node:22-bookworm.
+ENV npm_config_devdir=/opt/node-gyp
+RUN node-gyp install --devdir=/opt/node-gyp \
+    && chmod -R a+rX /opt/node-gyp
+
+# electron ships a large runtime binary the web lint/type-check/build/test never
+# executes, downloaded from a CDN the sandbox can't reach; skip that download.
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
