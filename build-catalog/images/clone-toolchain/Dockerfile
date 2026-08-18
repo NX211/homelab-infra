@@ -7,7 +7,7 @@
 #   docker build -t ghcr.io/nx211/clone-toolchain:0.1.0 build-catalog/images/clone-toolchain
 #   docker push ghcr.io/nx211/clone-toolchain:0.1.0      # needs ghcr write:packages
 #   # then pin the pushed digest in build-catalog/pipelines/container-build.yaml
-FROM alpine:3.20
+FROM alpine:3.24
 RUN apk add --no-cache git openssl python3 curl bash \
     && adduser -D -u 1000 build
 USER 1000
