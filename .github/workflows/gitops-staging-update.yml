@@ -33,12 +33,31 @@ jobs:
           APP_NAME: ${{ github.event.client_payload.app_name }}
           DIGEST: ${{ github.event.client_payload.digest }}
           IMAGE: ${{ github.event.client_payload.image }}
+          TAG: ${{ github.event.client_payload.tag }}
+          MIGRATE_DIGEST: ${{ github.event.client_payload.migrate_digest }}
         run: |
           if [ -z "$APP_NAME" ] || [ -z "$DIGEST" ] || [ -z "$IMAGE" ]; then
             echo "ERROR: Missing required fields in client_payload"
             echo "  app_name=$APP_NAME"
             echo "  digest=$DIGEST"
             echo "  image=$IMAGE"
+            exit 1
+          fi
+
+          # Regex-validate every dispatch field before use (ci-cd standard;
+          # staging-track.yml is the reference). digest/migrate_digest must be
+          # exact sha256 refs; tag is optional but must stay in the docker tag
+          # charset when present.
+          if ! printf '%s' "$DIGEST" | grep -qE '^sha256:[0-9a-f]{64}$'; then
+            echo "ERROR: Invalid digest: $DIGEST"
+            exit 1
+          fi
+          if [ -n "$MIGRATE_DIGEST" ] && ! printf '%s' "$MIGRATE_DIGEST" | grep -qE '^sha256:[0-9a-f]{64}$'; then
+            echo "ERROR: Invalid migrate_digest: $MIGRATE_DIGEST"
+            exit 1
+          fi
+          if [ -n "$TAG" ] && ! printf '%s' "$TAG" | grep -qE '^[A-Za-z0-9@][A-Za-z0-9@._-]{0,127}$'; then
+            echo "ERROR: Invalid tag: $TAG"
             exit 1
           fi
 
@@ -95,16 +114,29 @@ jobs:
           git reset --hard origin/main
 
       - name: Update image digest
+        id: update
         env:
           APP_NAME: ${{ github.event.client_payload.app_name }}
           DIGEST: ${{ github.event.client_payload.digest }}
           TAG: ${{ github.event.client_payload.tag }}
           MIGRATE_DIGEST: ${{ github.event.client_payload.migrate_digest }}
+          IMAGE_SHORT: ${{ steps.validate.outputs.image_short }}
         run: |
           VALUES_FILE="staging-apps/${APP_NAME}/values.yaml"
 
-          # Values are nested under the staging-app subchart key
-          yq eval ".\"staging-app\".image.digest = \"${DIGEST}\"" -i "${VALUES_FILE}"
+          # Values are nested under the staging-app subchart key. Worker
+          # images live under a different values path and have no migrate
+          # sibling — mirror of the values-path routing in platform-infra's
+          # gitops-update.yml. Without this, a worker dispatch would clobber
+          # the web image digest.
+          DIGEST_PATH='."staging-app".image.digest'
+          IS_WORKER=false
+          if [[ "$IMAGE_SHORT" == *-worker ]]; then
+            DIGEST_PATH='."staging-app".worker.image.digest'
+            IS_WORKER=true
+          fi
+
+          yq eval "${DIGEST_PATH} = \"${DIGEST}\"" -i "${VALUES_FILE}"
 
           # Update migration digest whenever the deploy workflow publishes a
           # new migrate image and the chart declares a migration block. Don't
@@ -115,7 +147,8 @@ jobs:
           # that stale value to prod, and schema changes silently never run
           # (same failure mode that broke capturly-web v1.5/v1.6, mirror of
           # the platform-infra gitops-update.yml fix in PR #589).
-          if [ -n "$MIGRATE_DIGEST" ]; then
+          # Worker dispatches never carry a migrate sibling.
+          if [ "$IS_WORKER" = "false" ] && [ -n "$MIGRATE_DIGEST" ]; then
             HAS_MIGRATION=$(yq eval '.["staging-app"].migration // "null"' "${VALUES_FILE}")
             if [ "$HAS_MIGRATION" != "null" ]; then
               yq eval ".\"staging-app\".migration.digest = \"${MIGRATE_DIGEST}\"" -i "${VALUES_FILE}"
@@ -146,7 +179,20 @@ jobs:
             NORMALIZED_TAG="${TAG#v}"
           fi
 
+          # Only dispatches carrying a release tag are eligible for prod
+          # promotion. One AR push emits a pubsub event per tag, so a single
+          # release fans out into several staging-image-push dispatches: the
+          # git-SHA tag event (no semver) and the vX.Y.Z event (semver). Both
+          # deploy to staging, but only the release-tag PR gets the `promote`
+          # label that staging-promote.yml requires — otherwise every release
+          # promoted twice (duplicate promote_to_production Port runs, moved
+          # prod-PR heads, duplicate announce builds dying on ALREADY_SENT).
+          # Tagless/manual builds (workflow_dispatch → sha tag only) deploy to
+          # staging and deliberately never auto-promote: prod deploys correlate
+          # on the v<semver> identity (framework git-and-releases standard).
+          PROMOTE=false
           if [[ "$NORMALIZED_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            PROMOTE=true
             CHART_FILE="staging-apps/${APP_NAME}/Chart.yaml"
             if [ -f "$CHART_FILE" ]; then
               yq eval ".appVersion = \"${NORMALIZED_TAG}\"" -i "${CHART_FILE}"
@@ -155,6 +201,7 @@ jobs:
           else
             echo "Skipping appVersion update: tag '${TAG}' did not normalize to bare semver"
           fi
+          echo "promote=${PROMOTE}" >> "$GITHUB_OUTPUT"
 
           echo "Updated ${VALUES_FILE}:"
           yq eval '.["staging-app"].image' "${VALUES_FILE}"
@@ -184,9 +231,13 @@ jobs:
             - **Digest:** `${{ github.event.client_payload.digest }}`
             - **Tag:** `${{ github.event.client_payload.tag || 'N/A' }}`
 
-            Once merged and ArgoCD confirms healthy, this will auto-promote
-            to production via `staging-promote.yml`.
-          labels: staging,auto-merge
+            ${{ steps.update.outputs.promote == 'true'
+              && 'Release-tagged: on merge, `staging-promote.yml` dispatches the prod gitops update (gated by `staging/ok` on the prod PR).'
+              || 'No release tag: deploys to staging only; prod promotion requires a `v<semver>`-tagged dispatch.' }}
+          # `promote` marks the one release-tag PR per release that
+          # staging-promote.yml is allowed to act on — see the comment in the
+          # update step above.
+          labels: staging,auto-merge${{ steps.update.outputs.promote == 'true' && ',promote' || '' }}
           delete-branch: true
 
       - name: Merge PR
