@@ -194,6 +194,7 @@ jobs:
             ["blue-skysolutions-com"]="Corey-Alan-Consulting/blue-skysolutions.com"
             ["dispatchr-social"]="Corey-Alan-Consulting/dispatchr.social"
             ["jlshaw-link"]="Corey-Alan-Consulting/jlshaw.link"
+            ["capturly-web"]="Corey-Alan-Consulting/capturly.app"
           )
           # Per-app staging URL forwarded to the smoke workflow. Must have an
           # entry for every SMOKE_REPOS key (was hardcoded to coreyalan's host,
@@ -203,6 +204,7 @@ jobs:
             ["blue-skysolutions-com"]="https://staging.blue-skysolutions.com"
             ["dispatchr-social"]="https://staging.dispatchr.social"
             ["jlshaw-link"]="https://staging.jlshawconsulting.com"
+            ["capturly-web"]="https://staging.capturly.app"
           )
 
           REPO="${SMOKE_REPOS[$APP_NAME]:-}"
