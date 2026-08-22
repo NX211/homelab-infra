@@ -41,6 +41,17 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
 
+      # Gate the build on the unit tests. They run against the real ack() source
+      # lifted out of src/index.mjs, so a regression fails here rather than
+      # shipping an image that silently stops recording applied versions.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Test
+        working-directory: apps/allowlist-reconciler
+        run: node --test
+
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
