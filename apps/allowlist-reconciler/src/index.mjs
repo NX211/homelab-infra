@@ -148,13 +148,33 @@ async function fetchDesiredState(app) {
 
 async function ack(app, version, appliedHash, result) {
   try {
-    await fetch(`${CONFIG.baseUrl}/api/internal/staging-allowlist/ack`, {
+    const res = await fetch(`${CONFIG.baseUrl}/api/internal/staging-allowlist/ack`, {
       method: 'POST',
       headers: { authorization: `Bearer ${CONFIG.internalToken}`, 'content-type': 'application/json' },
       body: JSON.stringify({ app, version, appliedAt: new Date().toISOString(), appliedHash, result }),
     });
+
+    // fetch only rejects on transport failure, so without this a 401 or a 500
+    // is indistinguishable from success: the loop keeps reporting healthy while
+    // coreyalan never records the applied version and its entries sit PENDING.
+    // fetchDesiredState above already guards its response; this path did not.
+    //
+    // Deliberately does NOT retry. reconcileConfigMap acks on every poll, even
+    // when the middleware is already in sync, so the next pass re-acks on its
+    // own — a retry here would only duplicate that.
+    if (!res.ok) {
+      // 4xx will not self-heal (wrong token, rejected payload) and needs a
+      // human; 5xx is transient and the next poll should carry it.
+      const permanent = res.status >= 400 && res.status < 500;
+      log(permanent ? 'error' : 'warn', 'ack rejected', {
+        app,
+        version,
+        status: res.status,
+        willRetry: !permanent,
+      });
+    }
   } catch (error) {
-    log('warn', 'ack failed', { app, error: String(error) });
+    log('warn', 'ack failed', { app, version, error: String(error) });
   }
 }
 
