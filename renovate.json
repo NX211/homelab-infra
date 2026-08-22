@@ -5,7 +5,9 @@
     "helpers:pinGitHubActionDigests"
   ],
   "argocd": {
-    "fileMatch": ["argocd/applications/cloudnativepg-operator\\.yaml$"]
+    "fileMatch": [
+      "argocd/applications/cloudnativepg-operator\\.yaml$"
+    ]
   },
   "customManagers": [
     {
@@ -23,7 +25,7 @@
     },
     {
       "customType": "regex",
-      "description": "Track the vendored Kratix distribution image. Upstream ships one image that serves as both the controller-manager and the pipeline adapter, referenced twice in install.yaml (Deployment image + PIPELINE_ADAPTER_IMG); both carry the same digest and must move together, so one matchString covers both. Not comment-annotated because install.yaml is vendored wholesale and in-file comments do not survive a re-vendor. Digests are resolved from canonical Docker Hub, not from the syntasso-community.docker.reo.dev vanity host the manifest pulls through: that host is a third-party 307 redirector to registry-1.docker.io, and letting it decide which digest we trust would put it in a position to hand Renovate an attacker-chosen image. Resolving upstream keeps it a transport only — the digest pin means a substituted image fails the content check rather than running. This keeps the image (the part that carries CVEs) current; the CRDs/RBAC around it still need a periodic re-vendor per the procedure in argocd/applications/kratix.yaml.",
+      "description": "Track the vendored Kratix distribution image. Upstream ships one image that serves as both the controller-manager and the pipeline adapter, referenced twice in install.yaml (Deployment image + PIPELINE_ADAPTER_IMG); both carry the same digest and must move together, so one matchString covers both. Not comment-annotated because install.yaml is vendored wholesale and in-file comments do not survive a re-vendor. Digests are resolved from canonical Docker Hub, not from the syntasso-community.docker.reo.dev vanity host the manifest pulls through: that host is a third-party 307 redirector to registry-1.docker.io, and letting it decide which digest we trust would put it in a position to hand Renovate an attacker-chosen image. Resolving upstream keeps it a transport only \u2014 the digest pin means a substituted image fails the content check rather than running. This keeps the image (the part that carries CVEs) current; the CRDs/RBAC around it still need a periodic re-vendor per the procedure in argocd/applications/kratix.yaml.",
       "fileMatch": [
         "kratix/install\\.yaml$"
       ],
@@ -35,6 +37,16 @@
       "datasourceTemplate": "docker",
       "currentValueTemplate": "latest",
       "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Port Ocean integration image pin in the ArgoCD Application helm values, annotated with a `renovate:` datasource/depName comment above the version line (mirrors platform-infra so staging and prod ocean images move together).",
+      "fileMatch": [
+        "^argocd/applications/port-ocean-.*\\.yaml$"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
+      ]
     }
   ]
 }
