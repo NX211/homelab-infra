@@ -15,7 +15,7 @@ spec:
       type: string
       # Node+pnpm pre-baked (apps/build-web-toolchain) so the step runs non-root
       # (no `corepack enable` write to /usr/local). Digest pinned by CI.
-      default: ghcr.io/nx211/build-web-toolchain:0.6.0@sha256:b4e260cf5157d0bb2ece67236e072be7cb5199676e483045484faf7ed6ec36bd
+      default: ghcr.io/nx211/build-web-toolchain:0.6.0@sha256:5b27ee7d18cca740f46a6e87a0951575064647f598b924a8431d6812e66225d4
   workspaces:
     - name: source
     - name: npmrc # configmap: .npmrc pointing at Verdaccio (no token)
@@ -30,8 +30,8 @@ spec:
       # reserved (burst to 8) gives the parallel test/build workers real time;
       # well within the 32-core build nodes.
       computeResources:
-        requests: { cpu: "4", memory: 4Gi }
-        limits: { cpu: "8", memory: 8Gi }
+        requests: {cpu: "4", memory: 4Gi}
+        limits: {cpu: "8", memory: 8Gi}
       env:
         # A neutral, writable home — NOT the source workspace. With HOME at the
         # repo root, ESLint's eslintrc mode treats the repo's root .eslintrc.*
