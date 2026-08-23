@@ -1,0 +1,16 @@
+apiVersion: v2
+name: showcase-staging
+description: showcase.coreyalan.com - Staging Environment
+type: application
+version: 1.0.0
+appVersion: "0.1.0"
+keywords:
+  - showcase
+  - nextjs
+  - staging
+maintainers:
+  - name: Homelab Admin
+dependencies:
+  - name: staging-app
+    version: "0.7.2"
+    repository: "file://../../charts/staging-app"

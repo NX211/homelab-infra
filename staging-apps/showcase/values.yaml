@@ -1,0 +1,73 @@
+# showcase.coreyalan.com - Staging Values (build once, deploy many: same image as prod).
+staging-app:
+  appName: showcase
+  appLabel: showcase
+  fullnameOverride: showcase-staging
+  replicaCount: 1
+  deploymentAnnotations:
+    reloader.stakater.com/auto: "true"
+  bitwarden:
+    projectID: "0e531424-811e-4368-8ddf-b4af004207d9" # Staging - Showcase
+    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+    credentialsSecret: bitwarden-staging-showcase-credentials
+  # The skeleton app is DB-free (health route only, tenant guard proven in
+  # tests). Flip these together when the first DB-touching route ships:
+  # create the staging DB user/name/password in the Staging - Showcase BWS
+  # project and fill the UUIDs.
+  database:
+    enabled: false
+    superuser:
+      create: false # shares the postgres-superuser-staging secret
+    userKey: ""
+    passwordKey: ""
+    nameKey: ""
+  migration:
+    enabled: false # follows database.enabled
+    repository: us-central1-docker.pkg.dev/coreyalan-showcase/showcase/showcase-web-migrate
+    digest: "" # Updated by CI/CD
+  image:
+    repository: us-central1-docker.pkg.dev/coreyalan-showcase/showcase/showcase-web
+    pullPolicy: IfNotPresent
+    digest: "" # Updated by CI/CD
+  imagePullSecrets:
+    - name: gcr-pull-secret-showcase
+  gcrPullSecret:
+    bitwardenKey: "" # keyless via WIF (ar-token-refresher)
+    secretName: gcr-pull-secret-showcase
+  service:
+    type: ClusterIP
+    port: 3000
+  ingress:
+    enabled: true
+    host: staging.showcase.coreyalan.com
+    clusterIssuer: letsencrypt-prod
+    ipAllowList:
+      enabled: true
+      sourceRange:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+      reconcilerManaged: true
+      appName: showcase
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: APP_URL
+      value: https://staging.showcase.coreyalan.com
+    - name: NEXT_PUBLIC_APP_URL
+      value: https://staging.showcase.coreyalan.com
+  # No env secrets yet — the skeleton reads none. When the first secret-reading
+  # code ships, enable this with the STAGING BWS UUIDs (Staging - Showcase
+  # already holds SHOWCASE_COOKIE_SECRET) and add the envFrom secretRef back.
+  externalSecrets:
+    enabled: false
+    secretName: showcase-staging-secrets
+    refreshInterval: 1h
+    secrets: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
