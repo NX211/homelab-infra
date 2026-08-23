@@ -1,0 +1,40 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: staging-showcase
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: showcase
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: HEAD
+    path: staging-apps/showcase
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  # The allowlist-reconciler owns this Middleware's sourceRange; ignore it so
+  # selfHeal won't revert runtime writes.
+  ignoreDifferences:
+    - group: traefik.io
+      kind: Middleware
+      name: showcase-staging-ipallowlist
+      namespace: staging
+      jsonPointers:
+        - /spec/ipAllowList/sourceRange
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
