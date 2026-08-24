@@ -3,7 +3,7 @@ name: showcase-staging
 description: showcase.coreyalan.com - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "0.1.1"
+appVersion: "0.2.0"
 keywords:
   - showcase
   - nextjs
