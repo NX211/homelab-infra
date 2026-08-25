@@ -1,0 +1,19 @@
+apiVersion: v2
+name: staging-app
+description: Shared base chart for staging applications
+type: application
+# 0.6.1 — ServiceMonitor default flipped to opt-in (off): the apps don't expose
+# a real /metrics endpoint yet (404/HTML/307 on both staging and prod), so it
+# only made down targets. Template stays ready for when an app adds /metrics.
+# 0.6.0 — adds a ServiceMonitor for the app's /metrics.
+# 0.7.0 — adds opt-in staging review-access: a base-allowlist ConfigMap
+# (ingress.ipAllowList.reconcilerManaged) the in-cluster allowlist-reconciler
+# discovers to manage the Middleware sourceRange. Off by default.
+# 0.6.1 — ServiceMonitor default flipped to opt-in (off): the apps don't expose
+# a real /metrics endpoint yet (404/HTML/307 on both staging and prod), so it
+# only made down targets. Template stays ready for when an app adds /metrics.
+# 0.6.0 — adds a ServiceMonitor for the app's /metrics.
+# 0.5.0 — adds opt-in async tier: worker Deployment (Pub/Sub consumer, with a
+# mounted GCP SA-key file for off-GKE auth), command-type CronJobs, and
+# HTTP-curl CronJobs. All gated/empty by default. Backwards-compatible.
+version: 0.8.0

@@ -1,0 +1,57 @@
+---
+{{- if .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.appName }}-migrate-{{ .Values.migration.digest | sha256sum | trunc 8 }}
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appName }}-migrate
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000  # image USER "node" is non-numeric; numeric uid required
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: migrate
+        image: "{{ .Values.migration.repository }}@{{ .Values.migration.digest }}"
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          # prisma writes engine scratch under /tmp; no tmp mount on this Job
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+              - ALL
+        command: ["npx", "prisma", "migrate", "deploy"]
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.externalSecrets.secretName }}
+              key: DATABASE_URL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+{{- end }}

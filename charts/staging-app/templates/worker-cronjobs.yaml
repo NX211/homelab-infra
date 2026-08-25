@@ -1,0 +1,119 @@
+{{- if .Values.worker.enabled }}
+{{- range .Values.worker.cronJobs }}
+---
+# Command-type CronJob: runs the worker image with a job-specific command.
+# Shares the worker's env + SA-key file. Forbid concurrency so a slow run never
+# stacks with the next tick.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "staging-app.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "staging-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: cron
+spec:
+  schedule: {{ .schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .backoffLimit | default 1 }}
+      activeDeadlineSeconds: {{ .activeDeadlineSeconds | default 300 }}
+      template:
+        metadata:
+          labels:
+            {{- include "staging-app.selectorLabels" $ | nindent 12 }}
+            app.kubernetes.io/component: cron
+        spec:
+          {{- if $.Values.worker.gcpWorkloadIdentity.enabled }}
+          serviceAccountName: {{ $.Values.worker.gcpWorkloadIdentity.ksaName }}
+          {{- end }}
+          restartPolicy: Never
+          {{- with $.Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            fsGroup: 1001
+          containers:
+          - name: {{ .name }}
+            {{- if $.Values.worker.image.digest }}
+            image: "{{ $.Values.worker.image.repository }}@{{ $.Values.worker.image.digest }}"
+            {{- else }}
+            image: "{{ $.Values.worker.image.repository }}:{{ $.Values.worker.image.tag | default "latest" }}"
+            {{- end }}
+            imagePullPolicy: {{ $.Values.image.pullPolicy }}
+            command:
+              {{- toYaml .command | nindent 12 }}
+            env:
+              {{- with $.Values.env }}
+              {{- toYaml . | nindent 12 }}
+              {{- end }}
+              {{- with $.Values.worker.env }}
+              {{- toYaml . | nindent 12 }}
+              {{- end }}
+              {{- if $.Values.worker.gcpServiceAccountKey.enabled }}
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: {{ $.Values.worker.gcpServiceAccountKey.mountPath }}/{{ $.Values.worker.gcpServiceAccountKey.fileName }}
+              {{- end }}
+              {{- if $.Values.worker.gcpWorkloadIdentity.enabled }}
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /etc/gcp/credential-config.json
+              {{- end }}
+            {{- with $.Values.envFrom }}
+            envFrom:
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+            resources:
+              {{- toYaml (.resources | default $.Values.worker.resources) | nindent 14 }}
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                  - ALL
+            volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if $.Values.worker.gcpServiceAccountKey.enabled }}
+            - name: gcp-sa-key
+              mountPath: {{ $.Values.worker.gcpServiceAccountKey.mountPath }}
+              readOnly: true
+            {{- end }}
+            {{- if $.Values.worker.gcpWorkloadIdentity.enabled }}
+            - name: gcp-cred
+              mountPath: /etc/gcp
+              readOnly: true
+            - name: gcp-sts-token
+              mountPath: /var/run/secrets/gcp-sts
+              readOnly: true
+            {{- end }}
+          volumes:
+          - name: tmp
+            emptyDir: {}
+          {{- if $.Values.worker.gcpServiceAccountKey.enabled }}
+          - name: gcp-sa-key
+            secret:
+              secretName: {{ $.Values.externalSecrets.secretName }}
+              items:
+              - key: {{ $.Values.worker.gcpServiceAccountKey.secretKey }}
+                path: {{ $.Values.worker.gcpServiceAccountKey.fileName }}
+          {{- end }}
+          {{- if $.Values.worker.gcpWorkloadIdentity.enabled }}
+          - name: gcp-cred
+            configMap:
+              name: {{ include "staging-app.fullname" $ }}-worker-gcp-cred
+          - name: gcp-sts-token
+            projected:
+              sources:
+              - serviceAccountToken:
+                  audience: {{ $.Values.worker.gcpWorkloadIdentity.audience }}
+                  expirationSeconds: 3600
+                  path: token
+          {{- end }}
+{{- end }}
+{{- end }}

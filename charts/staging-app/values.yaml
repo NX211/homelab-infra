@@ -1,0 +1,197 @@
+# Application identity
+appName: ""  # REQUIRED - e.g., "jlshaw", "dispatchr"
+appLabel: "" # Optional - human-readable name for log messages, defaults to appName
+
+# Helm naming overrides
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 1
+
+# Annotations on the Deployment object (not the pod template). Used by Reloader
+# (`reloader.stakater.com/auto: "true"`) to opt this workload into auto-rollout
+# when referenced Secrets / ConfigMaps change. Default empty — opt-in per app.
+deploymentAnnotations: {}
+
+# Container name override (defaults to "<appName>-web")
+containerName: ""
+
+# Per-app Bitwarden secret store
+bitwarden:
+  projectID: ""
+  organizationID: ""
+  credentialsSecret: ""
+
+# Keyless GCP auth for the WEB pods (same mechanics as worker.gcpWorkloadIdentity):
+# dedicated KSA whose projected token federates through the WIF pool. Leave
+# impersonateServiceAccount empty for a DIRECT federated principal — no GCP SA
+# at all; resource IAM binds the principal itself (showcase staging publisher).
+gcpWorkloadIdentity:
+  enabled: false
+  ksaName: ""
+  audience: ""                   # GCP WIF provider (//iam.googleapis.com/...)
+  impersonateServiceAccount: ""  # optional; empty = direct federation
+
+# Database provisioning
+database:
+  enabled: true
+  userKey: ""
+  passwordKey: ""
+  nameKey: ""
+  # Only ONE app should set this to true (creates the shared postgres-superuser-staging secret)
+  superuser:
+    create: false
+  # App-specific database secret name (defaults to "<appName>-database")
+  secretName: ""
+
+# Migration job
+migration:
+  enabled: false
+  repository: ""
+  digest: "sha256:PLACEHOLDER"
+
+# Container image
+image:
+  repository: ""
+  pullPolicy: IfNotPresent
+  digest: ""
+
+imagePullSecrets: []
+
+# GCP Artifact Registry pull secret
+gcrPullSecret:
+  bitwardenKey: ""
+  secretName: ""  # defaults to "gcr-pull-secret-<appName>"
+
+# Service
+service:
+  type: ClusterIP
+  port: 3000
+
+# Ingress (Traefik IngressRoute + cert-manager)
+ingress:
+  enabled: true
+  host: ""
+  clusterIssuer: letsencrypt-prod
+  # Optional Traefik IP allowlist. When enabled, a Middleware is created in
+  # the release namespace and attached to the IngressRoute. Sources outside
+  # the listed CIDRs receive 403.
+  ipAllowList:
+    enabled: false
+    sourceRange: []
+    # ipStrategy is only needed if a proxy/CDN sits in front of Traefik so
+    # the real client IP must be read from X-Forwarded-For. Leave empty
+    # when traffic reaches Traefik directly.
+    ipStrategy: {}
+    #   depth: 1
+    #   excludedIPs: []
+    # Opt-in to the staging review-access flow. When true, a discovery
+    # ConfigMap is rendered and the in-cluster allowlist-reconciler manages
+    # this Middleware's sourceRange (base ∪ reviewer IPs). `sourceRange` above
+    # becomes the static BASE; reviewer IPs are layered on at runtime.
+    reconcilerManaged: false
+    # Identifier the reconciler uses to fetch desired state — MUST match the
+    # StagingSite.infraAppName entered in the coreyalan.com admin. Defaults to
+    # the release fullname when empty.
+    appName: ""
+
+# Environment
+env: []
+envFrom: []
+
+# External Secrets (Bitwarden staging project)
+externalSecrets:
+  enabled: true
+  secretName: ""
+  refreshInterval: 1h
+  secrets: []
+
+# Resources
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 768Mi
+
+# Probes
+livenessProbe:
+  enabled: true
+  path: /
+  port: 3000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  path: /
+  port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Background worker (Pub/Sub consumer) + command-type CronJobs. Opt-in.
+# Shares .Values.env + .Values.envFrom with the web app; add worker-only env
+# under worker.env. Off-GCP staging mounts a GCP SA key file for Pub/Sub auth.
+worker:
+  enabled: false
+  replicas: 1
+  image:
+    repository: ""   # separate worker image (e.g. <repo>/dispatchr-worker)
+    digest: ""
+  command: []         # e.g. ["tsx", "packages/core/src/jobs/worker.ts"]
+  env: []             # worker-only env (GCP_PROJECT_ID, PUBSUB_*, etc.)
+  healthPort: 8080    # liveness httpGet port; set "" to disable the probe
+  healthPath: /healthz
+  terminationGracePeriodSeconds: 120
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # Mount a GCP service-account key (synced into the app secret from Bitwarden)
+  # as a file and point GOOGLE_APPLICATION_CREDENTIALS at it. Needed off-GKE
+  # where Workload Identity is unavailable.
+  gcpServiceAccountKey:
+    enabled: false
+    secretKey: GCP_WORKER_SA_KEY   # key within externalSecrets.secretName
+    mountPath: /var/secrets/gcp
+    fileName: key.json
+  # Keyless alternative to gcpServiceAccountKey: the worker/crons run under a
+  # dedicated KSA whose projected token is federated (Workload Identity) to
+  # impersonate the GCP SA. No key material. Enable ONE of the two, not both.
+  gcpWorkloadIdentity:
+    enabled: false
+    ksaName: ""                    # dedicated KSA for the worker pods
+    audience: ""                   # GCP WIF provider (//iam.googleapis.com/...)
+    impersonateServiceAccount: ""  # GCP SA email the KSA impersonates
+  # Command CronJobs: each runs the worker image with its own command.
+  # - name: cleanup
+  #   schedule: "0 * * * *"
+  #   command: ["tsx", "packages/core/src/jobs/cron-runner.ts", "CLEANUP"]
+  cronJobs: []
+
+# HTTP-curl CronJobs: hit an auth-gated app endpoint. Point `endpoint` at the
+# in-cluster service for staging (decouples cron health from ingress).
+# - name: session-expiry
+#   schedule: "*/30 * * * *"
+#   endpoint: http://capturly-web-staging:3000/api/cron/session-expiry
+httpCronJobs: []
+
+# ServiceMonitor for the app's /metrics. OPT-IN (default off): the Next.js apps
+# don't currently expose a Prometheus endpoint — verified that :3000/metrics
+# returns 404/HTML/307 on BOTH staging and prod (prod's prometheus.io scrape
+# annotation is effectively a no-op). The template is ready: once an app adds a
+# real /metrics endpoint, set serviceMonitor.enabled: true for that app and
+# kube-prometheus-stack will pick it up (serviceMonitorSelector: {}).
+serviceMonitor:
+  enabled: false
+  path: /metrics
+  interval: 30s
+  scrapeTimeout: 10s

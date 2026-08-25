@@ -1,0 +1,65 @@
+{{- range .Values.httpCronJobs }}
+---
+# HTTP-curl CronJob: hits an auth-gated app endpoint (e.g. /api/cron/*). No app
+# image needed. For staging, point `endpoint` at the IN-CLUSTER service rather
+# than the public host, so cron health isn't coupled to ingress/app availability.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "staging-app.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "staging-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: cron
+spec:
+  schedule: {{ .schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .backoffLimit | default 1 }}
+      activeDeadlineSeconds: {{ .activeDeadlineSeconds | default 120 }}
+      template:
+        metadata:
+          labels:
+            {{- include "staging-app.selectorLabels" $ | nindent 12 }}
+            app.kubernetes.io/component: cron
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            fsGroup: 1001
+          containers:
+          - name: {{ .name }}
+            image: {{ .image | default "curlimages/curl:8.20.0" }}
+            command:
+            - /bin/sh
+            - -c
+            - |
+              curl -fsSL --retry 3 --retry-delay 5 --max-time 60 \
+                -X POST "${ENDPOINT_URL}" \
+                -H "Authorization: Bearer ${CRON_SECRET}"
+            env:
+            - name: ENDPOINT_URL
+              value: {{ .endpoint | quote }}
+            - name: CRON_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.externalSecrets.secretName }}
+                  key: {{ .secretKey | default "CRON_SECRET" }}
+            resources:
+              requests:
+                cpu: 10m
+                memory: 16Mi
+              limits:
+                cpu: 100m
+                memory: 64Mi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                  - ALL
+{{- end }}
