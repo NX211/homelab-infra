@@ -24,10 +24,22 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000  # image USER "node" is non-numeric; numeric uid required
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: migrate
         image: "{{ .Values.migration.repository }}@{{ .Values.migration.digest }}"
         imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          # prisma writes engine scratch under /tmp; no tmp mount on this Job
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+              - ALL
         command: ["npx", "prisma", "migrate", "deploy"]
         env:
         - name: DATABASE_URL

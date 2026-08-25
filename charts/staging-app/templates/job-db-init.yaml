@@ -18,9 +18,20 @@ spec:
         app: {{ .Values.appName }}-db-init
     spec:
       restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70  # postgres uid in the alpine image; only runs psql
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: db-init
         image: postgres:16-alpine
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
         command:
         - sh
         - -c
