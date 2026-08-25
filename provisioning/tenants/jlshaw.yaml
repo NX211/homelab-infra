@@ -1,0 +1,24 @@
+---
+# jlshaw — hand-authored, island-managed (decision Q3), the white-label
+# proving ground for showcase demo hosting (decision Q7). Their app and site
+# predate the platform, so spec.islands limits reconcile to the showcase
+# projection; domain rides as identity/projection data only (tenant id
+# derives from it: jlshaw). demoHost jl-shaw.com is the branded demo domain
+# (#1326 zone IaC, #1333 IngressRoute+Certificate — both live). Credential
+# hash is sha256 of the key in BWS JL Shaw Consulting / SHOWCASE_API_KEY;
+# content scopes only (blueprint defaults, no opt-ins) until their app
+# integrates webhooks or DSAR.
+apiVersion: platform.coreyalan.com/v1alpha1
+kind: Tenant
+metadata:
+  name: jlshaw
+  namespace: provisioning
+spec:
+  email: contact@jlshawconsulting.com
+  domain: jlshaw.link
+  demoHost: jl-shaw.com
+  blueprint: managed-hosting@v1
+  islands:
+    - showcase
+  showcaseCredentialId: cred-jlshaw
+  showcaseCredentialHash: cdaffb9e2cda4ed8cc90c7f4751d43d6ade5aed19c54885e74cc7d4618a6d021
