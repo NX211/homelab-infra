@@ -47,9 +47,20 @@ staging-app:
         - 192.168.0.0/16
       reconcilerManaged: true
       appName: showcase
+  # Keyless staging publisher (decision Q6): direct federated principal —
+  # staging:showcase-staging is granted pubsub.publisher on the ingest/webhook
+  # topics in platform-infra (showcase-jobs.tf); no GCP SA, no key.
+  gcpWorkloadIdentity:
+    enabled: true
+    ksaName: showcase-staging
+    audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
   env:
     - name: NODE_ENV
       value: production
+    - name: GOOGLE_CLOUD_PROJECT
+      value: coreyalan-showcase
+    - name: INGEST_ENV
+      value: staging
     - name: APP_URL
       value: https://staging.showcase.coreyalan.com
     - name: NEXT_PUBLIC_APP_URL

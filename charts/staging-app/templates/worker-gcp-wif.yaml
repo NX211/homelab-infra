@@ -1,0 +1,28 @@
+{{- if .Values.worker.gcpWorkloadIdentity.enabled }}
+# Keyless GCP auth for the worker/crons: a dedicated KSA whose projected token is
+# federated (Workload Identity) to impersonate the worker's GCP SA, plus the
+# external_account ADC config that drives it. Replaces the mounted SA JSON key.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.worker.gcpWorkloadIdentity.ksaName }}
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "staging-app.fullname" . }}-worker-gcp-cred
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+data:
+  credential-config.json: |
+    {
+      "type": "external_account",
+      "audience": "{{ .Values.worker.gcpWorkloadIdentity.audience }}",
+      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+      "token_url": "https://sts.googleapis.com/v1/token",
+      "credential_source": { "file": "/var/run/secrets/gcp-sts/token", "format": { "type": "text" } },
+      "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{{ .Values.worker.gcpWorkloadIdentity.impersonateServiceAccount }}:generateAccessToken"
+    }
+{{- end }}

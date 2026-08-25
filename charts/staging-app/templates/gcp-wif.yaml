@@ -1,0 +1,33 @@
+{{- if .Values.gcpWorkloadIdentity.enabled }}
+# Keyless GCP auth for the web pods: a dedicated KSA whose projected token is
+# federated via WIF, plus the external_account ADC config that drives it. With
+# no impersonateServiceAccount this is DIRECT federation — the principal itself
+# holds the resource IAM (no GCP SA, no key material).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.gcpWorkloadIdentity.ksaName }}
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "staging-app.fullname" . }}-gcp-cred
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+data:
+  credential-config.json: |
+    {
+      "type": "external_account",
+      "audience": "{{ .Values.gcpWorkloadIdentity.audience }}",
+      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+      "token_url": "https://sts.googleapis.com/v1/token",
+      {{- if .Values.gcpWorkloadIdentity.impersonateServiceAccount }}
+      "credential_source": { "file": "/var/run/secrets/gcp-sts/token", "format": { "type": "text" } },
+      "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{{ .Values.gcpWorkloadIdentity.impersonateServiceAccount }}:generateAccessToken"
+      {{- else }}
+      "credential_source": { "file": "/var/run/secrets/gcp-sts/token", "format": { "type": "text" } }
+      {{- end }}
+    }
+{{- end }}

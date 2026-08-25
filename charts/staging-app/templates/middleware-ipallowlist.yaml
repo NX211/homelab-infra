@@ -1,0 +1,17 @@
+---
+{{- if and .Values.ingress.enabled .Values.ingress.ipAllowList.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "staging-app.fullname" . }}-ipallowlist
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+spec:
+  ipAllowList:
+    sourceRange:
+      {{- toYaml .Values.ingress.ipAllowList.sourceRange | nindent 6 }}
+    {{- with .Values.ingress.ipAllowList.ipStrategy }}
+    ipStrategy:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+{{- end }}

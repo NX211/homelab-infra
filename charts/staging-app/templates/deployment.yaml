@@ -1,0 +1,121 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "staging-app.fullname" . }}
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+  {{- with .Values.deploymentAnnotations }}
+  # Annotations on the Deployment object itself (not on the pod template).
+  # Reloader looks here for `reloader.stakater.com/auto: "true"` to opt this
+  # workload into auto-rollout on referenced Secret/ConfigMap changes.
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "staging-app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "staging-app.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.gcpWorkloadIdentity.enabled }}
+      serviceAccountName: {{ .Values.gcpWorkloadIdentity.ksaName }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: {{ include "staging-app.containerName" . }}
+        {{- if .Values.image.digest }}
+        image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+        {{- else }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default "latest" }}"
+        {{- end }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        {{- if or .Values.env .Values.gcpWorkloadIdentity.enabled }}
+        env:
+        {{- with .Values.env }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.gcpWorkloadIdentity.enabled }}
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /etc/gcp/credential-config.json
+        {{- end }}
+        {{- end }}
+        {{- if .Values.envFrom }}
+        envFrom:
+          {{- toYaml .Values.envFrom | nindent 8 }}
+        {{- end }}
+        {{- if .Values.livenessProbe.enabled }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.livenessProbe.path }}
+            port: {{ .Values.livenessProbe.port }}
+          initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+        {{- end }}
+        {{- if .Values.readinessProbe.enabled }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.readinessProbe.path }}
+            port: {{ .Values.readinessProbe.port }}
+          initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: nextjs-cache
+          mountPath: /app/.next/cache
+        {{- if .Values.gcpWorkloadIdentity.enabled }}
+        - name: gcp-cred
+          mountPath: /etc/gcp
+          readOnly: true
+        - name: gcp-sts-token
+          mountPath: /var/run/secrets/gcp-sts
+          readOnly: true
+        {{- end }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: nextjs-cache
+        emptyDir: {}
+      {{- if .Values.gcpWorkloadIdentity.enabled }}
+      # Keyless: external_account ADC config + a projected k3s token (WIF).
+      - name: gcp-cred
+        configMap:
+          name: {{ include "staging-app.fullname" . }}-gcp-cred
+      - name: gcp-sts-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              audience: {{ .Values.gcpWorkloadIdentity.audience }}
+              expirationSeconds: 3600
+              path: token
+      {{- end }}
