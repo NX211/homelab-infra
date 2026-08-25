@@ -83,6 +83,10 @@ spec:
                 stagingBaseUrl:
                   type: string
                   pattern: '^https://'
+                demoHost:
+                  type: string
+                  description: Tenant demo-host domain (ADR-0021 contract point 8). Presence enables the showcase island, which projects the tenant into the showcase Tier-3 service.
+                  pattern: '^[a-z0-9.-]+$'
                 blueprint:
                   type: string
                   description: Versioned managed-hosting blueprint stamped onto the tenant.
