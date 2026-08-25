@@ -1,0 +1,26 @@
+---
+# Tenant zero (coreyalan) — hand-authored, island-managed (decision Q3).
+# Never produced by the onboarding workflow: the dns zone is terraform-managed
+# and the app predates the platform, so spec.islands hard-limits reconcile to
+# the showcase projection. domain/demoHost are carried as projection data only.
+# The credential hash is the sha256 of the tenant-minted key (BWS: Showcase /
+# SHOWCASE_TENANT0_API_KEY); id cred-tenant0 matches the hand-seeded prod row,
+# so the island's first act is an in-place scope upgrade of that credential.
+apiVersion: platform.coreyalan.com/v1alpha1
+kind: Tenant
+metadata:
+  name: coreyalan
+  namespace: provisioning
+spec:
+  email: corey@coreyalan.com
+  domain: coreyalan.com
+  demoHost: coreyalan.dev
+  blueprint: managed-hosting@v1
+  islands:
+    - showcase
+  showcaseCredentialId: cred-tenant0
+  showcaseCredentialHash: 3b75a515a03c0a66b32c498a576dc338a745356eb4bceac360b835e9d77da26c
+  showcaseExtraScopes:
+    - webhooks:read
+    - webhooks:write
+    - privacy:erase
