@@ -39,6 +39,10 @@ staging-app:
     enabled: true
     host: staging.showcase.coreyalan.com
     clusterIssuer: letsencrypt-prod
+    # Pub/Sub push consumers: OIDC-verified in-app; Google's push IPs must
+    # bypass the RFC1918 allowlist or staging jobs never deliver.
+    publicPaths:
+      - /api/internal/jobs
     ipAllowList:
       enabled: true
       sourceRange:

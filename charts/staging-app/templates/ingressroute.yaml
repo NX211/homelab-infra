@@ -10,6 +10,16 @@ spec:
   entryPoints:
     - websecure
   routes:
+  {{- range .Values.ingress.publicPaths }}
+  # Allowlist-exempt path: token-authenticated by the app (e.g. OIDC-verified
+  # Pub/Sub push), so the IP allowlist would block its legitimate callers.
+  # Traefik picks the more specific match; no allowlist middleware here.
+  - match: Host(`{{ $.Values.ingress.host }}`) && PathPrefix(`{{ . }}`)
+    kind: Rule
+    services:
+    - name: {{ include "staging-app.fullname" $ }}
+      port: {{ $.Values.service.port }}
+  {{- end }}
   - match: Host(`{{ .Values.ingress.host }}`)
     kind: Rule
     services:
