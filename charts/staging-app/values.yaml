@@ -76,6 +76,9 @@ ingress:
   # Optional Traefik IP allowlist. When enabled, a Middleware is created in
   # the release namespace and attached to the IngressRoute. Sources outside
   # the listed CIDRs receive 403.
+  # Paths exempt from the IP allowlist (the app authenticates them itself,
+  # e.g. OIDC-verified Pub/Sub push endpoints). Empty by default.
+  publicPaths: []
   ipAllowList:
     enabled: false
     sourceRange: []
