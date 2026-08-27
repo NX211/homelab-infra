@@ -83,6 +83,27 @@ spec:
                 stagingBaseUrl:
                   type: string
                   pattern: '^https://'
+                demoHost:
+                  type: string
+                  description: Tenant demo-host domain (ADR-0021 contract point 8). Presence enables the showcase island, which projects the tenant into the showcase Tier-3 service.
+                  pattern: '^[a-z0-9.-]+$'
+                islands:
+                  type: array
+                  description: Explicit island allowlist, ANDed with each island's own inference (spine always runs). Omit for normal CRs; set on island-managed tenants (e.g. tenant zero) whose other surfaces live outside the reconcile loop.
+                  items:
+                    type: string
+                showcaseCredentialId:
+                  type: string
+                  description: Credential id the tenant app backfills after minting its own secret (decision 1c); projected to showcase with showcaseCredentialHash.
+                showcaseCredentialHash:
+                  type: string
+                  description: sha256 hex of the tenant-minted API key. Plaintext never exists in the control plane.
+                  pattern: '^[a-f0-9]{64}$'
+                showcaseExtraScopes:
+                  type: array
+                  description: Scope opt-ins beyond the blueprint defaults; the engine filters to its allowlist (webhooks:read, webhooks:write, privacy:erase).
+                  items:
+                    type: string
                 blueprint:
                   type: string
                   description: Versioned managed-hosting blueprint stamped onto the tenant.

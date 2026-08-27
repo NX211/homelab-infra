@@ -1,0 +1,34 @@
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "staging-app.fullname" . }}
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+  {{- range .Values.ingress.publicPaths }}
+  # Allowlist-exempt path: token-authenticated by the app (e.g. OIDC-verified
+  # Pub/Sub push), so the IP allowlist would block its legitimate callers.
+  # Traefik picks the more specific match; no allowlist middleware here.
+  - match: Host(`{{ $.Values.ingress.host }}`) && PathPrefix(`{{ . }}`)
+    kind: Rule
+    services:
+    - name: {{ include "staging-app.fullname" $ }}
+      port: {{ $.Values.service.port }}
+  {{- end }}
+  - match: Host(`{{ .Values.ingress.host }}`)
+    kind: Rule
+    services:
+    - name: {{ include "staging-app.fullname" . }}
+      port: {{ .Values.service.port }}
+    {{- if .Values.ingress.ipAllowList.enabled }}
+    middlewares:
+    - name: {{ include "staging-app.fullname" . }}-ipallowlist
+    {{- end }}
+  tls:
+    secretName: {{ include "staging-app.fullname" . }}-tls
+{{- end }}

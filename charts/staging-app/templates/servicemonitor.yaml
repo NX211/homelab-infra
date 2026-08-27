@@ -1,0 +1,23 @@
+{{- if .Values.serviceMonitor.enabled }}
+---
+# Scrape the app's /metrics so staging collects app-level metrics like prod.
+# Prod scrapes :3000/metrics via prometheus.io annotations (Alloy); staging runs
+# the Prometheus Operator, so the native mechanism is a ServiceMonitor. The
+# staging kube-prometheus-stack has serviceMonitorSelector: {} (selects ALL
+# ServiceMonitors cluster-wide), so this needs no extra label or stack config.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "staging-app.fullname" . }}
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "staging-app.selectorLabels" . | nindent 6 }}
+  endpoints:
+  - port: http
+    path: {{ .Values.serviceMonitor.path }}
+    interval: {{ .Values.serviceMonitor.interval }}
+    scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+{{- end }}

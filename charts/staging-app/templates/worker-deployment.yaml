@@ -1,0 +1,136 @@
+{{- if .Values.worker.enabled }}
+---
+# Background worker (Pub/Sub job consumer). Optional, opt-in per app. Uses a
+# separate worker image + command. The pod's app.kubernetes.io/name is suffixed
+# with `-worker` so the web Service's {name,instance} selector never routes web
+# traffic here. Off-GCP staging authenticates to Pub/Sub with a mounted SA-key
+# file (GOOGLE_APPLICATION_CREDENTIALS) rather than Workload Identity.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "staging-app.fullname" . }}-worker
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+  {{- with .Values.deploymentAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "staging-app.name" . }}-worker
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "staging-app.name" . }}-worker
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: worker
+    spec:
+      {{- if .Values.worker.gcpWorkloadIdentity.enabled }}
+      serviceAccountName: {{ .Values.worker.gcpWorkloadIdentity.ksaName }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+      - name: {{ .Values.appName }}-worker
+        {{- if .Values.worker.image.digest }}
+        image: "{{ .Values.worker.image.repository }}@{{ .Values.worker.image.digest }}"
+        {{- else }}
+        image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag | default "latest" }}"
+        {{- end }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        {{- with .Values.worker.command }}
+        command:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+        env:
+          {{- with .Values.env }}
+          {{- toYaml . | nindent 8 }}
+          {{- end }}
+          {{- with .Values.worker.env }}
+          {{- toYaml . | nindent 8 }}
+          {{- end }}
+          {{- if .Values.worker.gcpServiceAccountKey.enabled }}
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: {{ .Values.worker.gcpServiceAccountKey.mountPath }}/{{ .Values.worker.gcpServiceAccountKey.fileName }}
+          {{- end }}
+          {{- if .Values.worker.gcpWorkloadIdentity.enabled }}
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /etc/gcp/credential-config.json
+          {{- end }}
+        {{- with .Values.envFrom }}
+        envFrom:
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if .Values.worker.healthPort }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.worker.healthPath }}
+            port: {{ .Values.worker.healthPort }}
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        {{- end }}
+        resources:
+          {{- toYaml .Values.worker.resources | nindent 10 }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        {{- if .Values.worker.gcpServiceAccountKey.enabled }}
+        - name: gcp-sa-key
+          mountPath: {{ .Values.worker.gcpServiceAccountKey.mountPath }}
+          readOnly: true
+        {{- end }}
+        {{- if .Values.worker.gcpWorkloadIdentity.enabled }}
+        - name: gcp-cred
+          mountPath: /etc/gcp
+          readOnly: true
+        - name: gcp-sts-token
+          mountPath: /var/run/secrets/gcp-sts
+          readOnly: true
+        {{- end }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- if .Values.worker.gcpServiceAccountKey.enabled }}
+      # SA key synced from Bitwarden into the app secret, mounted as a file.
+      - name: gcp-sa-key
+        secret:
+          secretName: {{ .Values.externalSecrets.secretName }}
+          items:
+          - key: {{ .Values.worker.gcpServiceAccountKey.secretKey }}
+            path: {{ .Values.worker.gcpServiceAccountKey.fileName }}
+      {{- end }}
+      {{- if .Values.worker.gcpWorkloadIdentity.enabled }}
+      # Keyless: external_account ADC config + a projected k3s token federated to
+      # impersonate the worker's GCP SA. No key material.
+      - name: gcp-cred
+        configMap:
+          name: {{ include "staging-app.fullname" . }}-worker-gcp-cred
+      - name: gcp-sts-token
+        projected:
+          sources:
+          - serviceAccountToken:
+              audience: {{ .Values.worker.gcpWorkloadIdentity.audience }}
+              expirationSeconds: 3600
+              path: token
+      {{- end }}
+{{- end }}
