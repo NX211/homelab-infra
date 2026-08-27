@@ -22,3 +22,9 @@ spec:
     - showcase
   showcaseCredentialId: cred-jlshaw
   showcaseCredentialHash: cdaffb9e2cda4ed8cc90c7f4751d43d6ade5aed19c54885e74cc7d4618a6d021
+  # Integration opt-ins (self-serve demo management build): webhook
+  # subscription for reactivation routing + DSAR propagation.
+  showcaseExtraScopes:
+    - webhooks:read
+    - webhooks:write
+    - privacy:erase
