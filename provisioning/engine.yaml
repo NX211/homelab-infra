@@ -56,7 +56,7 @@ spec:
           # updated provisionTenant are discoverable. The app island also needs a
           # GitHub App (actions:write) + PLATFORM_INFRA_REPO + ONBOARD_WORKFLOW_ID
           # (and ONBOARD_TEARDOWN_WORKFLOW_ID for app teardown) before it dispatches.
-          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:d836c668c75bc892239f5723a53632a5e54486936b1e8145330f11fbe3b1066e
+          image: us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/engine@sha256:5ce9992c7f9a2176587fa7f072c54c6745ed9560b422117135199317881e231b
           ports:
             - containerPort: 9080
           volumeMounts:
