@@ -24,3 +24,5 @@ spec:
     - webhooks:read
     - webhooks:write
     - privacy:erase
+    # Reads demo design bytes for the scaffold/implement-spec pipelines.
+    - showcases:source
