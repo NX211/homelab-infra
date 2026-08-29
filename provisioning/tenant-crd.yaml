@@ -101,7 +101,7 @@ spec:
                   pattern: '^[a-f0-9]{64}$'
                 showcaseExtraScopes:
                   type: array
-                  description: Scope opt-ins beyond the blueprint defaults; the engine filters to its allowlist (webhooks:read, webhooks:write, privacy:erase).
+                  description: Scope opt-ins beyond the blueprint defaults; the engine filters to its allowlist (webhooks:read, webhooks:write, privacy:erase, showcases:source).
                   items:
                     type: string
                 blueprint:
