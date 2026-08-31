@@ -43,7 +43,11 @@ done
 [ -n "$COMPANY" ] || { echo "--company is required" >&2; exit 1; }
 GCP_PROJECT="${GCP_PROJECT:-$NAME}"
 
-PROD_APP="$(printf '%s' "$DOMAIN" | tr '.' '-')"          # myapp.io -> myapp-io
+# The staging dir/app slug must equal the app NAME: gitops-trigger's
+# staging.appMap values (set by onboard-app.sh) key digest bumps to
+# staging-apps/<name>. Every legacy app's name equals its domain slug, so this
+# changes nothing for them; reggiesbbq (name != domain slug) surfaced the split.
+PROD_APP="$NAME"
 IMAGE_REPO="us-central1-docker.pkg.dev/${GCP_PROJECT}/${GCP_PROJECT}/${NAME}-web"
 STAGING_ORG_ID="4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"      # constant across staging apps
 CHART_VER="0.7.2"                                          # charts/staging-app
