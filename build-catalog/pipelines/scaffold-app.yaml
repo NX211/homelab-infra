@@ -153,7 +153,8 @@ spec:
                        "$gh_api/app/installations/$inst/access_tokens" \
                        | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
               }
-              export GH_TOKEN="$(mint_token "$GH_ORG")"
+              GH_TOKEN="$(mint_token "$GH_ORG")" || { echo "GitHub App token mint failed for ${GH_ORG}"; exit 1; }
+              export GH_TOKEN
               git config --global credential.helper ''
               git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
               git config --global user.email "scaffolder@coreyalan.com"
@@ -162,7 +163,13 @@ spec:
               # --- tooling (egress lane): gh CLI + optional claude --------------
               GH_VER=2.63.2
               curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VER}/gh_${GH_VER}_linux_amd64.tar.gz" | tar -xz -C /tmp
-              export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:${HOME}/.npm-global/bin:${PATH}"
+              # bws for onboard-app.sh Bitwarden project/secret creation (no
+              # unzip in the image; python3 stands in).
+              BWS_VER=1.0.0
+              curl -fsSL -o /tmp/bws.zip "https://github.com/bitwarden/sdk-sm/releases/download/bws-v${BWS_VER}/bws-x86_64-unknown-linux-gnu-${BWS_VER}.zip"
+              python3 -c "import zipfile; zipfile.ZipFile('/tmp/bws.zip').extractall('/tmp/bwsbin')"
+              chmod +x /tmp/bwsbin/bws
+              export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:/tmp/bwsbin:${HOME}/.npm-global/bin:${PATH}"
               # Keyless Claude via Workload Identity Federation: the SDK exchanges
               # the projected SA token (aud api.anthropic.com, mounted below) for a
               # short-lived Anthropic token — no static API key. Placeholder IDs
@@ -238,7 +245,7 @@ spec:
               bash scripts/scaffold-app.sh \
                 --name "$APP_NAME" --domain "$EFF_DOMAIN" --company "$COMPANY" \
                 --github-org "$GH_ORG" "${DESC_ARGS[@]}" "${SPEC_ARGS[@]}" $DB_FLAG "${BRAND_ARGS[@]}" $EMAIL_FLAG \
-                --targets "$TARGETS" --ci $AGENT_FLAG
+                --targets "$TARGETS" --ci --no-dns $AGENT_FLAG
 
               # dns: fresh main so the dns PR carries ONLY <app>-dns.tf
               git checkout main && git pull --ff-only
@@ -357,14 +364,14 @@ spec:
                 "subjectToken": sys.argv[2]}))' "$WIF_AUDIENCE" "$SUBJECT_TOKEN" \
                 | curl -sf -X POST "https://sts.googleapis.com/v1/token" \
                     -H 'Content-Type: application/json' -d @- \
-                | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')"
+                | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])' || true)"
               [ -n "$GCP_TOKEN" ] || { echo "STS token exchange failed"; exit 1; }
 
               # --- read the new project's NUMBER (id defaults to the app name) --
               PROJECT_ID="$APP_NAME"
               NUM="$(curl -sf -H "Authorization: Bearer ${GCP_TOKEN}" \
                      "https://cloudresourcemanager.googleapis.com/v1/projects/${PROJECT_ID}" \
-                     | python3 -c 'import sys,json;print(json.load(sys.stdin)["projectNumber"])')"
+                     | python3 -c 'import sys,json;print(json.load(sys.stdin)["projectNumber"])' || true)"
               [ -n "$NUM" ] || { echo "could not read projectNumber for ${PROJECT_ID} — is the onboard PR applied?"; exit 1; }
               MOD="$(printf '%s' "$APP_NAME" | tr '-' '_')"
 
@@ -372,7 +379,8 @@ spec:
               git config --global user.name  "app-scaffolder"
 
               # --- platform-infra: patch apps.tfvars project number (PR) --------
-              export GH_TOKEN="$(mint_token "$GH_ORG")"
+              GH_TOKEN="$(mint_token "$GH_ORG")" || { echo "GitHub App token mint failed for ${GH_ORG}"; exit 1; }
+              export GH_TOKEN
               git config --global credential.helper ''
               git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
               git clone --depth 1 "https://github.com/$GH_ORG/platform-infra.git" "${HOME}/pi"
@@ -390,14 +398,15 @@ spec:
 
               # --- homelab-infra: generate the staging environment (PR) --------
               # App B (NX211-owned), repo-scoped — homelab-org is a USER account.
-              export GH_TOKEN="$(mint_repo_token "$HOMELAB_ORG" homelab-infra)"
+              GH_TOKEN="$(mint_repo_token "$HOMELAB_ORG" homelab-infra)" || { echo "GitHub App token mint failed for ${HOMELAB_ORG}/homelab-infra"; exit 1; }
+              export GH_TOKEN
               git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
               git clone --depth 1 "https://github.com/$HOMELAB_ORG/homelab-infra.git" "${HOME}/hi"
               cd "${HOME}/hi"
               DB_FLAG=""; [ "$DATABASE" = "true" ] && DB_FLAG="--database"
               bash scripts/gen-staging-app.sh \
                 --name "$APP_NAME" --domain "$DOMAIN" --company "$COMPANY" \
-                --gcp-project "$PROJECT_ID" $DB_FLAG --repo-root . --pr
+                --gcp-project "$PROJECT_ID" $DB_FLAG --repo-root .
 
               echo "=== finish done. Review the apps.tfvars + staging PRs, complete the"
               echo "=== staging TODOs, then APPROVE gate-2."
