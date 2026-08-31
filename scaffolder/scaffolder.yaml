@@ -40,6 +40,29 @@ spec:
         name: scaffolder-pac-incoming
         key: secret
       targets: ["main"]
+      # PaC rejects any /incoming body param not listed here ("param X is not
+      # allowed in incoming webhook CR"), so this must cover every key the Port
+      # scaffold_app action sends (its webhook body.params), which
+      # .tekton/scaffold-app-incoming.yaml maps onto pipeline params.
+      params:
+        - name
+        - domain
+        - company
+        - description
+        - spec_url
+        - database
+        - primary_color
+        - accent_color
+        - secondary_color
+        - logo_url
+        - enable_email
+        - brand_kit
+        - targets
+        # implement-spec lane (shares this Repository CR; `name` is common):
+        - base_branch
+        - demo_slug
+        - instructions
+        - spec_path
 ---
 # Shared PaC /incoming secret — the SAME value the Port scaffold_app action sends
 # as {{ .secrets.PAC_INCOMING_SECRET }} (BWS CAPTURLY_PAC_INCOMING_SECRET, also
