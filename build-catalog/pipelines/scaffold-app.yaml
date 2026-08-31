@@ -195,6 +195,9 @@ spec:
               # --- credentials for onboard (BWS) + dns (Cloudflare) ------------
               export BWS_ACCESS_TOKEN="$(cat $(workspaces.bws.path)/access-token)"
               export CLOUDFLARE_API_TOKEN="$(cat $(workspaces.cloudflare.path)/api-token)"
+              # platform-infra pushes go through createCommitOnBranch (GitHub's
+              # verified signature) — required_signatures rejects App git pushes.
+              export PUSH_VIA_API=1
 
               # --- clone platform-infra (carries all three scripts) ------------
               git clone --depth 1 "https://github.com/${GH_ORG}/platform-infra.git" "${HOME}/platform-infra"
@@ -393,8 +396,13 @@ spec:
               sed -i "s|^${MOD}_project_number = \"\".*|${MOD}_project_number = \"${NUM}\"|" \
                 terraform/environments/prod/apps.tfvars
               git add terraform/environments/prod/apps.tfvars
-              git commit -q -m "chore(tfvars): $APP_NAME GCP project number (${NUM})"
-              git push -u origin "scaffold/project-number-$APP_NAME"
+              git -c commit.gpgsign=false commit -q -m "chore(tfvars): $APP_NAME GCP project number (${NUM})"
+              # API-signed publish: a git push from the App token is unsigned
+              # and platform-infra's required_signatures rejects it at merge.
+              bash scripts/push-signed.sh \
+                --repo "$GH_ORG/platform-infra" \
+                --branch "scaffold/project-number-$APP_NAME" \
+                --message "chore(tfvars): $APP_NAME GCP project number (${NUM})"
               gh pr create --repo "$GH_ORG/platform-infra" \
                 --title "chore(tfvars): $APP_NAME GCP project number" \
                 --body "Backfills \`${MOD}_project_number = \"${NUM}\"\` (read from GCP after the onboard apply). Merge after the onboard PR is applied." \
