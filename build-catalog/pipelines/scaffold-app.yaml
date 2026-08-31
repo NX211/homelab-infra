@@ -56,6 +56,7 @@ spec:
     - { name: app-base-url,    type: string, default: "https://coreyalan.com" }
     # WIF provider the finish task's projected token targets (keyless GCP read).
     - { name: wif-audience, type: string, default: "//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc" }
+    - { name: port-run-id,        type: string, default: "" }  # Port action run id (finally callback)
     - { name: approvers,          type: array,  default: ["corey"] }
     - { name: approvals-required, type: string, default: "1" }
     - name: toolchain-image
@@ -69,6 +70,8 @@ spec:
     - name: anthropic         # secret: WIF identifiers (federation-rule/service-account/org/workspace ids)
     - name: cloudflare        # secret: api-token (Zone:Edit + DNS:Edit)
     - name: bws               # secret: access-token (BWS write, for onboard secret creation)
+    - name: port              # secret: client-id + client-secret (finally status callback); OPTIONAL
+      optional: true
   tasks:
     # ── prepare: rebrand + onboard + dns ────────────────────────────────────
     - name: prepare
@@ -433,3 +436,45 @@ spec:
         - { name: approvers, value: "$(params.approvers[*])" }
         - { name: numberOfApprovalsRequired, value: $(params.approvals-required) }
         - { name: description, value: "Review apps.tfvars + staging PRs for $(params.name); complete staging TODOs (BWS project, credentials, infraAppName); then approve." }
+
+  finally:
+    # Report the pipeline outcome back to Port so the action run leaves
+    # IN_PROGRESS (the /incoming webhook is fire-and-forget). No-ops when the
+    # run id wasn't passed or the scaffolder-port secret isn't populated yet.
+    - name: report-port-status
+      when:
+        - input: "$(params.port-run-id)"
+          operator: notin
+          values: [""]
+      params:
+        - { name: run-id,  value: "$(params.port-run-id)" }
+        - { name: outcome, value: "$(tasks.status)" }
+        - { name: image,   value: "$(params.toolchain-image)" }
+      workspaces:
+        - { name: port, workspace: port }
+      taskSpec:
+        params:
+          - { name: run-id, type: string }
+          - { name: outcome, type: string }
+          - { name: image, type: string }
+        workspaces:
+          - { name: port, optional: true }
+        steps:
+          - name: patch
+            image: $(params.image)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              if [ "$(workspaces.port.bound)" != "true" ] || [ ! -f "$(workspaces.port.path)/client-id" ]; then
+                echo "no Port credentials mounted — skipping status callback"
+                exit 0
+              fi
+              CID="$(cat "$(workspaces.port.path)/client-id")"
+              CSEC="$(cat "$(workspaces.port.path)/client-secret")"
+              case "$(params.outcome)" in
+                Succeeded|Completed) STATUS=SUCCESS ;;
+                *)                   STATUS=FAILURE ;;
+              esac
+              TOKEN="$(python3 -c 'import json,sys;print(json.dumps({"clientId":sys.argv[1],"clientSecret":sys.argv[2]}))' "$CID" "$CSEC"                 | curl -sf -X POST https://api.port.io/v1/auth/access_token -H 'Content-Type: application/json' -d @-                 | python3 -c 'import json,sys;print(json.load(sys.stdin)["accessToken"])')" || { echo "Port auth failed — skipping"; exit 0; }
+              curl -sf -X PATCH "https://api.port.io/v1/actions/runs/$(params.run-id)"                 -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json'                 -d "{\"status\":\"${STATUS}\",\"statusLabel\":\"pipeline $(params.outcome)\"}" >/dev/null                 || { echo "Port run PATCH failed (non-fatal)"; exit 0; }
+              echo "Port run $(params.run-id) -> ${STATUS}"
