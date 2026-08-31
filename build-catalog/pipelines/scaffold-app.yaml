@@ -169,7 +169,11 @@ spec:
               curl -fsSL -o /tmp/bws.zip "https://github.com/bitwarden/sdk-sm/releases/download/bws-v${BWS_VER}/bws-x86_64-unknown-linux-gnu-${BWS_VER}.zip"
               python3 -c "import zipfile; zipfile.ZipFile('/tmp/bws.zip').extractall('/tmp/bwsbin')"
               chmod +x /tmp/bwsbin/bws
-              export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:/tmp/bwsbin:${HOME}/.npm-global/bin:${PATH}"
+              # helm pinned to CI's 4.2.x so onboard-app.sh born-renders (APP_MAP +
+              # rendered/<app>) instead of falling back to in-cluster Helm.
+              HELM_VER=4.2.1
+              curl -fsSL "https://get.helm.sh/helm-v${HELM_VER}-linux-amd64.tar.gz" | tar -xz -C /tmp
+              export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:/tmp/bwsbin:/tmp/linux-amd64:${HOME}/.npm-global/bin:${PATH}"
               # Keyless Claude via Workload Identity Federation: the SDK exchanges
               # the projected SA token (aud api.anthropic.com, mounted below) for a
               # short-lived Anthropic token — no static API key. Placeholder IDs
