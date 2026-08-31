@@ -63,6 +63,8 @@ spec:
         - demo_slug
         - instructions
         - spec_path
+        # both lanes: Port action run id for the finally status callback
+        - port_run_id
 ---
 # Shared PaC /incoming secret — the SAME value the Port scaffold_app action sends
 # as {{ .secrets.PAC_INCOMING_SECRET }} (BWS CAPTURLY_PAC_INCOMING_SECRET, also
@@ -241,6 +243,33 @@ spec:
   data:
     - secretKey: token
       remoteRef: { key: a8408b74-c87f-4518-a436-b49a011a5112 }   # SCAFFOLDER_READ_TOKEN (Build Platform)
+---
+# Port credential pair for the finally status callback (PATCH the action run
+# to SUCCESS/FAILURE so runs stop sitting IN_PROGRESS forever). This is the
+# Build Platform's OWN narrow copy of the org Port pair — same pattern as the
+# "Port Actions" project copy in deploy-workflows (blast-radius limiting; the
+# scaffolder lane never reads Platform Infrastructure or Workbench).
+# Fill the placeholder UUIDs after copying the pair into the Build Platform
+# BWS project as SCAFFOLDER_PORT_CLIENT_ID / SCAFFOLDER_PORT_CLIENT_SECRET.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-port
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-port
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: client-id
+      remoteRef: { key: 00000000-0000-0000-0000-000000000000 }   # SCAFFOLDER_PORT_CLIENT_ID (placeholder)
+    - secretKey: client-secret
+      remoteRef: { key: 00000000-0000-0000-0000-000000000000 }   # SCAFFOLDER_PORT_CLIENT_SECRET (placeholder)
 ---
 # The render task runs the CLIENT'S OWN JavaScript (headless Chromium
 # screenshotting an approved demo) — the only untrusted code in the scaffolder
