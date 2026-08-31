@@ -11,15 +11,22 @@ staging-app:
   # credentialsSecret (a BWS access token scoped to that project) as a K8s secret
   # in external-secrets-system — one-time, same pattern as the other staging apps.
   bitwarden:
-    projectID: "PLACEHOLDER-create-staging-bws-project"
+    projectID: "1700bcb5-dffc-4270-9683-b4b70185464d" # Staging - Reggie's BBQ
     organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+    # TODO(bootstrap): create a BWS machine account scoped to the staging
+    # project and store its token as this K8s secret in external-secrets-system
+    # (one-time, Bitwarden web console — same as the other staging apps).
     credentialsSecret: bitwarden-staging-reggiesbbq-credentials
   database:
     enabled: true
     superuser:
       create: false # uses the shared postgres-superuser-staging secret
+    userKey: 1710cc98-8b27-4ab0-8332-b4b70185468a # DB_USER
+    passwordKey: 12c9891c-ead7-4ee6-8518-b4b7018546ed # DB_PASSWORD
+    nameKey: 82fe637f-ade2-4e5e-a74c-b4b7018546c0 # DB_NAME
   migration:
     enabled: true
+    repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
@@ -53,3 +60,39 @@ staging-app:
       value: production
     - name: APP_ENV
       value: staging
+  envFrom:
+    - secretRef:
+        name: reggiesbbq-staging-secrets
+  # External Secrets (Bitwarden staging project). Stripe/Shippo values are
+  # PLACEHOLDER until Reggie's accounts exist (use Stripe TEST keys here).
+  externalSecrets:
+    enabled: true
+    secretName: reggiesbbq-staging-secrets
+    refreshInterval: 1h
+    secrets:
+      - name: DATABASE_URL
+        key: 8fc4028f-a66a-47ad-9c92-b4b701854722
+      - name: AUTH_SECRET
+        key: 14f82414-0735-45fd-9e8e-b4b701854756
+      - name: NEXTAUTH_URL
+        key: 37b94bb7-b2f4-4758-97cf-b4b70185594f
+      - name: STRIPE_SECRET_KEY
+        key: 254e08f9-6711-46f0-a707-b4b701855c41
+      - name: STRIPE_WEBHOOK_SECRET
+        key: 754cee31-8c74-454f-8fc0-b4b701855da5
+      - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+        key: f787b1dc-508f-44ff-adbf-b4b701855f07
+      - name: SHIPPO_API_KEY
+        key: bd0ee5f6-e730-452e-bb08-b4b701855aaf
+      - name: SHIPPO_WEBHOOK_SECRET
+        key: 0e0796db-5cde-4e7a-8a68-b4b701856070
+      - name: SHIPPO_FROM_NAME
+        key: d1212a07-2c2d-4d48-bb03-b4b7018561cd
+      - name: SHIPPO_FROM_ADDRESS1
+        key: 0b3635de-c909-4e40-90b7-b4b70185632d
+      - name: SHIPPO_FROM_CITY
+        key: 343d9d4f-6da4-4dae-9705-b4b70185648e
+      - name: SHIPPO_FROM_STATE
+        key: 21f835f9-d897-413a-8c6a-b4b7018565ee
+      - name: SHIPPO_FROM_ZIP
+        key: 8a41119a-2416-44cd-8adf-b4b70185674d
