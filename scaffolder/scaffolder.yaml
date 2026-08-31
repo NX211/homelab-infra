@@ -267,9 +267,9 @@ spec:
     template: { engineVersion: v2 }
   data:
     - secretKey: client-id
-      remoteRef: { key: 00000000-0000-0000-0000-000000000000 }   # SCAFFOLDER_PORT_CLIENT_ID (placeholder)
+      remoteRef: { key: ab285908-ffae-4910-81cc-b4b70183ddbb }   # SCAFFOLDER_PORT_CLIENT_ID
     - secretKey: client-secret
-      remoteRef: { key: 00000000-0000-0000-0000-000000000000 }   # SCAFFOLDER_PORT_CLIENT_SECRET (placeholder)
+      remoteRef: { key: 9dc5b2f3-309d-4dd7-a084-b4b70183ddfb }   # SCAFFOLDER_PORT_CLIENT_SECRET
 ---
 # The render task runs the CLIENT'S OWN JavaScript (headless Chromium
 # screenshotting an approved demo) — the only untrusted code in the scaffolder
