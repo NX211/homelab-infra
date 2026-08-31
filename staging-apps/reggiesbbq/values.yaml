@@ -1,0 +1,55 @@
+# Reggie's BBQ - Staging Values
+# Build once, deploy many: same image as prod, different config.
+
+staging-app:
+  appName: reggiesbbq
+  appLabel: Reggie's BBQ
+  fullnameOverride: reggiesbbq-staging
+  replicaCount: 1
+  # Per-app Bitwarden staging store (least privilege). TODO(scaffold): create a
+  # staging BWS project for this app and put its id here; bootstrap the
+  # credentialsSecret (a BWS access token scoped to that project) as a K8s secret
+  # in external-secrets-system — one-time, same pattern as the other staging apps.
+  bitwarden:
+    projectID: "PLACEHOLDER-create-staging-bws-project"
+    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+    credentialsSecret: bitwarden-staging-reggiesbbq-credentials
+  database:
+    enabled: true
+    superuser:
+      create: false # uses the shared postgres-superuser-staging secret
+  migration:
+    enabled: true
+  image:
+    repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
+    pullPolicy: IfNotPresent
+    digest: "" # Seeded empty; CI's gitops-staging-update.yml fills it from the first prod build
+  imagePullSecrets:
+    - name: gcr-pull-secret-reggiesbbq
+  gcrPullSecret:
+    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO does not manage this pull secret
+    secretName: gcr-pull-secret-reggiesbbq
+  service:
+    type: ClusterIP
+    port: 3000
+  ingress:
+    enabled: true
+    host: staging.reggiesbbqonline.com
+    clusterIssuer: letsencrypt-prod
+    # On-LAN/in-cluster by default; the allowlist-reconciler unions reviewer IPs
+    # at runtime from Bitwarden (STAGING_BASE_ALLOWLIST_CIDR stays out of git).
+    ipAllowList:
+      enabled: true
+      sourceRange:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+      reconcilerManaged: true
+      # TODO(scaffold): appName MUST equal the StagingSite.infraAppName entered in
+      # the admin UI for review-access to resolve. Defaulted to the prod-app name.
+      appName: reggiesbbq
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: APP_ENV
+      value: staging

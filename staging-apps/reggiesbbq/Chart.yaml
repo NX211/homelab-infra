@@ -1,0 +1,16 @@
+apiVersion: v2
+name: reggiesbbq-staging
+description: Reggie's BBQ - Staging Environment
+type: application
+version: 1.0.0
+appVersion: "0.1.0"
+keywords:
+  - reggiesbbq
+  - nextjs
+  - staging
+maintainers:
+  - name: Homelab Admin
+dependencies:
+  - name: staging-app
+    version: "0.7.2"
+    repository: "file://../../charts/staging-app"
