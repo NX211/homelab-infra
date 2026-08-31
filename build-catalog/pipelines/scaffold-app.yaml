@@ -256,7 +256,7 @@ spec:
         apiVersion: openshift-pipelines.org/v1alpha1
         kind: ApprovalTask
       params:
-        - { name: approvers, value: $(params.approvers) }
+        - { name: approvers, value: "$(params.approvers[*])" }
         - { name: numberOfApprovalsRequired, value: $(params.approvals-required) }
         - { name: description, value: "Merge+apply onboard & dns PRs for $(params.name); complete the registrar NS cutover for $(params.domain); then approve." }
 
@@ -409,6 +409,6 @@ spec:
         apiVersion: openshift-pipelines.org/v1alpha1
         kind: ApprovalTask
       params:
-        - { name: approvers, value: $(params.approvers) }
+        - { name: approvers, value: "$(params.approvers[*])" }
         - { name: numberOfApprovalsRequired, value: $(params.approvals-required) }
         - { name: description, value: "Review apps.tfvars + staging PRs for $(params.name); complete staging TODOs (BWS project, credentials, infraAppName); then approve." }
