@@ -1,0 +1,43 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  # Name follows the `staging-<prod-app-name>` convention so staging-promote.yml
+  # (`ARGO_APP="staging-${APP_NAME}"`), the gitops-trigger STAGING_APP_MAP, and the
+  # PR branch naming all line up without per-app special cases.
+  name: staging-reggiesbbq
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: reggiesbbq
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: HEAD
+    path: staging-apps/reggiesbbq
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  # The allowlist-reconciler owns this Middleware's sourceRange (base ∪ reviewer
+  # IPs); ignore it so selfHeal won't revert runtime writes.
+  ignoreDifferences:
+    - group: traefik.io
+      kind: Middleware
+      name: reggiesbbq-staging-ipallowlist
+      namespace: staging
+      jsonPointers:
+        - /spec/ipAllowList/sourceRange
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
