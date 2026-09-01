@@ -50,7 +50,10 @@ GCP_PROJECT="${GCP_PROJECT:-$NAME}"
 PROD_APP="$NAME"
 IMAGE_REPO="us-central1-docker.pkg.dev/${GCP_PROJECT}/${GCP_PROJECT}/${NAME}-web"
 STAGING_ORG_ID="4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"      # constant across staging apps
-CHART_VER="0.7.2"                                          # charts/staging-app
+# Read the subchart version from the chart itself — a hardcoded constant went
+# stale (0.7.2 vs 0.8.1) and broke ArgoCD dependency builds for new apps.
+CHART_VER="$(awk '/^version:/ {print $2; exit}' "${REPO_ROOT}/charts/staging-app/Chart.yaml")"
+[ -n "$CHART_VER" ] || { echo "could not read charts/staging-app version" >&2; exit 1; }
 DIR="${REPO_ROOT}/staging-apps/${PROD_APP}"
 APP_FILE="${REPO_ROOT}/argocd/applications/staging-${PROD_APP}.yaml"
 
