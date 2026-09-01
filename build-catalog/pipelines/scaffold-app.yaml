@@ -402,7 +402,25 @@ spec:
               git checkout -b "scaffold/project-number-$APP_NAME"
               sed -i "s|^${MOD}_project_number = \"\".*|${MOD}_project_number = \"${NUM}\"|" \
                 terraform/environments/prod/apps.tfvars
-              git add terraform/environments/prod/apps.tfvars
+              # sync-secrets.yml carries a hardcoded per-app matrix whose entry
+              # onboard writes with an empty project number — backfill it here
+              # too or the app's first secret sync fails on a WIF path with no
+              # project (projects//locations/...).
+              python3 - "$APP_NAME" "$NUM" <<'PY_SYNC'
+              import re, sys
+              app, num = sys.argv[1:3]
+              path = '.github/workflows/sync-secrets.yml'
+              text = open(path).read()
+              pattern = re.compile(
+                  r'("name": "%s",\s*\n\s*"gcp_project": "[^"]*",\s*\n\s*"gcp_project_number": )""' % re.escape(app))
+              patched, n = pattern.subn(r'\1"%s"' % num, text)
+              if n:
+                  open(path, 'w').write(patched)
+                  print(f"sync-secrets.yml: {app} project number backfilled")
+              else:
+                  print(f"sync-secrets.yml: no empty entry for {app} (already filled or matrix refactored)")
+              PY_SYNC
+              git add terraform/environments/prod/apps.tfvars .github/workflows/sync-secrets.yml
               git -c commit.gpgsign=false commit -q -m "chore(tfvars): $APP_NAME GCP project number (${NUM})"
               # API-signed publish: a git push from the App token is unsigned
               # and platform-infra's required_signatures rejects it at merge.
