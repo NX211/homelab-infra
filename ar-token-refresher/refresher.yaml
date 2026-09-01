@@ -21,7 +21,7 @@ data:
     PULLER_SA="homelab-ar-puller@platform-infra-prod.iam.gserviceaccount.com"
     REGISTRY="us-central1-docker.pkg.dev"
     NS="staging"
-    SECRETS="gcr-pull-secret-blue-sky gcr-pull-secret-capturly-web gcr-pull-secret-coreyalan gcr-pull-secret-dispatchr gcr-pull-secret-jlshaw gcr-pull-secret-showcase"
+    SECRETS="gcr-pull-secret-blue-sky gcr-pull-secret-capturly-web gcr-pull-secret-coreyalan gcr-pull-secret-dispatchr gcr-pull-secret-jlshaw gcr-pull-secret-showcase gcr-pull-secret-reggiesbbq"
     TOKEN_FILE="/var/run/secrets/gcp-sts/token"
 
     b64() { base64 | tr -d '\n'; }
