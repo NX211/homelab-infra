@@ -61,6 +61,20 @@ staging-app:
       value: production
     - name: APP_ENV
       value: staging
+    # ---- SeaweedFS S3 uploads (in-cluster) ----
+    # Prod uses native GCS (UPLOADS_BUCKET); staging uses SeaweedFS via the
+    # storage driver. Credentials are a scoped S3 identity (Read/Write/List on
+    # reggiesbbq-uploads only) — see the ESO TODO below.
+    - name: STORAGE_PROVIDER
+      value: s3
+    - name: S3_ENDPOINT
+      value: http://seaweedfs-filer.seaweedfs.svc:8333
+    - name: S3_REGION
+      value: us-east-1
+    - name: S3_FORCE_PATH_STYLE
+      value: "true"
+    - name: S3_BUCKET_NAME
+      value: reggiesbbq-uploads
   envFrom:
     - secretRef:
         name: reggiesbbq-staging-secrets
@@ -87,6 +101,14 @@ staging-app:
         key: bd0ee5f6-e730-452e-bb08-b4b701855aaf
       - name: SHIPPO_WEBHOOK_SECRET
         key: 0e0796db-5cde-4e7a-8a68-b4b701856070
+      # TODO(bootstrap): SeaweedFS S3 credentials — add a scoped `reggiesbbq`
+      # identity (Read/Write/List on reggiesbbq-uploads only) to the
+      # seaweedfs-s3-config-json blob, put the key pair in the staging BWS
+      # project, then fill these ids and uncomment:
+      # - name: S3_ACCESS_KEY_ID
+      #   key: 00000000-0000-0000-0000-000000000000
+      # - name: S3_SECRET_ACCESS_KEY
+      #   key: 00000000-0000-0000-0000-000000000000
       - name: SHIPPO_FROM_NAME
         key: d1212a07-2c2d-4d48-bb03-b4b7018561cd
       - name: SHIPPO_FROM_ADDRESS1
