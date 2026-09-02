@@ -64,6 +64,7 @@ data:
     10.43.5.100 staging.dispatchr.social
     10.43.5.100 staging.capturly.app
     10.43.5.100 staging.blue-skysolutions.com
+    10.43.5.100 staging.reggiesbbqonline.com
     # capturly-live (WebRTC) — split-horizon so the cert-manager HTTP-01
     # self-check reaches Traefik instead of hairpinning to the public IP (the
     # certs were stuck "failed to perform self check … context deadline exceeded").
