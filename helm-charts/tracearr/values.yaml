@@ -9,7 +9,10 @@
 tracearr:
   image:
     repository: ghcr.io/connorgallopo/tracearr
-    tag: "1.5.0"
+    # 2.x migrates the database on first boot (progress is reported and a bad
+    # migration cannot boot-loop the server). Take a backup first: a 1.5 backup
+    # restores cleanly onto 2.x if you need the escape hatch.
+    tag: "2.2.3"
     pullPolicy: IfNotPresent
 
   replicaCount: 1  # singleton poller — only 1 supported

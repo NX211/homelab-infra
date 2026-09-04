@@ -6,7 +6,7 @@
 # transcription run on CPU (slower, but cached per-song after first play).
 image:
   repository: razzaru/nightingale
-  tag: "1.1.0"
+  tag: "1.2.0"
   pullPolicy: IfNotPresent
 
 # Service configuration

@@ -4,12 +4,6 @@ kind: Application
 metadata:
   name: wizarr
   namespace: argocd
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: wizarr=ghcr.io/wizarrrr/wizarr
-    argocd-image-updater.argoproj.io/wizarr.update-strategy: semver
-    argocd-image-updater.argoproj.io/wizarr.helm.image-name: image.repository
-    argocd-image-updater.argoproj.io/wizarr.helm.image-tag: image.tag
-    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-creds
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
