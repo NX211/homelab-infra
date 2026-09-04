@@ -50,6 +50,11 @@ env:
   PGID: "8675309"
 
 # Resource limits
+#
+# Left at 500m on purpose. Bazarr sits at ~500m through its long 1.6.0 start,
+# which looks like throttling but is not: raising the limit to 2 cores was
+# measured and it still used ~500m, so the work is not CPU-bound on the limit
+# and a bigger ceiling buys nothing.
 resources:
   requests:
     cpu: 100m

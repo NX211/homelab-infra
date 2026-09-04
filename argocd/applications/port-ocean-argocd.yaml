@@ -24,7 +24,7 @@ spec:
   source:
     repoURL: https://port-labs.github.io/helm-charts
     chart: port-ocean
-    targetRevision: "0.22.0"
+    targetRevision: "0.23.6"
     helm:
       releaseName: port-ocean-argocd
       valuesObject:
