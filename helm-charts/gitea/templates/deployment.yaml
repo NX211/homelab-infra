@@ -18,6 +18,10 @@ spec:
       labels:
         app: gitea
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       enableServiceLinks: false
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -41,12 +45,22 @@ spec:
           chmod -R 755 /data
           chown -R 1000:1000 /data-lfs
           chmod -R 755 /data-lfs
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 500m
+            memory: 128Mi
         volumeMounts:
         - name: data
           mountPath: /data
         - name: lfs
           mountPath: /data-lfs
         securityContext:
+          allowPrivilegeEscalation: false
+          # Only the mounted volume is written to.
+          readOnlyRootFilesystem: true
           runAsUser: 0
 
       {{- if .Values.customTemplates.enabled }}
