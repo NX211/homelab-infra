@@ -54,7 +54,7 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001 }
       containers:
         - name: verdaccio
-          image: verdaccio/verdaccio:6.2.0
+          image: verdaccio/verdaccio:6.10.2
           ports: [{ containerPort: 4873, name: http }]
           env:
             - { name: VERDACCIO_PORT, value: "4873" }
@@ -102,7 +102,7 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001 }
       containers:
         - name: verdaccio
-          image: verdaccio/verdaccio:6.2.0
+          image: verdaccio/verdaccio:6.10.2
           ports: [{ containerPort: 4873, name: http }]
           env:
             - { name: VERDACCIO_PORT, value: "4873" }

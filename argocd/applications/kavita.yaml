@@ -4,12 +4,6 @@ kind: Application
 metadata:
   name: kavita
   namespace: argocd
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: kavita=jvmilazz0/kavita
-    argocd-image-updater.argoproj.io/kavita.update-strategy: semver
-    argocd-image-updater.argoproj.io/kavita.helm.image-name: image.repository
-    argocd-image-updater.argoproj.io/kavita.helm.image-tag: image.tag
-    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-creds
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

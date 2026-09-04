@@ -19,7 +19,7 @@ spec:
     chart: reloader
     # Keep in lockstep with platform-infra/argocd/applications/reloader.yaml
     # so prod and staging behavior is identical. Bump together.
-    targetRevision: "2.2.9"
+    targetRevision: "2.2.16"
     helm:
       valuesObject:
         reloader:

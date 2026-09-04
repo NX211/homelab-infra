@@ -40,7 +40,7 @@ spec:
       initContainers:
         {{- if .Values.timescale.enabled }}
         - name: wait-db
-          image: busybox:1.37
+          image: busybox:1.38.0
           command: ["sh", "-c", "i=0; until nc -z {{ include "tracearr.timescale.fullname" . }} {{ .Values.timescale.service.port }}; do i=$((i+1)); [ $i -ge 60 ] && exit 1; sleep 2; done"]
           resources:
             requests:
@@ -61,7 +61,7 @@ spec:
         {{- end }}
         {{- if .Values.redis.enabled }}
         - name: wait-redis
-          image: busybox:1.37
+          image: busybox:1.38.0
           command: ["sh", "-c", "i=0; until nc -z {{ include "tracearr.redis.fullname" . }} {{ .Values.redis.service.port }}; do i=$((i+1)); [ $i -ge 60 ] && exit 1; sleep 2; done"]
           resources:
             requests:
