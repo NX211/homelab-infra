@@ -120,15 +120,33 @@ argo-cd:
       # thrashed it. Keep the blast radius to the apps whose drift we understand.
 
   # Application Controller - manages application state
+  #
+  # Sized from observed behaviour, not a guess. At the previous 2Gi limit the
+  # controller sat in a CrashLoopBackOff of OOMKills (exit 137), getting ~60s
+  # per life -- never long enough to finish a reconcile, so apps stayed
+  # OutOfSync and manual syncs only added work it could not complete.
+  #
+  # It caches the whole cluster: ~1250 workload resources, 194 CRDs, ~800
+  # secrets, 41 namespaces, across 96 Applications. Run briefly at a 4Gi limit
+  # it peaked at 3112Mi with zero restarts and drained the backlog from 43
+  # OutOfSync to 10 in about two minutes. 6Gi keeps roughly 2x the observed
+  # peak, since `kubectl top` samples too coarsely to catch the real high-water
+  # mark and the cluster only grows.
+  #
+  # CPU was pinned at 966m against the old 1000m limit -- hard throttled, which
+  # stretches every reconcile and keeps memory resident longer.
+  #
+  # yellowtalon, where this runs, has 32 cores and 64Gi with ~10% of memory
+  # requested, so this is not a scarce resource here.
   controller:
     replicas: 1
     resources:
       requests:
-        cpu: 250m
-        memory: 1Gi
-      limits:
-        cpu: 1000m
+        cpu: 500m
         memory: 2Gi
+      limits:
+        cpu: 2000m
+        memory: 6Gi
 
   # API Server - UI and API endpoint
   server:
