@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: lscr.io/linuxserver/radarr
-  tag: "6.1.1.10360-ls304"
+  tag: "6.3.0.10514-ls314"
   pullPolicy: IfNotPresent
 
 # Service configuration

@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: lscr.io/linuxserver/lidarr
-  tag: "3.1.0.4875-ls26"
+  tag: "3.1.0.4875-ls40"
   pullPolicy: IfNotPresent
 
 # Service configuration
@@ -60,7 +60,7 @@ lidatube:
   enabled: true
   image:
     repository: thewicklowwolf/lidatube
-    tag: "0.2.53"
+    tag: "0.2.56"
     pullPolicy: IfNotPresent
   service:
     port: 5000
@@ -101,7 +101,7 @@ lidatube:
     importMode: Move
     image:
       repository: curlimages/curl
-      tag: "8.21.0"
+      tag: "8.22.0"
   resources:
     requests:
       cpu: 100m
