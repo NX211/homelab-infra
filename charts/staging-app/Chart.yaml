@@ -16,4 +16,7 @@ type: application
 # 0.5.0 — adds opt-in async tier: worker Deployment (Pub/Sub consumer, with a
 # mounted GCP SA-key file for off-GKE auth), command-type CronJobs, and
 # HTTP-curl CronJobs. All gated/empty by default. Backwards-compatible.
-version: 0.8.1
+# 0.8.2 — security-context gaps: seccompProfile on the http/worker CronJob
+# pods (the Deployment and Jobs already had one) and resource bounds on the
+# db-init container. No behaviour change; see docs/runbooks.
+version: 0.8.2
