@@ -50,7 +50,9 @@ env:
   PAPERLESS_OCR_LANGUAGE: "eng"
 
 # External Secrets (Bitwarden Secrets Manager — Workbench project)
-# Provides DB creds to both paperless-ngx (PAPERLESS_DB*) and postgres (POSTGRES_*).
+# Provides DB creds to both paperless-ngx (PAPERLESS_DB*) and postgres
+# (POSTGRES_*), plus paperless' Django signing key. Consumed via envFrom, so
+# adding an entry here is enough to expose it to the container.
 externalSecrets:
   enabled: true
   refreshInterval: 1h
@@ -68,6 +70,11 @@ externalSecrets:
       key: 8f4c3074-9a60-48e7-9ae8-b43c01663e3e  # paperless_database_user
     - name: POSTGRES_PASSWORD
       key: b799fafa-835f-42e7-b04b-b3d000fb6d21  # paperless_database_password
+    # paperless-ngx 3.1 made this mandatory and raises ImproperlyConfigured at
+    # settings import if it is unset or still 'change-me'. 3.0.x had no such
+    # check, so the 3.0.5 -> 3.1.3 bump took paperless down until this existed.
+    - name: PAPERLESS_SECRET_KEY
+      key: 4ab57129-3d56-4677-8414-b4bb013171a1  # paperless_secret_key
 
 # Resource limits
 resources:
