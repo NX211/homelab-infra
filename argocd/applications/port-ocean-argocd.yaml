@@ -44,7 +44,7 @@ spec:
           type: argocd
           identifier: argocd-homelab
           # renovate: datasource=docker depName=ghcr.io/port-labs/port-ocean-argocd
-          version: "0.4.98" # pin (Kyverno disallow-latest-tag)
+          version: "0.4.110" # pin (Kyverno disallow-latest-tag)
           eventListener:
             type: POLLING
           config:
