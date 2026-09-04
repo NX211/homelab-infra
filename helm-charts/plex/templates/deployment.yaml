@@ -17,6 +17,10 @@ spec:
       labels:
         {{- include "plex.selectorLabels" . | nindent 8 }}
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       enableServiceLinks: false
