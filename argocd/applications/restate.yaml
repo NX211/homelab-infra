@@ -14,7 +14,7 @@ spec:
   source:
     repoURL: ghcr.io/restatedev
     chart: restate-helm
-    targetRevision: 1.6.2
+    targetRevision: 1.7.8
     helm:
       valuesObject:
         replicaCount: 1

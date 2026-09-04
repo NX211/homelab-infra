@@ -25,6 +25,10 @@ spec:
       labels:
         app: matrix-db-init
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       restartPolicy: OnFailure
       containers:
         - name: db-init

@@ -180,6 +180,8 @@ timescale:
   # timescaledb-ha: UID 1000 (postgres)
   podSecurityContext:
     fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
 
   securityContext:
     runAsUser: 1000

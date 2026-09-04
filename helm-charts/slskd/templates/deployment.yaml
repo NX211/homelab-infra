@@ -21,6 +21,10 @@ spec:
         k8s.v1.cni.cncf.io/networks: '[{"name":"{{ .Values.vpn.networkName }}","default-route":["{{ .Values.vpn.gateway }}"]}]'
       {{- end }}
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       enableServiceLinks: false
       {{- if .Values.vpn.enabled }}
       initContainers:
