@@ -4,12 +4,6 @@ kind: Application
 metadata:
   name: tdarr
   namespace: argocd
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: tdarr=ghcr.io/haveagitgat/tdarr
-    argocd-image-updater.argoproj.io/tdarr.update-strategy: semver
-    argocd-image-updater.argoproj.io/tdarr.helm.image-name: image.repository
-    argocd-image-updater.argoproj.io/tdarr.helm.image-tag: image.tag
-    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-creds
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
