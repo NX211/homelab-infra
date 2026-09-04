@@ -21,6 +21,12 @@ spec:
         k8s.v1.cni.cncf.io/networks: '[{"name":"{{ .Values.vpn.networkName }}","default-route":["{{ .Values.vpn.gateway }}"]}]'
       {{- end }}
     spec:
+      # RuntimeDefault seccomp for every container in the pod. The
+      # containers below still need NET_ADMIN and root, but there is no
+      # reason for them to run seccomp-unconfined.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       enableServiceLinks: false
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -32,9 +38,19 @@ spec:
         image: nicolaka/netshoot:v0.16
         securityContext:
           allowPrivilegeEscalation: false
+          # Needs NET_ADMIN and uid 0 to add routes; everything else is dropped.
+          # It only shells out to `ip`, so it writes nothing to the root fs.
+          readOnlyRootFilesystem: true
           capabilities:
             drop: ["ALL"]
             add: ["NET_ADMIN"]
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
         command:
         - sh
         - -c
@@ -51,6 +67,18 @@ spec:
       {{- end }}
       - name: fix-permissions
         image: busybox:1.38.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          # chown needs uid 0, but the default capability set does not need to
+          # be widened, and only the mounted /config volume is written to.
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
         command:
         - sh
         - -c
