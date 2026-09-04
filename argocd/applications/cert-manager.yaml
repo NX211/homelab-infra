@@ -15,7 +15,7 @@ spec:
     chart: cert-manager
     # On latest v1.19.5 (kubeVersion >= 1.22; CRDs have no selectableFields),
     # matching prod. Cluster is on k3s 1.32.
-    targetRevision: v1.19.5
+    targetRevision: v1.21.1
     helm:
       valuesObject:
         crds:
