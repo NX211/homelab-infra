@@ -17,6 +17,10 @@ spec:
       labels:
         {{- include "sportarr.selectorLabels" . | nindent 8 }}
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       enableServiceLinks: false
       {{- with .Values.nodeSelector }}
       nodeSelector:
@@ -30,6 +34,17 @@ spec:
         - -c
         - |
           chown -R {{ .Values.env.PUID }}:{{ .Values.env.PGID }} /config
+        securityContext:
+          allowPrivilegeEscalation: false
+          # Only the mounted volume is written to.
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 500m
+            memory: 128Mi
         volumeMounts:
         - name: config
           mountPath: /config

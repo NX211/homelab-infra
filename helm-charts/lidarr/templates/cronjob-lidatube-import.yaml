@@ -22,6 +22,10 @@ spec:
             {{- include "lidarr.labels" . | nindent 12 }}
             app.kubernetes.io/component: lidatube-import
         spec:
+          # RuntimeDefault seccomp for every container in the pod.
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
           restartPolicy: OnFailure
           {{- with .Values.nodeSelector }}
           nodeSelector:

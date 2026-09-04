@@ -21,6 +21,10 @@ spec:
         app.kubernetes.io/name: lidatube
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
