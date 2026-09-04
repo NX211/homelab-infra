@@ -89,8 +89,12 @@ meilisearch:
 chrome:
   enabled: true
   image:
-    repository: gcr.io/zenika-hub/alpine-chrome
-    tag: "124"
+    # Karakeep publishes its own tested Chrome image; the Alpine Chrome image
+    # it replaces is unmaintained. Pinned to an immutable version rather than
+    # the `release` tag so browser upgrades are a reviewable commit.
+    # https://docs.karakeep.app/administration/chrome-image-migration
+    repository: ghcr.io/karakeep-app/karakeep-chrome
+    tag: "151.0.7922.47-r1"
     pullPolicy: IfNotPresent
   service:
     port: 9222

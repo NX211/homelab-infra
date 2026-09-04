@@ -2,7 +2,7 @@
 
 # Cluster settings
 instances: 1
-imageName: "ghcr.io/cloudnative-pg/postgresql:16.1"
+imageName: "ghcr.io/cloudnative-pg/postgresql:16.15"
 
 # Node affinity - run on greytalon
 nodeSelector:

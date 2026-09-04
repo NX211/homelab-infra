@@ -30,7 +30,7 @@ spec:
       # Inject the secret API keys into config.ini (kept out of git) and write
       # the rendered file to the shared /data volume that Soularr reads.
       - name: render-config
-        image: busybox:1.36
+        image: busybox:1.38.0
         command:
         - sh
         - -c
