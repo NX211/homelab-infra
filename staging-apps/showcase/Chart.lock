@@ -1,6 +1,6 @@
 dependencies:
 - name: staging-app
   repository: file://../../charts/staging-app
-  version: 0.8.1
-digest: sha256:5f3925e75f969b1da88cb02aa913293e98cd722c93a17e4019c61695da215ae5
-generated: "2026-08-25T18:27:13.004261-05:00"
+  version: 0.8.2
+digest: sha256:0e098cc52bb7cb90417e46ef098078b38f42c284a88ed0b59772c3b0cb048862
+generated: "2026-09-04T10:50:37.860021-05:00"
