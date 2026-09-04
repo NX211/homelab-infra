@@ -61,6 +61,10 @@ spec:
         app.kubernetes.io/name: capturly-live-coturn
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       # TURN media is raw UDP/TCP and bypasses Traefik entirely — bind the
       # proxy node directly and UniFi-forward the ports to it.
       hostNetwork: true
