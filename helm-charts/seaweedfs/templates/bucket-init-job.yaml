@@ -18,6 +18,10 @@ spec:
         {{- include "seaweedfs.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: bucket-init
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       restartPolicy: OnFailure
       containers:
         - name: bucket-init

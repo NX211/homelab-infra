@@ -17,6 +17,10 @@ spec:
       labels:
         {{- include "autobrr.selectorLabels" . | nindent 8 }}
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       enableServiceLinks: false
       {{- with .Values.nodeSelector }}
       nodeSelector:

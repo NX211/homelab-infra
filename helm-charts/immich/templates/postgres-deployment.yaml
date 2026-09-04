@@ -21,6 +21,10 @@ spec:
         app.kubernetes.io/name: {{ include "immich.name" . }}-postgres
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       enableServiceLinks: false
       {{- with .Values.nodeSelector }}
       nodeSelector:

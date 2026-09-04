@@ -3,7 +3,7 @@ name: reggiesbbq-staging
 description: Reggie's BBQ - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "0.5.0"
+appVersion: "0.5.1"
 keywords:
   - reggiesbbq
   - nextjs
