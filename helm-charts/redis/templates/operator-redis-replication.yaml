@@ -24,7 +24,7 @@ spec:
   redisConfig:
     additionalRedisConfig: redis-ng-additional-config
   kubernetesConfig:
-    image: quay.io/opstree/redis:v8.6.2
+    image: quay.io/opstree/redis:v8.10.1
     imagePullPolicy: IfNotPresent
     redisSecret:
       name: redis-credentials
@@ -39,7 +39,7 @@ spec:
         memory: 512Mi
   redisExporter:
     enabled: true
-    image: quay.io/opstree/redis-exporter:v1.83.0
+    image: quay.io/opstree/redis-exporter:v1.89.0
     imagePullPolicy: IfNotPresent
     resources:
       requests:

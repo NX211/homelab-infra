@@ -110,7 +110,7 @@ synapseEndpoint: http://matrix-matrix-synapse:8008
 # --------------------------------------------------------------------------
 mas:
   enabled: true
-  image: ghcr.io/element-hq/matrix-authentication-service:1.22.0
+  image: ghcr.io/element-hq/matrix-authentication-service:1.24.0
   host: auth.coreyalan.com
   # ULID for the Google upstream provider; the Google redirect URI is derived
   # from it: https://auth.coreyalan.com/upstream/callback/<this>
@@ -144,7 +144,7 @@ mas:
 elementWeb:
   enabled: true
   # Verify/update the tag at deploy time (https://github.com/element-hq/element-web/releases).
-  image: ghcr.io/element-hq/element-web:v1.12.26
+  image: ghcr.io/element-hq/element-web:v1.12.27
   host: chat.coreyalan.com
   brand: "Coreyalan Chat"
   callUrl: https://call.coreyalan.com
@@ -191,7 +191,7 @@ rtc:
   callHost: call.coreyalan.com
   secretName: matrix-livekit
   livekit:
-    image: livekit/livekit-server:v1.13.5
+    image: livekit/livekit-server:v1.13.6
     wsPort: 7880        # signalling, proxied via Traefik (/livekit/sfu)
     tcpPort: 7881       # ICE/TCP fallback (hostPort)
     udpPort: 7882       # MUXED media UDP (hostPort) — UniFi-forward this port
@@ -206,7 +206,7 @@ rtc:
         cpu: "2"
         memory: 1Gi
   lkJwt:
-    image: ghcr.io/element-hq/lk-jwt-service:0.5.0
+    image: ghcr.io/element-hq/lk-jwt-service:0.6.0
     resources:
       requests:
         cpu: 10m
@@ -215,7 +215,7 @@ rtc:
         cpu: 200m
         memory: 128Mi
   elementCall:
-    image: ghcr.io/element-hq/element-call:v0.24.0
+    image: ghcr.io/element-hq/element-call:v0.25.0
     resources:
       requests:
         cpu: 10m
