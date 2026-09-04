@@ -63,11 +63,30 @@ spec:
           value: {{ .Values.env.PUID | quote }}
         - name: PGID
           value: {{ .Values.env.PGID | quote }}
+        # Bazarr 1.6.0 migrates its database on first start and then works for
+        # about nine and a half minutes before it serves HTTP. Measured on this
+        # cluster: ready at 9m21s. The old liveness probe (60s delay, 5 failures
+        # at 30s) killed it at ~210s every time, so the work restarted from
+        # scratch and never finished -- 11 restarts over 51 minutes.
+        #
+        # While a startupProbe is running, liveness and readiness are suspended,
+        # so this allows up to 15 minutes for a slow start before liveness takes
+        # over with its normal thresholds.
+        #
+        # Do not "fix" this by rolling the image back. 1.6.0's migration is
+        # one-way: on 1.5.6 the database now fails with
+        #   flask_migrate ERROR: Can't locate revision identified by '7e9a2b1c4d5f'
+        startupProbe:
+          httpGet:
+            path: /
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 90
         livenessProbe:
           httpGet:
             path: /
             port: http
-          initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 5
