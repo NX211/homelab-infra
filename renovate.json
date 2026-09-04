@@ -182,12 +182,13 @@
       "dependencyDashboardApproval": true
     },
     {
-      "description": "The argocd manager now covers every Application, not just cloudnativepg. Cluster-infrastructure chart majors (kyverno, cert-manager, traefik, kube-prometheus-stack, ...) land by hand rather than opening automatically.",
+      "description": "Cluster-infrastructure Helm charts land by hand, minors included. Majors alone were gated when the argocd manager was widened in #996, and two minors then broke things unattended: grafana 8.8.2 -> 8.15.0 added `drop: ALL` to its chown init container and wedged the rollout (#1031), and kyverno 3.9.0 shipped a CRD-migration hook that cannot survive ArgoCD's per-resource hook deletion (#1035). These 21 charts are the cluster itself, so anything above a patch gets a look first. Patches still flow on their own.",
       "matchDatasources": [
         "helm"
       ],
       "matchUpdateTypes": [
-        "major"
+        "major",
+        "minor"
       ],
       "dependencyDashboardApproval": true
     }
