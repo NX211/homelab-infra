@@ -40,6 +40,31 @@ spec:
         name: scaffolder-pac-incoming
         key: secret
       targets: ["main"]
+      # PaC rejects any /incoming body param not listed here ("param X is not
+      # allowed in incoming webhook CR"), so this must cover every key the Port
+      # scaffold_app action sends (its webhook body.params), which
+      # .tekton/scaffold-app-incoming.yaml maps onto pipeline params.
+      params:
+        - name
+        - domain
+        - company
+        - description
+        - spec_url
+        - database
+        - primary_color
+        - accent_color
+        - secondary_color
+        - logo_url
+        - enable_email
+        - brand_kit
+        - targets
+        # implement-spec lane (shares this Repository CR; `name` is common):
+        - base_branch
+        - demo_slug
+        - instructions
+        - spec_path
+        # both lanes: Port action run id for the finally status callback
+        - port_run_id
 ---
 # Shared PaC /incoming secret — the SAME value the Port scaffold_app action sends
 # as {{ .secrets.PAC_INCOMING_SECRET }} (BWS CAPTURLY_PAC_INCOMING_SECRET, also
@@ -187,17 +212,128 @@ spec:
     - secretKey: scaffold-read-token
       remoteRef: { key: a8408b74-c87f-4518-a436-b49a011a5112 }   # SCAFFOLDER_READ_TOKEN (Build Platform)
 ---
+# Scaffold READ token, on its own, for the implement-spec lane.
+#
+# The onboarding lane gets this same value inside the `scaffolder-bws` secret,
+# next to a Bitwarden WRITE token. implement-spec must never hold that write
+# token — it runs an agent over untrusted client-uploaded demo bytes — so the
+# read token is published separately here and mounted as the `scaffold-read`
+# workspace (file `token`).
+#
+# Same BWS key as scaffolder-bws.scaffold-read-token and the app-side
+# SCAFFOLD_READ_TOKEN. All three are one value; rotate together.
+#
+# The credential behind coreyalan.com's SHOWCASE_API_KEY must carry the
+# `showcases:source` scope for /api/scaffold/demo/<slug> to resolve — without it
+# that route answers 503 and the implement-spec fetch task fails closed.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-scaffold-read
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-scaffold-read
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: token
+      remoteRef: { key: a8408b74-c87f-4518-a436-b49a011a5112 }   # SCAFFOLDER_READ_TOKEN (Build Platform)
+---
+# Port credential pair for the finally status callback (PATCH the action run
+# to SUCCESS/FAILURE so runs stop sitting IN_PROGRESS forever). This is the
+# Build Platform's OWN narrow copy of the org Port pair — same pattern as the
+# "Port Actions" project copy in deploy-workflows (blast-radius limiting; the
+# scaffolder lane never reads Platform Infrastructure or Workbench).
+# Fill the placeholder UUIDs after copying the pair into the Build Platform
+# BWS project as SCAFFOLDER_PORT_CLIENT_ID / SCAFFOLDER_PORT_CLIENT_SECRET.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-port
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-port
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: client-id
+      remoteRef: { key: ab285908-ffae-4910-81cc-b4b70183ddbb }   # SCAFFOLDER_PORT_CLIENT_ID
+    - secretKey: client-secret
+      remoteRef: { key: 9dc5b2f3-309d-4dd7-a084-b4b70183ddfb }   # SCAFFOLDER_PORT_CLIENT_SECRET
+---
+# The render task runs the CLIENT'S OWN JavaScript (headless Chromium
+# screenshotting an approved demo) — the only untrusted code in the scaffolder
+# namespace. This denies it every byte of egress.
+#
+# That is possible only because the demo is already on the workspace when render
+# starts: Chromium loads file:// URLs and needs no network. If the render task
+# ever has to fetch something, this policy stops working and the containment
+# argument in build-catalog/pipelines/implement-spec.yaml has to be rewritten —
+# do not "just add an exception".
+#
+# `tekton.dev/pipelineTask` is stamped on the pod by Tekton from the pipeline
+# task name, so this selects the render pod and nothing else. It pairs with the
+# gvisor RuntimeClass + automountServiceAccountToken:false set in
+# platform-infra/.tekton/implement-spec-incoming.yaml.
+#
+# HOW THIS ACTUALLY DENIES: an empty `egress: []` with the Egress policyType puts
+# the pod in "isolated for egress" state with zero allow-rules. That is necessary
+# but NOT sufficient — NetworkPolicies are additive and there is no deny rule, so
+# this only results in no egress because NO OTHER POLICY SELECTS THIS POD. The
+# scaffolder-egress policies above are deliberately scoped to exclude `render`
+# for exactly that reason. If you add a namespace-wide egress policy, this pod
+# silently regains network. Removing this policy entirely is just as bad: a pod
+# selected by no policy at all defaults to allow-all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scaffolder-render-no-egress
+  namespace: scaffolder
+spec:
+  podSelector:
+    matchLabels:
+      tekton.dev/pipelineTask: render
+  policyTypes:
+    - Egress
+  egress: []
+---
 # Egress: DNS + k8s API (Tekton orchestration) + public HTTPS (GitHub, Anthropic,
 # npm for the claude/gh CLIs). Private ranges excluded (anti lateral-movement),
 # except the in-cluster API server/service CIDRs above. This lane is privileged
 # by nature (it creates repos) — kept to 443 out + the two cluster CIDRs.
+#
+# SCOPED TO EXCLUDE `render`. NetworkPolicies are ADDITIVE — a pod's egress is
+# the union of the policies selecting it, and there is no deny rule. A blanket
+# `podSelector: {}` here would hand `render` full public egress no matter what
+# scaffolder-render-no-egress says; that was the bug this scoping fixes. Same
+# pattern as helm-charts/build-namespace/templates/networkpolicy.yaml.
+#
+# One selector is enough: apimachinery's `NotIn` matches an object that LACKS the
+# key entirely (labels.Requirement.Matches returns true when !ls.Has(key)), so
+# this covers every task pod except `render` AND unlabelled pods such as Tekton's
+# affinity-assistant.
+#
+# A task that must run untrusted code goes in this exclusion list AND gets its own
+# isolation policy — never a deny policy, which cannot work.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: scaffolder-egress
   namespace: scaffolder
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - { key: tekton.dev/pipelineTask, operator: NotIn, values: [render] }
   policyTypes: [Egress]
   egress:
     - to: [{ namespaceSelector: {} }]

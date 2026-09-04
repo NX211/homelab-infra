@@ -6,7 +6,7 @@
 
 image:
   repository: chrislusf/seaweedfs
-  tag: "4.40"
+  tag: "4.45"
   pullPolicy: IfNotPresent
 
 # ---------------------------------------------------------------------------
@@ -90,6 +90,7 @@ buckets:
   - dispatchr-social-uploads
   - capturly-transfer
   - blue-skysolutions-uploads
+  - reggiesbbq-uploads
   # Matrix/Synapse media store. A scoped `synapse` S3 identity (Read/Write/List
   # on synapse-media only) must be added to the seaweedfs-s3-config-json blob in
   # Bitwarden — see the example shape above.
@@ -104,6 +105,9 @@ buckets:
   # Read/Write/List on this bucket added to the seaweedfs-s3-config-json blob
   # in Bitwarden.
   - jlshaw-link-signed-documents-staging
+  # showcase Tier-3 service staging demo assets; the scoped `showcase-staging`
+  # identity in the seaweedfs-s3-config-json blob grants Read/Write/List/Tagging.
+  - showcase-staging-assets
 
 # ---------------------------------------------------------------------------
 # Ingress: external S3 endpoint via Traefik + cert-manager

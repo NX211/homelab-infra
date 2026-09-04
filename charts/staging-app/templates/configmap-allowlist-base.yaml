@@ -1,0 +1,20 @@
+---
+{{- if and .Values.ingress.enabled .Values.ingress.ipAllowList.enabled .Values.ingress.ipAllowList.reconcilerManaged }}
+# Discovery record for the staging allowlist-reconciler. It lists ConfigMaps
+# with the `allowlist.coreyalan.com/managed` label, fetches each app's desired
+# reviewer IPs from coreyalan.com, and writes `base ∪ reviewers` into the
+# referenced Middleware. `baseSourceRange` is the static policy from values;
+# reviewer IPs are layered on at runtime.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "staging-app.fullname" . }}-allowlist-base
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+    allowlist.coreyalan.com/managed: "true"
+data:
+  app: {{ .Values.ingress.ipAllowList.appName | default (include "staging-app.fullname" .) | quote }}
+  middleware: {{ include "staging-app.fullname" . }}-ipallowlist
+  enabled: "true"
+  baseSourceRange: {{ .Values.ingress.ipAllowList.sourceRange | toJson | quote }}
+{{- end }}

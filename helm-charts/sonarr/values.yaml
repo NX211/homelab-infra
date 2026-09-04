@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: lscr.io/linuxserver/sonarr
-  tag: "4.0.17.2952-ls313"
+  tag: "4.0.19.2979-ls322"
   pullPolicy: IfNotPresent
 
 # Service configuration

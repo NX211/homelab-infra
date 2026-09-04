@@ -30,6 +30,12 @@ spec:
     - { name: domain,      type: string }
     - { name: company,     type: string }
     - { name: description, type: string, default: "" }
+    # Written specification for the app, fetched and committed as docs/SPEC.md in
+    # the scaffold PR — unimplemented by design. It rides along with the scaffold
+    # request so it is already in the repo when the implement-spec lane runs
+    # (docs/design/scaffold-implement-lane.md §3). Empty = no spec.
+    - { name: spec-url,    type: string, default: "" }
+    - { name: spec-path,   type: string, default: "docs/SPEC.md" }
     - { name: database,    type: string, default: "false" }
     - { name: github-org,  type: string, default: "Corey-Alan-Consulting" }  # app + platform-infra
     - { name: homelab-org, type: string, default: "NX211" }                  # homelab-infra (staging)
@@ -50,6 +56,7 @@ spec:
     - { name: app-base-url,    type: string, default: "https://coreyalan.com" }
     # WIF provider the finish task's projected token targets (keyless GCP read).
     - { name: wif-audience, type: string, default: "//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc" }
+    - { name: port-run-id,        type: string, default: "" }  # Port action run id (finally callback)
     - { name: approvers,          type: array,  default: ["corey"] }
     - { name: approvals-required, type: string, default: "1" }
     - name: toolchain-image
@@ -63,6 +70,8 @@ spec:
     - name: anthropic         # secret: WIF identifiers (federation-rule/service-account/org/workspace ids)
     - name: cloudflare        # secret: api-token (Zone:Edit + DNS:Edit)
     - name: bws               # secret: access-token (BWS write, for onboard secret creation)
+    - name: port              # secret: client-id + client-secret (finally status callback); OPTIONAL
+      optional: true
   tasks:
     # ── prepare: rebrand + onboard + dns ────────────────────────────────────
     - name: prepare
@@ -103,6 +112,28 @@ spec:
             env:
               - { name: HOME, value: $(workspaces.source.path) }
               - { name: GH_ORG, value: $(params.github-org) }
+              # Params arrive from a Port form through a webhook. Tekton substitutes
+              # $(params.x) as RAW TEXT into the script body before bash parses it,
+              # so a value containing a quote breaks out and executes — in a step
+              # that has GH_TOKEN, BWS_ACCESS_TOKEN and CLOUDFLARE_API_TOKEN
+              # exported. Binding them here puts the value in the pod spec, where
+              # bash never re-parses it. NEVER reference $(params.*) in a script:.
+              - { name: APP_NAME,        value: $(params.name) }
+              - { name: DOMAIN,          value: $(params.domain) }
+              - { name: COMPANY,         value: $(params.company) }
+              - { name: DESCRIPTION,     value: $(params.description) }
+              - { name: DATABASE,        value: $(params.database) }
+              - { name: TARGETS,         value: $(params.targets) }
+              - { name: BRAND_KIT,       value: $(params.brand-kit) }
+              - { name: APP_BASE_URL,    value: $(params.app-base-url) }
+              - { name: LB_IP,           value: $(params.lb-ip) }
+              - { name: PRIMARY_COLOR,   value: $(params.primary-color) }
+              - { name: ACCENT_COLOR,    value: $(params.accent-color) }
+              - { name: SECONDARY_COLOR, value: $(params.secondary-color) }
+              - { name: LOGO_URL,        value: $(params.logo-url) }
+              - { name: ENABLE_EMAIL,    value: $(params.enable-email) }
+              - { name: SPEC_URL,        value: $(params.spec-url) }
+              - { name: SPEC_PATH,       value: $(params.spec-path) }
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -125,7 +156,8 @@ spec:
                        "$gh_api/app/installations/$inst/access_tokens" \
                        | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
               }
-              export GH_TOKEN="$(mint_token "$GH_ORG")"
+              GH_TOKEN="$(mint_token "$GH_ORG")" || { echo "GitHub App token mint failed for ${GH_ORG}"; exit 1; }
+              export GH_TOKEN
               git config --global credential.helper ''
               git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
               git config --global user.email "scaffolder@coreyalan.com"
@@ -134,7 +166,17 @@ spec:
               # --- tooling (egress lane): gh CLI + optional claude --------------
               GH_VER=2.63.2
               curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VER}/gh_${GH_VER}_linux_amd64.tar.gz" | tar -xz -C /tmp
-              export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:${HOME}/.npm-global/bin:${PATH}"
+              # bws for onboard-app.sh Bitwarden project/secret creation (no
+              # unzip in the image; python3 stands in).
+              BWS_VER=1.0.0
+              curl -fsSL -o /tmp/bws.zip "https://github.com/bitwarden/sdk-sm/releases/download/bws-v${BWS_VER}/bws-x86_64-unknown-linux-gnu-${BWS_VER}.zip"
+              python3 -c "import zipfile; zipfile.ZipFile('/tmp/bws.zip').extractall('/tmp/bwsbin')"
+              chmod +x /tmp/bwsbin/bws
+              # helm pinned to CI's 4.2.x so onboard-app.sh born-renders (APP_MAP +
+              # rendered/<app>) instead of falling back to in-cluster Helm.
+              HELM_VER=4.2.1
+              curl -fsSL "https://get.helm.sh/helm-v${HELM_VER}-linux-amd64.tar.gz" | tar -xz -C /tmp
+              export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:/tmp/bwsbin:/tmp/linux-amd64:${HOME}/.npm-global/bin:${PATH}"
               # Keyless Claude via Workload Identity Federation: the SDK exchanges
               # the projected SA token (aud api.anthropic.com, mounted below) for a
               # short-lived Anthropic token — no static API key. Placeholder IDs
@@ -156,32 +198,41 @@ spec:
               # --- credentials for onboard (BWS) + dns (Cloudflare) ------------
               export BWS_ACCESS_TOKEN="$(cat $(workspaces.bws.path)/access-token)"
               export CLOUDFLARE_API_TOKEN="$(cat $(workspaces.cloudflare.path)/api-token)"
+              # platform-infra pushes go through createCommitOnBranch (GitHub's
+              # verified signature) — required_signatures rejects App git pushes.
+              export PUSH_VIA_API=1
 
               # --- clone platform-infra (carries all three scripts) ------------
               git clone --depth 1 "https://github.com/${GH_ORG}/platform-infra.git" "${HOME}/platform-infra"
               cd "${HOME}/platform-infra"
 
-              DB_FLAG=""; [ "$(params.database)" = "true" ] && DB_FLAG="--database"
-              DESC_ARGS=(); [ -n "$(params.description)" ] && DESC_ARGS=(--description "$(params.description)")
+              DB_FLAG=""; [ "$DATABASE" = "true" ] && DB_FLAG="--database"
+              DESC_ARGS=(); [ -n "$DESCRIPTION" ] && DESC_ARGS=(--description "$DESCRIPTION")
+              # The spec is fetched ANONYMOUSLY — scaffold-app.sh attaches no
+              # credential to --spec-url at all. Do not re-add a host-allowlist
+              # branch that sends GH_TOKEN: the allowlist constrained the host but
+              # never the path, which made it a read oracle for private org files.
+              SPEC_ARGS=(); [ -n "$SPEC_URL" ] && \
+                SPEC_ARGS=(--spec-url "$SPEC_URL" --spec-path "$SPEC_PATH")
 
               # Effective branding: start from the manual params (they carry
               # defaults), then let a picked brand kit override them.
-              EFF_PRIMARY="$(params.primary-color)"
-              EFF_ACCENT="$(params.accent-color)"
-              EFF_SECONDARY="$(params.secondary-color)"
-              EFF_LOGO="$(params.logo-url)"
-              EFF_DOMAIN="$(params.domain)"
-              EFF_EMAIL="$(params.enable-email)"
+              EFF_PRIMARY="$PRIMARY_COLOR"
+              EFF_ACCENT="$ACCENT_COLOR"
+              EFF_SECONDARY="$SECONDARY_COLOR"
+              EFF_LOGO="$LOGO_URL"
+              EFF_DOMAIN="$DOMAIN"
+              EFF_EMAIL="$ENABLE_EMAIL"
 
               # --- Brand kit override: fetch the authoritative kit from
               # coreyalan.com (source of truth) and reproduce the approved demo. -
-              BRAND_KIT="$(params.brand-kit)"
+              BRAND_KIT="$BRAND_KIT"
               if [ -n "${BRAND_KIT}" ]; then
-                echo "Resolving brand kit '${BRAND_KIT}' from $(params.app-base-url)"
+                echo "Resolving brand kit '${BRAND_KIT}' from $APP_BASE_URL"
                 RT="$(cat "$(workspaces.bws.path)/scaffold-read-token" 2>/dev/null || true)"
                 [ -n "${RT}" ] || { echo "::error:: brand-kit set but no 'scaffold-read-token' key in the bws secret"; exit 1; }
                 KIT_JSON="$(curl -sf -H "Authorization: Bearer ${RT}" \
-                  "$(params.app-base-url)/api/scaffold/brand-kit/${BRAND_KIT}")" \
+                  "$APP_BASE_URL/api/scaffold/brand-kit/${BRAND_KIT}")" \
                   || { echo "::error:: could not fetch brand kit '${BRAND_KIT}'"; exit 1; }
                 getk() { printf '%s' "$KIT_JSON" | python3 -c 'import sys,json; v=json.load(sys.stdin).get(sys.argv[1]); print("" if v is None else ("true" if v is True else ("false" if v is False else v)))' "$1"; }
                 v="$(getk primaryColor)";   [ -n "$v" ] && EFF_PRIMARY="$v"
@@ -202,27 +253,31 @@ spec:
 
               # rebrand + branding (app-repo PR) + onboard --yes (platform-infra PR)
               bash scripts/scaffold-app.sh \
-                --name "$(params.name)" --domain "$EFF_DOMAIN" --company "$(params.company)" \
-                --github-org "$GH_ORG" "${DESC_ARGS[@]}" $DB_FLAG "${BRAND_ARGS[@]}" $EMAIL_FLAG \
-                --targets "$(params.targets)" --ci $AGENT_FLAG
+                --name "$APP_NAME" --domain "$EFF_DOMAIN" --company "$COMPANY" \
+                --github-org "$GH_ORG" "${DESC_ARGS[@]}" "${SPEC_ARGS[@]}" $DB_FLAG "${BRAND_ARGS[@]}" $EMAIL_FLAG \
+                --targets "$TARGETS" --ci --no-dns $AGENT_FLAG
 
               # dns: fresh main so the dns PR carries ONLY <app>-dns.tf
               git checkout main && git pull --ff-only
               bash scripts/scaffold-dns.sh \
-                --app "$(params.name)" --domain "$EFF_DOMAIN" \
-                --lb-ip "$(params.lb-ip)" --repo-root . --pr
+                --app "$APP_NAME" --domain "$EFF_DOMAIN" \
+                --lb-ip "$LB_IP" --repo-root . --pr
 
               echo "=== prepare done. Merge+apply the onboard + dns PRs, do the registrar"
               echo "=== nameserver cutover, then APPROVE gate-1 to continue."
 
     # ── gate-1: out-of-band merge/apply + registrar cutover ──────────────────
     - name: gate-merge-apply
+      # Explicit timeout: tasks default to the CLUSTER default (60m) even when
+      # timeouts.pipeline is 48h — gate-1 of the first real run was auto-
+      # rejected at the hour mark while waiting for the PR merge/apply.
+      timeout: "47h30m"
       runAfter: [prepare]
       taskRef:
         apiVersion: openshift-pipelines.org/v1alpha1
         kind: ApprovalTask
       params:
-        - { name: approvers, value: $(params.approvers) }
+        - { name: approvers, value: "$(params.approvers[*])" }
         - { name: numberOfApprovalsRequired, value: $(params.approvals-required) }
         - { name: description, value: "Merge+apply onboard & dns PRs for $(params.name); complete the registrar NS cutover for $(params.domain); then approve." }
 
@@ -253,6 +308,19 @@ spec:
             workingDir: $(workspaces.source.path)
             env:
               - { name: HOME, value: $(workspaces.source.path) }
+              # Params arrive from a Port form through a webhook. Tekton substitutes
+              # $(params.x) as RAW TEXT into the script body before bash parses it,
+              # so a value containing a quote breaks out and executes — in a step
+              # that has GH_TOKEN, BWS_ACCESS_TOKEN and CLOUDFLARE_API_TOKEN
+              # exported. Binding them here puts the value in the pod spec, where
+              # bash never re-parses it. NEVER reference $(params.*) in a script:.
+              - { name: APP_NAME,     value: $(params.name) }
+              - { name: DOMAIN,       value: $(params.domain) }
+              - { name: COMPANY,      value: $(params.company) }
+              - { name: DATABASE,     value: $(params.database) }
+              - { name: GH_ORG,       value: $(params.github-org) }
+              - { name: HOMELAB_ORG,  value: $(params.homelab-org) }
+              - { name: WIF_AUDIENCE, value: $(params.wif-audience) }
             volumeMounts:
               - { name: gcp-sts-token, mountPath: /var/run/secrets/gcp-sts }
             script: |
@@ -307,61 +375,132 @@ spec:
                 "requestedTokenType": "urn:ietf:params:oauth:token-type:access_token",
                 "scope": "https://www.googleapis.com/auth/cloud-platform",
                 "subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
-                "subjectToken": sys.argv[2]}))' "$(params.wif-audience)" "$SUBJECT_TOKEN" \
+                "subjectToken": sys.argv[2]}))' "$WIF_AUDIENCE" "$SUBJECT_TOKEN" \
                 | curl -sf -X POST "https://sts.googleapis.com/v1/token" \
                     -H 'Content-Type: application/json' -d @- \
-                | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')"
+                | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])' || true)"
               [ -n "$GCP_TOKEN" ] || { echo "STS token exchange failed"; exit 1; }
 
               # --- read the new project's NUMBER (id defaults to the app name) --
-              PROJECT_ID="$(params.name)"
+              PROJECT_ID="$APP_NAME"
               NUM="$(curl -sf -H "Authorization: Bearer ${GCP_TOKEN}" \
                      "https://cloudresourcemanager.googleapis.com/v1/projects/${PROJECT_ID}" \
-                     | python3 -c 'import sys,json;print(json.load(sys.stdin)["projectNumber"])')"
+                     | python3 -c 'import sys,json;print(json.load(sys.stdin)["projectNumber"])' || true)"
               [ -n "$NUM" ] || { echo "could not read projectNumber for ${PROJECT_ID} — is the onboard PR applied?"; exit 1; }
-              MOD="$(printf '%s' "$(params.name)" | tr '-' '_')"
+              MOD="$(printf '%s' "$APP_NAME" | tr '-' '_')"
 
               git config --global user.email "scaffolder@coreyalan.com"
               git config --global user.name  "app-scaffolder"
 
               # --- platform-infra: patch apps.tfvars project number (PR) --------
-              export GH_TOKEN="$(mint_token "$(params.github-org)")"
+              GH_TOKEN="$(mint_token "$GH_ORG")" || { echo "GitHub App token mint failed for ${GH_ORG}"; exit 1; }
+              export GH_TOKEN
               git config --global credential.helper ''
               git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-              git clone --depth 1 "https://github.com/$(params.github-org)/platform-infra.git" "${HOME}/pi"
+              git clone --depth 1 "https://github.com/$GH_ORG/platform-infra.git" "${HOME}/pi"
               cd "${HOME}/pi"
-              git checkout -b "scaffold/project-number-$(params.name)"
+              git checkout -b "scaffold/project-number-$APP_NAME"
               sed -i "s|^${MOD}_project_number = \"\".*|${MOD}_project_number = \"${NUM}\"|" \
                 terraform/environments/prod/apps.tfvars
-              git add terraform/environments/prod/apps.tfvars
-              git commit -q -m "chore(tfvars): $(params.name) GCP project number (${NUM})"
-              git push -u origin "scaffold/project-number-$(params.name)"
-              gh pr create --repo "$(params.github-org)/platform-infra" \
-                --title "chore(tfvars): $(params.name) GCP project number" \
+              # sync-secrets.yml carries a hardcoded per-app matrix whose entry
+              # onboard writes with an empty project number — backfill it here
+              # too or the app's first secret sync fails on a WIF path with no
+              # project (projects//locations/...).
+              python3 - "$APP_NAME" "$NUM" <<'PY_SYNC'
+              import re, sys
+              app, num = sys.argv[1:3]
+              path = '.github/workflows/sync-secrets.yml'
+              text = open(path).read()
+              pattern = re.compile(
+                  r'("name": "%s",\s*\n\s*"gcp_project": "[^"]*",\s*\n\s*"gcp_project_number": )""' % re.escape(app))
+              patched, n = pattern.subn(r'\1"%s"' % num, text)
+              if n:
+                  open(path, 'w').write(patched)
+                  print(f"sync-secrets.yml: {app} project number backfilled")
+              else:
+                  print(f"sync-secrets.yml: no empty entry for {app} (already filled or matrix refactored)")
+              PY_SYNC
+              git add terraform/environments/prod/apps.tfvars .github/workflows/sync-secrets.yml
+              git -c commit.gpgsign=false commit -q -m "chore(tfvars): $APP_NAME GCP project number (${NUM})"
+              # API-signed publish: a git push from the App token is unsigned
+              # and platform-infra's required_signatures rejects it at merge.
+              bash scripts/push-signed.sh \
+                --repo "$GH_ORG/platform-infra" \
+                --branch "scaffold/project-number-$APP_NAME" \
+                --message "chore(tfvars): $APP_NAME GCP project number (${NUM})"
+              gh pr create --repo "$GH_ORG/platform-infra" \
+                --title "chore(tfvars): $APP_NAME GCP project number" \
                 --body "Backfills \`${MOD}_project_number = \"${NUM}\"\` (read from GCP after the onboard apply). Merge after the onboard PR is applied." \
                 || echo "  (apps.tfvars PR skipped/failed)"
 
               # --- homelab-infra: generate the staging environment (PR) --------
               # App B (NX211-owned), repo-scoped — homelab-org is a USER account.
-              export GH_TOKEN="$(mint_repo_token "$(params.homelab-org)" homelab-infra)"
+              GH_TOKEN="$(mint_repo_token "$HOMELAB_ORG" homelab-infra)" || { echo "GitHub App token mint failed for ${HOMELAB_ORG}/homelab-infra"; exit 1; }
+              export GH_TOKEN
               git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-              git clone --depth 1 "https://github.com/$(params.homelab-org)/homelab-infra.git" "${HOME}/hi"
+              git clone --depth 1 "https://github.com/$HOMELAB_ORG/homelab-infra.git" "${HOME}/hi"
               cd "${HOME}/hi"
-              DB_FLAG=""; [ "$(params.database)" = "true" ] && DB_FLAG="--database"
+              DB_FLAG=""; [ "$DATABASE" = "true" ] && DB_FLAG="--database"
               bash scripts/gen-staging-app.sh \
-                --name "$(params.name)" --domain "$(params.domain)" --company "$(params.company)" \
-                --gcp-project "$PROJECT_ID" $DB_FLAG --repo-root . --pr
+                --name "$APP_NAME" --domain "$DOMAIN" --company "$COMPANY" \
+                --gcp-project "$PROJECT_ID" $DB_FLAG --repo-root .
 
               echo "=== finish done. Review the apps.tfvars + staging PRs, complete the"
               echo "=== staging TODOs, then APPROVE gate-2."
 
     # ── gate-2: final review ─────────────────────────────────────────────────
     - name: gate-final
+      # Explicit timeout: tasks default to the CLUSTER default (60m) even when
+      # timeouts.pipeline is 48h — gate-1 of the first real run was auto-
+      # rejected at the hour mark while waiting for the PR merge/apply.
+      timeout: "47h30m"
       runAfter: [finish]
       taskRef:
         apiVersion: openshift-pipelines.org/v1alpha1
         kind: ApprovalTask
       params:
-        - { name: approvers, value: $(params.approvers) }
+        - { name: approvers, value: "$(params.approvers[*])" }
         - { name: numberOfApprovalsRequired, value: $(params.approvals-required) }
         - { name: description, value: "Review apps.tfvars + staging PRs for $(params.name); complete staging TODOs (BWS project, credentials, infraAppName); then approve." }
+
+  finally:
+    # Report the pipeline outcome back to Port so the action run leaves
+    # IN_PROGRESS (the /incoming webhook is fire-and-forget). No-ops when the
+    # run id wasn't passed or the scaffolder-port secret isn't populated yet.
+    - name: report-port-status
+      when:
+        - input: "$(params.port-run-id)"
+          operator: notin
+          values: [""]
+      params:
+        - { name: run-id,  value: "$(params.port-run-id)" }
+        - { name: outcome, value: "$(tasks.status)" }
+        - { name: image,   value: "$(params.toolchain-image)" }
+      workspaces:
+        - { name: port, workspace: port }
+      taskSpec:
+        params:
+          - { name: run-id, type: string }
+          - { name: outcome, type: string }
+          - { name: image, type: string }
+        workspaces:
+          - { name: port, optional: true }
+        steps:
+          - name: patch
+            image: $(params.image)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              if [ "$(workspaces.port.bound)" != "true" ] || [ ! -f "$(workspaces.port.path)/client-id" ]; then
+                echo "no Port credentials mounted — skipping status callback"
+                exit 0
+              fi
+              CID="$(cat "$(workspaces.port.path)/client-id")"
+              CSEC="$(cat "$(workspaces.port.path)/client-secret")"
+              case "$(params.outcome)" in
+                Succeeded|Completed) STATUS=SUCCESS ;;
+                *)                   STATUS=FAILURE ;;
+              esac
+              TOKEN="$(python3 -c 'import json,sys;print(json.dumps({"clientId":sys.argv[1],"clientSecret":sys.argv[2]}))' "$CID" "$CSEC"                 | curl -sf -X POST https://api.port.io/v1/auth/access_token -H 'Content-Type: application/json' -d @-                 | python3 -c 'import json,sys;print(json.load(sys.stdin)["accessToken"])')" || { echo "Port auth failed — skipping"; exit 0; }
+              curl -sf -X PATCH "https://api.port.io/v1/actions/runs/$(params.run-id)"                 -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json'                 -d "{\"status\":\"${STATUS}\",\"statusLabel\":\"pipeline $(params.outcome)\"}" >/dev/null                 || { echo "Port run PATCH failed (non-fatal)"; exit 0; }
+              echo "Port run $(params.run-id) -> ${STATUS}"

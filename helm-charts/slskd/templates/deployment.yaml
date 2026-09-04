@@ -25,7 +25,7 @@ spec:
       {{- if .Values.vpn.enabled }}
       initContainers:
       - name: vpn-cluster-routes
-        image: nicolaka/netshoot:v0.13
+        image: nicolaka/netshoot:v0.16
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

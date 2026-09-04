@@ -4,12 +4,6 @@ kind: Application
 metadata:
   name: paperless
   namespace: argocd
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: paperless=ghcr.io/paperless-ngx/paperless-ngx
-    argocd-image-updater.argoproj.io/paperless.update-strategy: semver
-    argocd-image-updater.argoproj.io/paperless.helm.image-name: image.repository
-    argocd-image-updater.argoproj.io/paperless.helm.image-tag: image.tag
-    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-creds
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

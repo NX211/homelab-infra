@@ -5,15 +5,17 @@
     "helpers:pinGitHubActionDigests"
   ],
   "argocd": {
-    "fileMatch": ["argocd/applications/cloudnativepg-operator\\.yaml$"]
+    "managerFilePatterns": [
+      "/^argocd/applications/.+\\.yaml$/"
+    ]
   },
   "customManagers": [
     {
       "customType": "regex",
       "description": "Track annotated image/imageName pins in raw manifests so digest/tag pins can't freeze on a vulnerable build",
-      "fileMatch": [
-        "provisioning/webhook\\.yaml$",
-        "provisioning/control-db\\.yaml$"
+      "managerFilePatterns": [
+        "/provisioning/webhook\\.yaml$/",
+        "/provisioning/control-db\\.yaml$/"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( versioning=(?<versioning>\\S+))?\\s+(?:image|imageName): [^\\s@:]+(?::(?<currentValue>[^\\s@]+))?(?:@(?<currentDigest>sha256:[a-f0-9]+))?"
@@ -23,9 +25,9 @@
     },
     {
       "customType": "regex",
-      "description": "Track the vendored Kratix distribution image. Upstream ships one image that serves as both the controller-manager and the pipeline adapter, referenced twice in install.yaml (Deployment image + PIPELINE_ADAPTER_IMG); both carry the same digest and must move together, so one matchString covers both. Not comment-annotated because install.yaml is vendored wholesale and in-file comments do not survive a re-vendor. Digests are resolved from canonical Docker Hub, not from the syntasso-community.docker.reo.dev vanity host the manifest pulls through: that host is a third-party 307 redirector to registry-1.docker.io, and letting it decide which digest we trust would put it in a position to hand Renovate an attacker-chosen image. Resolving upstream keeps it a transport only — the digest pin means a substituted image fails the content check rather than running. This keeps the image (the part that carries CVEs) current; the CRDs/RBAC around it still need a periodic re-vendor per the procedure in argocd/applications/kratix.yaml.",
-      "fileMatch": [
-        "kratix/install\\.yaml$"
+      "description": "Track the vendored Kratix distribution image. Upstream ships one image that serves as both the controller-manager and the pipeline adapter, referenced twice in install.yaml (Deployment image + PIPELINE_ADAPTER_IMG); both carry the same digest and must move together, so one matchString covers both. Not comment-annotated because install.yaml is vendored wholesale and in-file comments do not survive a re-vendor. Digests are resolved from canonical Docker Hub, not from the syntasso-community.docker.reo.dev vanity host the manifest pulls through: that host is a third-party 307 redirector to registry-1.docker.io, and letting it decide which digest we trust would put it in a position to hand Renovate an attacker-chosen image. Resolving upstream keeps it a transport only \u2014 the digest pin means a substituted image fails the content check rather than running. This keeps the image (the part that carries CVEs) current; the CRDs/RBAC around it still need a periodic re-vendor per the procedure in argocd/applications/kratix.yaml.",
+      "managerFilePatterns": [
+        "/kratix/install\\.yaml$/"
       ],
       "matchStrings": [
         "(?:image|PIPELINE_ADAPTER_IMG): syntasso-community\\.docker\\.reo\\.dev/syntasso/kratix-platform@(?<currentDigest>sha256:[a-f0-9]+)"
@@ -35,6 +37,159 @@
       "datasourceTemplate": "docker",
       "currentValueTemplate": "latest",
       "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Port Ocean integration image pin in the ArgoCD Application helm values, annotated with a `renovate:` datasource/depName comment above the version line (mirrors platform-infra so staging and prod ocean images move together).",
+      "managerFilePatterns": [
+        "/^argocd/applications/port-ocean-.*\\.yaml$/"
+      ],
+      "matchStrings": [
+        "#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)\\n\\s*version:\\s*\"(?<currentValue>[^\"]+)\""
+      ]
+    },
+    {
+      "customType": "regex",
+      "description": "Inline `image: repo:tag` pins in Helm templates and raw manifests. The helm-values manager only reads values.yaml, so init containers and sidecars declared directly in templates (busybox, alpine/git, netshoot, the opstree redis images, the postgres db-init clients) were invisible to Renovate and drifted. Deliberately excludes provisioning/webhook.yaml, provisioning/control-db.yaml and kratix/install.yaml, which have their own annotated managers above, and the CI-built allowlist-reconciler image.",
+      "managerFilePatterns": [
+        "/^helm-charts/[^/]+/templates/.+\\.yaml$/",
+        "/^authelia-manifests/.+\\.yaml$/",
+        "/^build-catalog/.+\\.yaml$/",
+        "/^build-registry-proxy/.+\\.yaml$/",
+        "/^ar-token-refresher/.+\\.yaml$/",
+        "/^kratix/(config|promises)/.+\\.yaml$/",
+        "/^provisioning/examples/.+\\.yaml$/",
+        "/^external-secrets-operator/.+\\.yaml$/"
+      ],
+      "matchStrings": [
+        "(?m)^\\s*(?:-\\s*)?image:\\s*[\\\"']?(?<depName>[^\\s\\\"':@{}]+):(?<currentValue>[^\\s\\\"'@{}]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?[\\\"']?\\s*$"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "CloudNativePG `imageName:` pins in Helm values. CNPG uses imageName rather than the image.repository/image.tag pair the helm-values manager expects, so these were unmanaged; provisioning/control-db.yaml has its own annotated manager and is not matched here.",
+      "managerFilePatterns": [
+        "/^helm-charts/[^/]+/values\\.yaml$/"
+      ],
+      "matchStrings": [
+        "imageName:\\s*[\\\"']?(?<depName>[^\\s\\\"':@{}]+):(?<currentValue>[^\\s\\\"'@{}]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?[\\\"']?"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "registryAliases": {
+    "lscr.io": "ghcr.io"
+  },
+  "prConcurrentLimit": 30,
+  "prHourlyLimit": 6,
+  "packageRules": [
+    {
+      "description": "Private Artifact Registry images are published by CI and Renovate has no credentials for them. Disabling stops the recurring 'No docker auth found' lookup failures.",
+      "matchPackageNames": [
+        "/^us-central1-docker\\.pkg\\.dev/"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "LinuxServer images publish a new -lsNNN build every few days. Group them so the *arr stack is one reviewable PR rather than nine.",
+      "matchPackageNames": [
+        "/^ghcr\\.io/linuxserver/",
+        "/^lscr\\.io/linuxserver/"
+      ],
+      "groupName": "linuxserver images"
+    },
+    {
+      "description": "Element/Matrix components are released together and are version-coupled at runtime.",
+      "matchPackageNames": [
+        "/^ghcr\\.io/element-hq/"
+      ],
+      "groupName": "element matrix components"
+    },
+    {
+      "description": "CloudNativePG: the tag's major IS the PostgreSQL major, so a bump is a cluster migration, not an image update. Hold at 16 until one is done deliberately.",
+      "matchPackageNames": [
+        "ghcr.io/cloudnative-pg/postgresql"
+      ],
+      "allowedVersions": "<17"
+    },
+    {
+      "description": "The gitea/matrix db-init Jobs run psql as a client against the CloudNativePG server. They track the server major (PG 16), not the newest client.",
+      "matchFileNames": [
+        "helm-charts/gitea/templates/job-db-init.yaml",
+        "helm-charts/matrix/templates/job-db-init.yaml"
+      ],
+      "matchPackageNames": [
+        "postgres",
+        "docker.io/postgres",
+        "docker.io/library/postgres"
+      ],
+      "allowedVersions": "<17"
+    },
+    {
+      "description": "Paperless' bundled PostgreSQL: a major needs a dump/restore and a volume-layout change. See docs/runbooks/stateful-image-migrations.md.",
+      "matchFileNames": [
+        "helm-charts/paperless/values.yaml"
+      ],
+      "matchPackageNames": [
+        "postgres",
+        "docker.io/postgres",
+        "docker.io/library/postgres"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Immich's PostgreSQL image must carry the vectorchord/pgvectors pair that the running Immich release ships against; a mismatch can break search indexes. Bump this together with immich-server, following Immich's own compose.",
+      "matchPackageNames": [
+        "ghcr.io/immich-app/postgres"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "TimescaleDB tracks Tracearr's Helm chart, which pins this exact tag and digest, rather than TimescaleDB's own release cadence.",
+      "matchPackageNames": [
+        "timescale/timescaledb-ha"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Meilisearch tracks what Karakeep tests against (currently v1.41.0; we are already ahead at v1.43.1). Upgrades need a one-time --upgrade-db launch and cannot be rolled back.",
+      "matchPackageNames": [
+        "getmeili/meilisearch"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Karakeep's Chrome image is pinned to an immutable browser build; keep it in step with the karakeep release rather than tracking Chrome.",
+      "matchPackageNames": [
+        "ghcr.io/karakeep-app/karakeep-chrome"
+      ],
+      "groupName": "karakeep"
+    },
+    {
+      "description": "Redis majors change eviction and persistence defaults; the immich/paperless instances hold real cache state, so review those by hand.",
+      "matchPackageNames": [
+        "redis",
+        "docker.io/redis",
+        "docker.io/library/redis"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The argocd manager now covers every Application, not just cloudnativepg. Cluster-infrastructure chart majors (kyverno, cert-manager, traefik, kube-prometheus-stack, ...) land by hand rather than opening automatically.",
+      "matchDatasources": [
+        "helm"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
     }
   ]
 }

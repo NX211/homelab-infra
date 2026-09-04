@@ -21,16 +21,18 @@
 #
 # Usage:
 #   ./scripts/gen-staging-app.sh --name <slug> --domain <domain> --company <display> \
-#     [--gcp-project <id>] [--database] [--repo-root <path>] [--no-pr]
+#     [--gcp-project <id>] [--github-repo <org/repo>] [--database] \
+#     [--repo-root <path>] [--no-pr]
 set -euo pipefail
 
-NAME="" DOMAIN="" COMPANY="" GCP_PROJECT="" DATABASE=false REPO_ROOT="." OPEN_PR=true
+NAME="" DOMAIN="" COMPANY="" GCP_PROJECT="" GITHUB_REPO="" DATABASE=false REPO_ROOT="." OPEN_PR=true
 while [ $# -gt 0 ]; do
   case "$1" in
     --name)        NAME="$2"; shift 2;;
     --domain)      DOMAIN="$2"; shift 2;;
     --company)     COMPANY="$2"; shift 2;;
     --gcp-project) GCP_PROJECT="$2"; shift 2;;
+    --github-repo) GITHUB_REPO="$2"; shift 2;;
     --database)    DATABASE=true; shift;;
     --repo-root)   REPO_ROOT="$2"; shift 2;;
     --no-pr)       OPEN_PR=false; shift;;
@@ -42,11 +44,22 @@ done
 [ -n "$DOMAIN" ]  || { echo "--domain is required" >&2; exit 1; }
 [ -n "$COMPANY" ] || { echo "--company is required" >&2; exit 1; }
 GCP_PROJECT="${GCP_PROJECT:-$NAME}"
+# The app repo carries the staging smoke suite. Every existing app repo is
+# named after its domain (coreyalan.com, capturly.app, ...); pass --github-repo
+# when the repo breaks that convention (jlshaw.link vs jlshawconsulting.com).
+GITHUB_REPO="${GITHUB_REPO:-Corey-Alan-Consulting/${DOMAIN}}"
 
-PROD_APP="$(printf '%s' "$DOMAIN" | tr '.' '-')"          # myapp.io -> myapp-io
+# The staging dir/app slug must equal the app NAME: gitops-trigger's
+# staging.appMap values (set by onboard-app.sh) key digest bumps to
+# staging-apps/<name>. Every legacy app's name equals its domain slug, so this
+# changes nothing for them; reggiesbbq (name != domain slug) surfaced the split.
+PROD_APP="$NAME"
 IMAGE_REPO="us-central1-docker.pkg.dev/${GCP_PROJECT}/${GCP_PROJECT}/${NAME}-web"
 STAGING_ORG_ID="4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"      # constant across staging apps
-CHART_VER="0.7.2"                                          # charts/staging-app
+# Read the subchart version from the chart itself — a hardcoded constant went
+# stale (0.7.2 vs 0.8.1) and broke ArgoCD dependency builds for new apps.
+CHART_VER="$(awk '/^version:/ {print $2; exit}' "${REPO_ROOT}/charts/staging-app/Chart.yaml")"
+[ -n "$CHART_VER" ] || { echo "could not read charts/staging-app version" >&2; exit 1; }
 DIR="${REPO_ROOT}/staging-apps/${PROD_APP}"
 APP_FILE="${REPO_ROOT}/argocd/applications/staging-${PROD_APP}.yaml"
 
@@ -184,11 +197,59 @@ EOF
 echo "  wrote ${DIR}/{Chart.yaml,values.yaml}"
 echo "  wrote ${APP_FILE}"
 
+# Register the app's pull secret with the ar-token-refresher — without this the
+# staging image pull 403s (the refresher only mints tokens for listed secrets;
+# GCP-side AR read comes from homelab_ar_projects in platform-infra, which
+# onboard-app.sh extends).
+REFRESHER="${REPO_ROOT}/ar-token-refresher/refresher.yaml"
+if ! grep -q "gcr-pull-secret-${NAME}" "$REFRESHER"; then
+  sed -i.bak "s/^\(    SECRETS=\"[^\"]*\)\"/\1 gcr-pull-secret-${NAME}\"/" "$REFRESHER"
+  rm -f "${REFRESHER}.bak"
+  grep -q "gcr-pull-secret-${NAME}" "$REFRESHER" || { echo "ERROR: failed to add gcr-pull-secret-${NAME} to refresher SECRETS" >&2; exit 1; }
+  echo "  updated ar-token-refresher/refresher.yaml (SECRETS += gcr-pull-secret-${NAME})"
+fi
+
+# Register the app with the staging smoke suite — without SMOKE_REPOS/SMOKE_URLS
+# entries the staging-track finalizer treats the app as "no smoke tests" and
+# silently skips it forever (same enroll-or-invisible trap as the refresher
+# SECRETS list above). Idempotent per map; a missing map WARNs instead of dying.
+TRACK="${REPO_ROOT}/.github/workflows/staging-track.yml"
+add_smoke_entry() { # add_smoke_entry <map-name> <value>
+  local map="$1" value="$2"
+  local marker="declare -A ${map}=("
+  local entry="            [\"${PROD_APP}\"]=\"${value}\""
+  if [ ! -f "$TRACK" ] || ! grep -qF "$marker" "$TRACK"; then
+    echo "  WARN: '${marker}' not found in .github/workflows/staging-track.yml — add [\"${PROD_APP}\"]=\"${value}\" to ${map} manually." >&2
+    return 0
+  fi
+  if grep -qF "[\"${PROD_APP}\"]=\"${value}\"" "$TRACK"; then
+    return 0 # already registered
+  fi
+  # Insert before the map's closing ")" unless the key already exists in it.
+  awk -v marker="$marker" -v key="[\"${PROD_APP}\"]" -v entry="$entry" '
+    { line = $0 }
+    index(line, marker) { inmap = 1; present = 0 }
+    inmap && index(line, key) { present = 1 }
+    inmap && line ~ /^[[:space:]]*\)[[:space:]]*$/ {
+      if (!present) print entry
+      inmap = 0
+    }
+    { print line }
+  ' "$TRACK" > "${TRACK}.tmp" && mv "${TRACK}.tmp" "$TRACK"
+  if grep -qF "[\"${PROD_APP}\"]=\"${value}\"" "$TRACK"; then
+    echo "  updated .github/workflows/staging-track.yml (${map} += ${PROD_APP})"
+  else
+    echo "  WARN: failed to add ${PROD_APP} to ${map} in staging-track.yml — add it manually." >&2
+  fi
+}
+add_smoke_entry SMOKE_REPOS "$GITHUB_REPO"
+add_smoke_entry SMOKE_URLS "https://staging.${DOMAIN}"
+
 # --- optional PR -------------------------------------------------------------
 if $OPEN_PR; then
   BRANCH="scaffold/staging-${PROD_APP}"
   git -C "$REPO_ROOT" checkout -b "$BRANCH"
-  git -C "$REPO_ROOT" add "staging-apps/${PROD_APP}" "argocd/applications/staging-${PROD_APP}.yaml"
+  git -C "$REPO_ROOT" add "staging-apps/${PROD_APP}" "argocd/applications/staging-${PROD_APP}.yaml" "ar-token-refresher/refresher.yaml" ".github/workflows/staging-track.yml"
   git -C "$REPO_ROOT" commit -q -m "feat(staging): add ${PROD_APP} staging environment
 
 Generated by gen-staging-app.sh (scaffolder lane). Runs the same prod image as

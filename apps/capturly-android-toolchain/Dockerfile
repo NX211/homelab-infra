@@ -11,7 +11,7 @@
 # JDK 17 — required by Gradle 9 / AGP / React Native. The base had drifted to
 # temurin:26 (Java 26 = class-file major 70), which Gradle can't run on:
 # "Unsupported class file major version 70".
-FROM eclipse-temurin:17-jdk-jammy
+FROM eclipse-temurin:25-jdk-jammy
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive

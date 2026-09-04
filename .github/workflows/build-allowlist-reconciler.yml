@@ -41,6 +41,17 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
 
+      # Gate the build on the unit tests. They run against the real ack() source
+      # lifted out of src/index.mjs, so a regression fails here rather than
+      # shipping an image that silently stops recording applied versions.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Test
+        working-directory: apps/allowlist-reconciler
+        run: node --test
+
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
@@ -74,7 +85,7 @@ jobs:
           IMAGE_DIGEST: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
         run: cosign sign --yes "$IMAGE_DIGEST"
 
-      - uses: mikefarah/yq@1b9b4ac5187171d2e5e3129be0cfa827c7f9d53d # v4
+      - uses: mikefarah/yq@c14f446382944492701b16c1ddb48bb9dbe683e3 # v4
 
       - name: Pin digest into manifest
         env:
