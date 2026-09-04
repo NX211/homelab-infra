@@ -24,6 +24,21 @@ spec:
           storageClassName: local-path
           size: 10Gi
 
+        # The chart's init-chown-data container runs `chown -R 472:472` as uid 0
+        # with `drop: [ALL], add: [CHOWN]`. Chart 8.15.0 added that `drop: ALL`
+        # (8.8.2 only had `add: CHOWN`), which also removes DAC_OVERRIDE -- so
+        # root can no longer traverse the 0700 csv/pdf/png directories the
+        # existing volume already contains, and the init container fails with
+        # "chown: /var/lib/grafana/csv: Permission denied" on every start.
+        #
+        # The chown is only needed to adopt a volume that is not already owned
+        # by grafana. This one is: /var/lib/grafana is 472:472 throughout, and
+        # the pod runs as 472 with fsGroup 472. Disabling it drops a root init
+        # container entirely, which is a better answer than granting
+        # DAC_OVERRIDE back.
+        initChownData:
+          enabled: false
+
         # Resources
         resources:
           requests:
