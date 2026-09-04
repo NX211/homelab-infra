@@ -22,7 +22,7 @@ spec:
           containers:
             - name: sync
               # Pinned by digest so the base image can't change under us.
-              image: debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df
+              image: debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
               command: ["/bin/bash"]
               args: ["/scripts/sync.sh"]
               env:
