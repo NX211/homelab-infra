@@ -36,6 +36,36 @@ spec:
           replicas: 1
         cleanupController:
           replicas: 1
+
+        crds:
+          migration:
+            # The chart's CRD-migration post-upgrade hook cannot work under
+            # ArgoCD. Its ServiceAccount and RBAC carry
+            # `hook-delete-policy: hook-succeeded`, while the Job that uses them
+            # carries no delete policy at all:
+            #
+            #   ServiceAccount        weight=100  del=before-hook-creation,hook-succeeded
+            #   ClusterRole(Binding)  weight=100  del=before-hook-creation,hook-succeeded,hook-failed
+            #   Job                   weight=200  del=NONE
+            #
+            # Helm applies delete policies after the whole hook phase finishes.
+            # ArgoCD applies them per resource, and a ServiceAccount is
+            # "succeeded" the moment it exists -- so the RBAC is torn down while
+            # the Job is still running and the Job dies with "Error:
+            # Unauthorized", then lingers forever because it has no delete
+            # policy of its own.
+            #
+            # The migration itself is already done: every kyverno CRD reports a
+            # single storedVersion matching its storage version (v1/v2), which
+            # is exactly the end state a successful migration produces.
+            #
+            # If a future chart bump genuinely needs a storage migration, check
+            # for a CRD whose status.storedVersions has more than one entry and
+            # run it by hand:
+            #
+            #   kubectl get crd <name> -o jsonpath='{.status.storedVersions}'
+            #   kubectl kyverno migrate --resource <name>
+            enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno
