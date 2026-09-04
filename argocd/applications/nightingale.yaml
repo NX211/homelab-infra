@@ -4,15 +4,6 @@ kind: Application
 metadata:
   name: nightingale
   namespace: argocd
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: nightingale=razzaru/nightingale
-    argocd-image-updater.argoproj.io/nightingale.update-strategy: semver
-    # Track plain semver only — excludes the -cuda GPU and -amd64/-arm64
-    # single-arch tags so updates stay on the CPU multi-arch image.
-    argocd-image-updater.argoproj.io/nightingale.allow-tags: regexp:^\d+\.\d+\.\d+$
-    argocd-image-updater.argoproj.io/nightingale.helm.image-name: image.repository
-    argocd-image-updater.argoproj.io/nightingale.helm.image-tag: image.tag
-    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/git-creds
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
