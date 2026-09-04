@@ -15,6 +15,10 @@ spec:
       labels:
         {{- include "homer.selectorLabels" . | nindent 8 }}
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
