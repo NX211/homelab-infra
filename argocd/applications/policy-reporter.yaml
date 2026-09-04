@@ -17,7 +17,7 @@ spec:
   source:
     repoURL: https://kyverno.github.io/policy-reporter
     chart: policy-reporter
-    targetRevision: 3.8.1
+    targetRevision: 3.10.0
     helm:
       valuesObject:
         # Kyverno plugin + the read-only UI (reachable in-cluster / via Tailscale;
