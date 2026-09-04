@@ -18,7 +18,7 @@ spec:
   source:
     repoURL: https://helm.cilium.io
     chart: tetragon
-    targetRevision: 1.7.0
+    targetRevision: 1.7.1
     helm:
       valuesObject:
         # Observe only — no enforcement TracingPolicies in Phase 1.
