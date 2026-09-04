@@ -22,6 +22,10 @@ spec:
           labels:
             app: matrix-s3-media-cleanup
         spec:
+          # RuntimeDefault seccomp for every container in the pod.
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
           restartPolicy: OnFailure
           nodeSelector:
             kubernetes.io/hostname: greytalon

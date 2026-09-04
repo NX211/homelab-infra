@@ -23,6 +23,10 @@ spec:
         {{- include "seaweedfs.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: filer
     spec:
+      # RuntimeDefault seccomp for every container in the pod.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       enableServiceLinks: false
       {{- with .Values.filer.nodeSelector }}
       nodeSelector:
