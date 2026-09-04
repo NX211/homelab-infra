@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://prometheus-community.github.io/helm-charts
     chart: kube-prometheus-stack
-    targetRevision: 67.4.0
+    targetRevision: 67.11.0
     helm:
       valuesObject:
         # Disable components we don't need
