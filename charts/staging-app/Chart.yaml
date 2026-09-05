@@ -2,6 +2,8 @@ apiVersion: v2
 name: staging-app
 description: Shared base chart for staging applications
 type: application
+# 0.8.3 — adds an opt-in staging demo-data seed Job (PostSync hook, reusing the
+# migration image and the app's ExternalSecret). Off by default.
 # 0.6.1 — ServiceMonitor default flipped to opt-in (off): the apps don't expose
 # a real /metrics endpoint yet (404/HTML/307 on both staging and prod), so it
 # only made down targets. Template stays ready for when an app adds /metrics.
@@ -19,4 +21,4 @@ type: application
 # 0.8.2 — security-context gaps: seccompProfile on the http/worker CronJob
 # pods (the Deployment and Jobs already had one) and resource bounds on the
 # db-init container. No behaviour change; see docs/runbooks.
-version: 0.8.2
+version: 0.8.3

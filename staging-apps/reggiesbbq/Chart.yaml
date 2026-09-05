@@ -12,5 +12,5 @@ maintainers:
   - name: Homelab Admin
 dependencies:
   - name: staging-app
-    version: "0.8.2"
+    version: "0.8.3"
     repository: "file://../../charts/staging-app"

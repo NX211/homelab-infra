@@ -50,6 +50,30 @@ migration:
   repository: ""
   digest: "sha256:PLACEHOLDER"
 
+# Staging demo-data seed (PostSync Job). Off by default: sample data belongs
+# only in staging, and only where an app has a seed script that is safe to
+# re-run. Defaults to the migration image, which already carries the schema
+# package. Seed credentials come from the app's ExternalSecret via envFrom, so
+# nothing secret is ever written here.
+seed:
+  enabled: false
+  # Override only if the seed lives in a different image than the migrations.
+  repository: ""
+  digest: ""
+  command: ["npx", "tsx", "prisma/seed-staging.ts"]
+  # Bump to force a re-seed without a new image digest.
+  runId: "1"
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+
 # Container image
 image:
   repository: ""
