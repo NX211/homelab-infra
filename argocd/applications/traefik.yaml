@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: https://traefik.github.io/charts
     chart: traefik
-    targetRevision: 39.0.9
+    targetRevision: 41.4.0
     helm:
       valuesObject:
         # Disable version-check + anonymous usage (was globalArguments pre-v34).
