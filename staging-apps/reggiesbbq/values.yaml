@@ -24,6 +24,11 @@ staging-app:
     userKey: 1710cc98-8b27-4ab0-8332-b4b70185468a # DB_USER
     passwordKey: 12c9891c-ead7-4ee6-8518-b4b7018546ed # DB_PASSWORD
     nameKey: 82fe637f-ade2-4e5e-a74c-b4b7018546c0 # DB_NAME
+  # Monorepo standalone build: Next's output is /app/apps/web/.next, so the
+  # writable cache volume has to mount there. At the chart default it landed
+  # beside the real directory and every image request re-encoded, logging
+  # "ENOENT: mkdir /app/apps/web/.next/cache/images/...".
+  nextCachePath: /app/apps/web/.next/cache
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
@@ -52,6 +57,13 @@ staging-app:
     clusterIssuer: letsencrypt-prod
     # On-LAN/in-cluster by default; the allowlist-reconciler unions reviewer IPs
     # at runtime from Bitwarden (STAGING_BASE_ALLOWLIST_CIDR stays out of git).
+    # Shippo's senders are not in the allowlist and cannot be — the carrier
+    # publishes no stable egress range. The route authenticates itself instead:
+    # it verifies Shippo's t=/v1= HMAC over `${timestamp}.${body}` against
+    # SHIPPO_WEBHOOK_SECRET, is replay-bounded, and fails closed (503 with no
+    # secret, 401 on a bad signature). Nothing else is exempted.
+    publicPaths:
+      - /api/webhooks/shippo
     ipAllowList:
       enabled: true
       sourceRange:

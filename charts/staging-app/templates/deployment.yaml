@@ -94,7 +94,7 @@ spec:
         - name: tmp
           mountPath: /tmp
         - name: nextjs-cache
-          mountPath: /app/.next/cache
+          mountPath: {{ .Values.nextCachePath }}
         {{- if .Values.gcpWorkloadIdentity.enabled }}
         - name: gcp-cred
           mountPath: /etc/gcp
