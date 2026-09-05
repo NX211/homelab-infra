@@ -70,8 +70,12 @@ staging-app:
       # Stripe publishes no fixed egress range, so the allowlist would reject
       # legitimate callers and orders would sit in PENDING after a real charge.
       - /api/webhooks/stripe
+    # TEMPORARY: allowlist disabled — staging.reggiesbbqonline.com is open to
+    # the internet with no IP restriction and no other middleware in front of
+    # it. Flip back to true to restore; sourceRange below is kept intact so
+    # the revert is this one line.
     ipAllowList:
-      enabled: true
+      enabled: false
       sourceRange:
         - 10.0.0.0/8
         - 172.16.0.0/12
