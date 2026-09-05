@@ -28,6 +28,12 @@ staging-app:
     enabled: true
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
     digest: sha256:77b28f4a75f9069981e706064d6c8c7ecb2657fe2b357f9cd4752d393e49083f
+  # Demo dataset for review: every order status, both gift shapes, loyalty
+  # coupons, campaign outcomes, support threads. Idempotent, and the script
+  # refuses to run unless APP_ENV=staging. Bump runId to re-seed in place.
+  seed:
+    enabled: true
+    runId: "1"
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
@@ -119,3 +125,11 @@ staging-app:
         key: 21f835f9-d897-413a-8c6a-b4b7018565ee
       - name: SHIPPO_FROM_ZIP
         key: 8a41119a-2416-44cd-8adf-b4b70185674d
+      # Staging seed sign-in passwords — generated, stored only in Bitwarden.
+      # Rotate by editing the secret there and bumping seed.runId.
+      - name: SEED_ADMIN_PASSWORD
+        key: 6292f3c1-c6f8-4550-b1e8-b4bc0008a74a
+      - name: SEED_STAFF_PASSWORD
+        key: 4795b71a-afc9-44b9-a5fc-b4bc0008a781
+      - name: SEED_CUSTOMER_PASSWORD
+        key: 1dce0b69-e1d4-4ed3-8034-b4bc0008a7cb

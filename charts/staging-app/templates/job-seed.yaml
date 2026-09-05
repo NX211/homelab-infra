@@ -1,0 +1,70 @@
+---
+{{- if .Values.seed.enabled }}
+{{- /*
+Staging demo-data seed. Opt-in per app and off by default, because sample data
+must never reach an environment that isn't staging.
+
+Runs as a PostSync hook rather than in a sync wave beside job-migrate: PostSync
+starts only after the migrate Job (Sync, wave -1) and the app itself report
+healthy, so the schema is guaranteed present without any wave arithmetic.
+
+Re-runs whenever the migration digest changes, and on demand by bumping
+`seed.runId` — both feed the Job name, and BeforeHookCreation clears the prior
+Job. The seed script itself must be idempotent.
+
+Credentials arrive through envFrom on the app's ExternalSecret, so seed
+passwords sit in Bitwarden beside every other secret and never in values.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.appName }}-seed-{{ printf "%s-%s" .Values.migration.digest (.Values.seed.runId | toString) | sha256sum | trunc 8 }}
+  labels:
+    {{- include "staging-app.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: {{ .Values.seed.ttlSecondsAfterFinished }}
+  backoffLimit: {{ .Values.seed.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.seed.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.appName }}-seed
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # image USER "node" is non-numeric; numeric uid required
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: seed
+        # Same image as the migration Job: it already carries the Prisma client
+        # and the schema package, so the seed needs no image of its own.
+        image: "{{ .Values.seed.repository | default .Values.migration.repository }}@{{ .Values.seed.digest | default .Values.migration.digest }}"
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          # prisma writes engine scratch under /tmp; no tmp mount on this Job
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+              - ALL
+        command:
+          {{- toYaml .Values.seed.command | nindent 10 }}
+        env:
+        # The seed script refuses to run unless this says staging.
+        - name: APP_ENV
+          value: staging
+        envFrom:
+        - secretRef:
+            name: {{ .Values.externalSecrets.secretName }}
+        resources:
+          {{- toYaml .Values.seed.resources | nindent 10 }}
+{{- end }}
