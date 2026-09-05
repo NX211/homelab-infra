@@ -38,7 +38,10 @@ staging-app:
   # refuses to run unless APP_ENV=staging. Bump runId to re-seed in place.
   seed:
     enabled: true
-    runId: "1"
+    # Bumped to re-run the seed after rotating the three SEED_*_PASSWORD values
+    # in Bitwarden. The seed upserts the users, so the existing rows pick up the
+    # new hashes — no manual DB edit.
+    runId: "2"
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
