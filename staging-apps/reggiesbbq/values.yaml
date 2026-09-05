@@ -119,6 +119,13 @@ staging-app:
         key: bd0ee5f6-e730-452e-bb08-b4b701855aaf
       - name: SHIPPO_WEBHOOK_SECRET
         key: 0e0796db-5cde-4e7a-8a68-b4b701856070
+      # Shippo's self-service webhook auth: a token we choose and append to the
+      # URL in their dashboard. HMAC (the secret above) is stronger but is
+      # provisioned by Shippo's solutions team on request, so this is what the
+      # account can actually use today. The route prefers a signature whenever
+      # one is sent, so this cannot downgrade HMAC once it exists.
+      - name: SHIPPO_WEBHOOK_TOKEN
+        key: 01030a3a-a492-4170-8bb2-b4bc0145e268
       # TODO(bootstrap): SeaweedFS S3 credentials — add a scoped `reggiesbbq`
       # identity (Read/Write/List on reggiesbbq-uploads only) to the
       # seaweedfs-s3-config-json blob, put the key pair in the staging BWS
