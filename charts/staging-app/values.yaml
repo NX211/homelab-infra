@@ -45,6 +45,14 @@ database:
   secretName: ""
 
 # Migration job
+# Writable mount for Next's cache, which the read-only root filesystem would
+# otherwise block. The default suits a single-app repo, where the build output
+# lands at /app/.next. A monorepo standalone build puts it under the workspace
+# path instead (e.g. /app/apps/web/.next/cache) — point this there or the
+# volume mounts beside the real directory and image optimisation re-encodes on
+# every request, logging "ENOENT: mkdir .next/cache/images/...".
+nextCachePath: /app/.next/cache
+
 migration:
   enabled: false
   repository: ""
