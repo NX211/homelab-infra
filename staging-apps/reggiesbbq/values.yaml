@@ -32,7 +32,7 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
-    digest: sha256:cb3df72feb6010dc15808ea0d1582da9a3f24db69e5e3323014ff106d2cfa30f
+    digest: sha256:bcc7a169d937dcee7729bf925a66d97cfb4c0aca5a6e08e7cc4b8713358784c6
   # Demo dataset for review: every order status, both gift shapes, loyalty
   # coupons, campaign outcomes, support threads. Idempotent, and the script
   # refuses to run unless APP_ENV=staging. Bump runId to re-seed in place.
@@ -42,7 +42,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
-    digest: "sha256:3bbc9596061bed8d5de5d1ffa81a45a1cd809f66e613950fcf5d7e7f21d06eed" # Seeded empty; CI's gitops-staging-update.yml fills it from the first prod build
+    digest: "sha256:02fb5d76c02be2b9bb49bb50325658e22b10484e308fd5cd0b9f442a021a0d5e" # Seeded empty; CI's gitops-staging-update.yml fills it from the first prod build
   imagePullSecrets:
     - name: gcr-pull-secret-reggiesbbq
   gcrPullSecret:
@@ -64,6 +64,12 @@ staging-app:
     # secret, 401 on a bad signature). Nothing else is exempted.
     publicPaths:
       - /api/webhooks/shippo
+      # Stripe signs every delivery and the route verifies it before doing any
+      # work: no signature is a 400, a bad one is a 400, and an unset
+      # STRIPE_WEBHOOK_SECRET is a 503. Same reasoning as Shippo above —
+      # Stripe publishes no fixed egress range, so the allowlist would reject
+      # legitimate callers and orders would sit in PENDING after a real charge.
+      - /api/webhooks/stripe
     ipAllowList:
       enabled: true
       sourceRange:
