@@ -64,6 +64,12 @@ staging-app:
     # secret, 401 on a bad signature). Nothing else is exempted.
     publicPaths:
       - /api/webhooks/shippo
+      # Stripe signs every delivery and the route verifies it before doing any
+      # work: no signature is a 400, a bad one is a 400, and an unset
+      # STRIPE_WEBHOOK_SECRET is a 503. Same reasoning as Shippo above —
+      # Stripe publishes no fixed egress range, so the allowlist would reject
+      # legitimate callers and orders would sit in PENDING after a real charge.
+      - /api/webhooks/stripe
     ipAllowList:
       enabled: true
       sourceRange:
