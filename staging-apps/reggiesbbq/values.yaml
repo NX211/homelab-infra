@@ -76,6 +76,10 @@ staging-app:
         - 10.0.0.0/8
         - 172.16.0.0/12
         - 192.168.0.0/16
+        # Standing reviewer host. Lives here rather than in the coreyalan
+        # review-access flow because that flow is per-reviewer and expires;
+        # this one is a fixed operator address that should not lapse.
+        - 107.204.113.94/32
       reconcilerManaged: true
       # TODO(scaffold): appName MUST equal the StagingSite.infraAppName entered in
       # the admin UI for review-access to resolve. Defaulted to the prod-app name.
