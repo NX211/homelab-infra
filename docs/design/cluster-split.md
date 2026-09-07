@@ -256,6 +256,65 @@ succeeded end to end.**
 The exposure this closes: `build-catalog/` is pulled into the **trusted** build tier by git
 resolver from the same repository as the personal media charts.
 
+### 4.1 The business repo: `staging-infra`
+
+Three repositories once the split lands, not two. `platform-infra` already exists and is
+**not** this repo — its README scopes it to the GKE production cluster
+(`platform-infra-prod`), a different plane on a different target.
+
+| Repo | Cluster | Holds |
+|---|---|---|
+| `homelab-infra` | personal k3s | media, Immich, Paperless, Matrix, Gitea, Homer |
+| `platform-infra` | **GKE prod** | prod business apps, Terraform + Atlantis, GCP surfaces |
+| **`staging-infra`** | **Talos on Proxmox** | build platform, staging estate, provisioning control plane |
+
+```
+staging-infra/
+├── argocd/applications/        # business app-of-apps; own ArgoCD, own hostname (§3)
+├── bootstrap/                  # CAPMOX manifests, ArgoCD install, cluster bring-up
+├── charts/                     # copy of the shared base charts (staging-app, …)
+├── business-plane/             # namespaces, NetworkPolicies, AppProject, PriorityClass
+├── kyverno-policies-business/
+├── tekton/                     # operator, config, PaC, runtimeclasses
+├── build-catalog/              # pipeline + task catalog (git-resolver source)
+├── build-targets/
+├── build-registry-proxy/       # verdaccio, maven, prisma mirrors
+├── apps/                       # build toolchain images (web, android, allowlist-reconciler)
+├── staging/                    # staging namespace resources
+├── staging-apps/               # per-app wrapper charts
+├── kratix/                     # promises, config
+├── provisioning/               # engine, webhook, control-db, tenants
+├── scaffolder/
+├── allowlist-reconciler/
+├── ar-token-refresher/
+├── port-k8s-exporter/  port-ocean-argocd/
+├── cert-manager/  external-secrets-operator/   # own instances, not shared (§3)
+├── docs/
+├── renovate.json               # copy, per the shared-by-copy rule above
+└── .github/workflows/
+```
+
+**Three directories the §4 table omits.** `apps/` (the build toolchain images — web, android,
+allowlist-reconciler) follows the build platform. `cert-manager/` and
+`external-secrets-operator/` are not a personal-or-business choice at all: §3 gives the
+business cluster its own install of each, so both repos carry a copy.
+
+**Workflow split.** `gitops-staging-update.yml`, `staging-promote.yml` and `staging-track.yml`
+follow the staging estate. The toolchain builds go with `apps/`:
+`build-web-toolchain.yml`, `build-capturly-android-toolchain.yml` and
+`build-allowlist-reconciler.yml`. `build-synapse-s3.yml` stays personal — it builds the
+Matrix image. `trivy.yml` is copied to both.
+
+**On the triplication.** cert-manager, Traefik, Kyverno, Tetragon, Grafana and ESO end up
+configured three times across three repos, once per cluster. That is the dependency-direction
+rule (§3) doing its job rather than an accident: a shared instance is a shared blast radius,
+and a hub with credentials to every cluster is exactly what the split removes. The cost is
+that a CVE in any of them is three PRs.
+
+**On the name.** It describes the staging estate accurately and the build platform and
+provisioning control plane less so — `provisioning/` reconciles live customer tenants, not
+staging ones. Recorded here so the mismatch is deliberate rather than discovered later.
+
 ---
 
 ## 5. Evidence pipeline
@@ -483,5 +542,9 @@ deleted until a promotion has succeeded end to end on the new repo.
   If any of it is audit evidence, it must be exported.
 - **`capturly-live`** (coturn/signaling/web) — business workload on personal DNS entries
   today. Confirm it follows the staging estate in Phase 5.
+- **`platform-infra` holds a homelab cluster reference.**
+  `argocd-clusters/homelab-cluster-externalsecret.yaml` points GKE's ArgoCD at the personal
+  cluster. That is a business-to-personal dependency, the direction §3 forbids, and it
+  predates this design. Confirm whether it is still live and retire it if so.
 - **Offsite audit copy.** The GCS mirror of the `kube-audit` stream (§5.3) is the treatment
   for the accepted evidence-durability risk. Not scheduled.
