@@ -36,7 +36,8 @@ does not.
 | ARC (`arc-systems`, `arc-runners`) | k3s | **Talos** |
 | `staging-apps/*` (6 charts) + `staging` namespace | k3s | **Talos** |
 | Kratix, Restate, Metacontroller, provisioning engine, scaffolder | k3s | **Talos** |
-| Port exporters (`port-k8s-exporter`, `port-ocean-argocd`) | k3s | **Talos** |
+| Port exporters (`port-k8s-exporter`, `port-ocean-argocd`) | k3s | **both** — one pair per cluster, not a move (§4) |
+| `capturly-live` (coturn, signaling, web) | k3s | **Talos** — follows the staging estate |
 | kube-prometheus-stack, Loki, Grafana | k3s | **both** — separate instances, no cross-plane scrape |
 | Tetragon, Trivy Operator, Kyverno, policy-reporter | k3s | **both** |
 
@@ -250,6 +251,7 @@ removes the pet-node property §2.2 removes for storage. The address MetalLB all
 | cert-manager | existing | new install | Both HTTP-01; each cluster's ingress must be reachable for its own domains. |
 | Traefik | `yellowtalon` hostPorts | new ingress on Talos | Second address in CoreDNS (§3.1). |
 | PostgreSQL | existing CNPG | new CNPG | Staging databases move off the shared `postgres-rw`. This is the co-tenancy the split exists to end. |
+| Redis | existing `redis-ng-sentinel` | new instance | The staging apps point at `redis-ng-sentinel.redis.svc.cluster.local` today — the same co-tenancy as PostgreSQL, and the name stops resolving the moment they move. Rebuilt with the same operator and Sentinel topology for prod parity, since the staging apps mirror prod's Redis config. |
 | SeaweedFS | `s3.authoritah.com` | new instance | Business instance backs staging app storage *and* the evidence store (§5). |
 | Monitoring | existing stack | own stack | Business metrics/logs never land in the personal stack. |
 | Authelia | existing, personal SSO | **not deployed** | Business surfaces use oauth2-proxy + Google OIDC per [ADR-0018](../../../framework/decisions/0018-control-plane-target-stack.md). Sharing Authelia would violate the rule. |
@@ -264,8 +266,11 @@ removes the pet-node property §2.2 removes for storage. The address MetalLB all
 - `staging.*` (`staging.coreyalan.com`, `staging.showcase.coreyalan.com`,
   `staging.jlshawconsulting.com`, `staging.dispatchr.social`, `staging.capturly.app`,
   `staging.blue-skysolutions.com`) → business Traefik
-- `live.capturly.app`, `wss.live.capturly.app`, `turn.live.capturly.app` → decide per §1;
-  `capturly-live` is a business workload and should follow the staging entries.
+- `live.capturly.app`, `wss.live.capturly.app`, `turn.live.capturly.app` → business Traefik.
+  `capturly-live` moves with the staging estate (§1), so its entries move with it. Note the
+  TURN listener uses `hostNetwork` and `hostPort` rather than going through Traefik, so the
+  `turn.` record points at a node address, not the ingress VIP — check it against the
+  MetalLB range in §2.4 rather than assuming it follows the other two.
 
 Each cluster keeps its own CoreDNS with its own rewrites. cert-manager HTTP-01 self-checks
 depend on this being right — an entry pointing at the wrong cluster fails issuance rather
@@ -293,7 +298,7 @@ The rule is only useful if a violation is visible. Two mechanisms:
 | `tekton/`, `build-catalog/`, `build-targets/`, `build-registry-proxy/` | `helm-charts/*` (media, Immich, Paperless, Matrix, Gitea, …) |
 | `staging/`, `staging-apps/` | `argocd/applications/*` for the personal set |
 | `business-plane/`, `kyverno-policies-business/` | `kyverno-policies.yaml`, `authelia-manifests/`, `monitoring-manifests/` |
-| `kratix/`, `provisioning/`, `scaffolder/`, `port-*` | `traefik/`, `traefik-manifests/`, `coredns/`, `multus/` |
+| `kratix/`, `provisioning/`, `scaffolder/` | `traefik/`, `traefik-manifests/`, `coredns/`, `multus/`, `port-*` |
 | `allowlist-reconciler/`, `ar-token-refresher/` | `secrets/`, `bootstrap/`, `node-bootstrap/` (retire) |
 | its own `argocd/`, `bootstrap/`, `charts/` | `scripts/`, `docs/` |
 
@@ -343,8 +348,10 @@ business-infra/
 ├── scaffolder/
 ├── allowlist-reconciler/
 ├── ar-token-refresher/
-├── port-k8s-exporter/  port-ocean-argocd/
+├── capturly-live/              # coturn, signaling, web — follows the staging estate
+├── port-k8s-exporter/  port-ocean-argocd/      # own pair, scoped to this cluster
 ├── cert-manager/  external-secrets-operator/   # own instances, not shared (§3)
+├── redis/                      # own Sentinel instance, not the personal one (§3)
 ├── docs/
 ├── renovate.json               # copy, per the shared-by-copy rule above
 └── .github/workflows/
@@ -354,6 +361,18 @@ business-infra/
 allowlist-reconciler) follows the build platform. `cert-manager/` and
 `external-secrets-operator/` are not a personal-or-business choice at all: §3 gives the
 business cluster its own install of each, so both repos carry a copy.
+
+**Three assignments settled after the table was written.** `redis/` joins that
+copy-in-both list for the same reason cert-manager does — the staging apps expect a Sentinel
+endpoint and §3 now gives the business cluster its own. `capturly-live/` moves, resolving the
+§10 question: it is a business workload and follows the staging estate, which takes its
+coturn hostPorts and its DNS entries with it. `port-k8s-exporter/` and `port-ocean-argocd/`
+do **not** move, despite §4's original `port-*` line: both instances are scoped to the
+cluster they run in (`stateKey: homelab-k8s`, *"catalogs THIS cluster's ArgoCD
+Applications"*), and they are already clones of the GKE pair with distinct state keys. Moving
+them would make the business cluster read the personal one — the direction §3 forbids. The
+pattern is one pair per cluster, so the business repo grows its own with a `business-k8s`
+state key while `homelab-infra` keeps its.
 
 **Workflow split.** `gitops-staging-update.yml`, `staging-promote.yml` and `staging-track.yml`
 follow the staging estate. The toolchain builds go with `apps/`:
@@ -604,8 +623,6 @@ deleted until a promotion has succeeded end to end on the new repo.
   has a single physical failure domain regardless of three control-plane VMs.
 - **Tekton Results history.** Reset on migration, or exported first — decide in Phase 5.
   If any of it is audit evidence, it must be exported.
-- **`capturly-live`** (coturn/signaling/web) — business workload on personal DNS entries
-  today. Confirm it follows the staging estate in Phase 5.
 - **`platform-infra` holds a homelab cluster reference.**
   `argocd-clusters/homelab-cluster-externalsecret.yaml` points GKE's ArgoCD at the personal
   cluster. That is a business-to-personal dependency, the direction §3 forbids, and it
