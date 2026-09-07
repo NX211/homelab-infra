@@ -36,3 +36,32 @@ metadata:
     pod-security.kubernetes.io/enforce: baseline
     pod-security.kubernetes.io/audit: baseline
     pod-security.kubernetes.io/warn: baseline
+---
+# staging joins the plane (design §8.1). It was outside the boundary every
+# NetworkPolicy and namespace-scoped Kyverno policy selects on, which is the
+# whole point of the label.
+#
+# It is declared here rather than in staging/namespace.yaml because that file is
+# shipped by no ArgoCD Application -- the live namespace was created by a bare
+# `kubectl apply` and carries no labels at all, so editing it would have changed
+# nothing. Declaring it alongside its siblings makes the boundary authoritative
+# and leaves one source of truth.
+#
+# No Pod Security level is set. arc-* pin baseline for reasons specific to ARC
+# runners; the staging apps have not been assessed against a level yet, and
+# guessing one here would either be theatre or an outage. That assessment is
+# tracked with the Phase 0 work, not smuggled in with a label.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+  annotations:
+    # The business-plane app syncs with prune: true. Seven staging-apps/*
+    # Applications deploy into this namespace, so dropping it from this file --
+    # a one-line edit -- would otherwise delete the namespace and everything
+    # those apps run in it. Removing staging from the plane should be a
+    # deliberate manual act, not a side effect of a diff.
+    argocd.argoproj.io/sync-options: Prune=false
+  labels:
+    plane: business
+    environment: staging
