@@ -12,7 +12,8 @@ business-cluster SeaweedFS · no Harbor · Gitea stays personal-plane.
 (§2.2) · node and storage sizing measured, not estimated (§2.1) · Terraform owns the Proxmox
 substrate and API tokens, CAPMOX owns cluster lifecycle (§2.3) · Gateway API `HTTPRoute` for
 business ingress and a MetalLB VIP instead of a pinned `hostPort` replica (§2.4) · the
-business repo is `Corey-Alan-Consulting/business-infra` (§4.1).
+business repo is `Corey-Alan-Consulting/business-infra` (§4.1) · cluster CIDRs deliberately
+disjoint from the personal cluster's (§2.5).
 
 ---
 
@@ -239,6 +240,38 @@ than one replica, addressed by a VIP:
 That gives rolling Traefik upgrades with no ingress gap, survives losing a worker, and
 removes the pet-node property §2.2 removes for storage. The address MetalLB allocates is the
 "business Traefik" that §3.1 points the `staging.*` names at.
+
+### 2.5 Addressing
+
+Decided up front because Terraform (node addresses, §2.3) and the Talos machine config (the
+VIP, §2.4) both consume it, and because two of these choices are expensive to revisit.
+
+Existing LAN is `10.20.0.0/24`, gateway `.1`, with the current nodes on `.210`, `.230`,
+`.240`, `.250`. The new cluster takes a block well clear of them:
+
+| Purpose | Address |
+|---|---|
+| `talos-cp-1..3` | `10.20.0.11–13` |
+| `talos-worker-1..2` | `10.20.0.21–22` |
+| Control-plane VIP | `10.20.0.10` |
+| MetalLB pool | `10.20.0.30–39` |
+| Pod CIDR | `10.44.0.0/16` |
+| Service CIDR | `10.45.0.0/16` |
+
+**Provisional on the host addresses.** `.10`–`.39` is confirmed outside DHCP today and is
+fine to build against, but the block can move if the LAN gets rearranged; nothing depends on
+these specific numbers except Terraform and the machine config, and both are in git.
+
+**Not provisional: the CIDRs.** The personal cluster uses `10.42.0.0/16` and `10.43.0.0/16`,
+so the business cluster deliberately does not. Talos defaults land near that range, so this
+has to be set explicitly rather than accepted. The two planes never talk by design (§3), but
+overlapping CIDRs would turn that policy choice into a permanent physical one — no route
+between them would be possible even for a migration or a debugging session. Keeping them
+distinct costs nothing and keeps the option.
+
+The MetalLB pool is a range rather than a single address so that ingress is not the only
+thing that can ever have a `LoadBalancer`. It is the address §3.1 points the `staging.*`
+names at.
 
 ---
 
@@ -605,7 +638,7 @@ cluster immediately; they do not wait for new hardware.
 | Phase | Work | Done when |
 |---|---|---|
 | **0** | The §8 policy fixes, on the current cluster | staging is in-plane, registry + signature policies match reality, no PolicyReport regressions |
-| **1** | Proxmox prep + CAPMOX management cluster; Talos image with gVisor/Kata extensions; **verify nested virt for Kata** | `talosctl` reaches a booted cluster; a pod runs under each RuntimeClass |
+| **1** | Proxmox prep + CAPMOX management cluster; Talos image with gVisor/Kata extensions; **verify nested virt for Kata**; **Proxmox CSI driver** (§2.2) once the cluster is up | `talosctl` reaches a booted cluster; a pod runs under each RuntimeClass; **a test PVC binds and still holds its data after the worker it landed on is replaced** |
 | **2** | Business-cluster platform: ArgoCD, ESO (new Bitwarden machine account), cert-manager, **MetalLB**, **Gateway API CRDs**, Traefik (Gateway provider, §2.4), CNPG, SeaweedFS, Kyverno, Tetragon, Trivy, monitoring + Alloy | new ArgoCD healthy; a test **`HTTPRoute`** issues a certificate on the MetalLB VIP, and a Traefik upgrade completes with no ingress gap |
 | **3** | Audit pipeline: machine-config audit policy, Alloy host scrape, Loki S3 + 365d stream, ArgoCD events | `{job="kube-audit"}` queryable in the business Grafana; an `exec` into a pod appears with `RequestResponse` |
 | **4** | Repo split (`git filter-repo`), business ArgoCD re-pointed, CI secrets re-created, `STAGING_GITHUB_REPO` re-pointed | a full build → staging → promote cycle succeeds end to end on the new repo |
