@@ -1,0 +1,45 @@
+---
+# The gap this closes: `staging` carried `environment: staging` and nothing else,
+# so it sat outside the `plane: business` boundary that every NetworkPolicy and
+# namespace-scoped Kyverno policy selects on (design §8.1). The label was added,
+# but nothing stopped the next staging-like namespace from repeating it.
+#
+# Scoped deliberately narrow. It does not try to guess which namespaces are
+# "business" -- that is not expressible. It asserts one thing that is: a
+# namespace declaring itself an environment is part of the estate the boundary
+# exists to fence, so it must say which plane it belongs to.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-plane-label
+  annotations:
+    policies.kyverno.io/title: Require plane label on environment namespaces
+    policies.kyverno.io/category: Multi-Tenancy
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      A Namespace labelled `environment` must also carry `plane`, so it cannot
+      silently fall outside the NetworkPolicy and Kyverno selectors that key off
+      the plane boundary.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: environment-namespace-declares-plane
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              selector:
+                matchExpressions:
+                  - key: environment
+                    operator: Exists
+      validate:
+        message: >-
+          A Namespace with an `environment` label must also set `plane`
+          (business or personal). Without it the namespace falls outside every
+          NetworkPolicy and Kyverno rule that selects on the plane boundary.
+        pattern:
+          metadata:
+            labels:
+              plane: "business | personal"
