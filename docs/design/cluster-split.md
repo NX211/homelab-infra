@@ -542,9 +542,20 @@ deleted until a promotion has succeeded end to end on the new repo.
   If any of it is audit evidence, it must be exported.
 - **`capturly-live`** (coturn/signaling/web) — business workload on personal DNS entries
   today. Confirm it follows the staging estate in Phase 5.
-- **`platform-infra` holds a homelab cluster reference.**
-  `argocd-clusters/homelab-cluster-externalsecret.yaml` points GKE's ArgoCD at the personal
-  cluster. That is a business-to-personal dependency, the direction §3 forbids, and it
-  predates this design. Confirm whether it is still live and retire it if so.
+- **`platform-infra`'s homelab cluster registration — delete it in Phase 6, do not re-point
+  it.** `argocd-clusters/homelab-cluster-externalsecret.yaml` registers this cluster as a
+  deploy target in prod (GKE) ArgoCD. It exists because the business staging estate runs on
+  personal hardware today, behind one shared Traefik on a single static address — the exact
+  co-tenancy this split ends, so the split is its treatment rather than something that
+  works around it.
+
+  It is currently inert: the GSM values are marked PENDING, no ServiceAccount for prod
+  ArgoCD exists on this cluster, no ClusterRoleBinding grants one access, and no Application
+  in `platform-infra` targets it. Nothing depends on it.
+
+  Once Phase 5 moves the staging estate and Phase 6 gives the business cluster its own
+  Traefik and CoreDNS address (§3.1), the reason is gone. Delete it then — do not
+  re-register the new cluster in prod ArgoCD, because §3's no-hub-and-spoke rule applies to
+  the business cluster exactly as it applies to this one.
 - **Offsite audit copy.** The GCS mirror of the `kube-audit` stream (§5.3) is the treatment
   for the accepted evidence-durability risk. Not scheduled.
