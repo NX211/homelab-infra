@@ -8,6 +8,10 @@ Promotes the `plane: business` label boundary ([ADR-0013](../../../framework/dec
 Talos Linux on Proxmox via CAPMOX · two GitOps repos · evidence store on a
 business-cluster SeaweedFS · no Harbor · Gitea stays personal-plane.
 
+**Locked decisions (2026-09-07):** Proxmox CSI for business-cluster PVCs, not `local-path`
+(§2.2) · node and storage sizing measured, not estimated (§2.1) · Terraform owns the Proxmox
+substrate and API tokens, CAPMOX owns cluster lifecycle (§2.3).
+
 ---
 
 ## 1. What moves, what stays
@@ -71,9 +75,111 @@ nested virt enabled on the Proxmox host (`kvm_intel.nested=1` / `kvm_amd.nested=
 type `host`). Verify this before committing the Android channel to the new cluster; it is a
 Phase 1 gate, not an afterthought.
 
-**Sizing:** the untrusted tier is the workload that actually needs headroom (parallel PR
-builds under gVisor). Start with 3 control plane + 2 workers and treat worker count as the
-scaling knob.
+### 2.1 Sizing
+
+Measured on the running k3s cluster (2026-09-07), not estimated. The untrusted tier is the
+workload that actually needs headroom — parallel PR builds under gVisor — so worker count
+stays the scaling knob.
+
+| Group | CPU | Memory |
+|---|---|---|
+| Business workloads that move (17 namespaces, ~41 pods) | 258m | **3.5 GiB** |
+| Platform services needing a second instance | 1818m | **8.3 GiB** |
+| One untrusted Android build pod (gVisor) | **4 vCPU** | **4 GiB** |
+
+Platform is dominated by monitoring (877m / 5.0 GiB) and ArgoCD (721m / 1.3 GiB); the rest
+are hundreds of MiB each. ARC is capped at `maxRunners: 2`, so the build burst ceiling is
+about 8 vCPU / 8 GiB.
+
+**Control plane — 3 x `talos-cp`:** 4 vCPU, 8 GiB, 100 GiB NVMe. etcd stays small at this
+app count; the disk wants low latency more than capacity.
+
+**Workers — 2 x `talos-worker`:** 8 vCPU, **24 GiB minimum / 32 GiB comfortable**, 500 GiB.
+
+The worker figure is ~3.5 GiB business + ~7.3 GiB platform + ~2 GiB kubelet and system =
+**~13 GiB steady**, plus ~10 GiB of build burst = **~23 GiB peak across both**. At 24 GiB
+each a worker can be lost and the cluster still runs; at 16 GiB each it cannot, which
+matters because §2.2 makes worker replacement routine.
+
+**Proxmox host:** 28 vCPU and 88 GiB allocated, so size the box at roughly **32 threads,
+128 GiB RAM, 1.5 TB NVMe**. Memory is the binding constraint — vCPU oversubscribes fine at
+2:1 because builds are bursty, memory does not.
+
+**Storage**, right-sized from measured usage rather than current requests:
+
+| Volume | Actual today | Allocate |
+|---|---|---|
+| Prometheus | 40.3 G | 50 GiB |
+| Loki | 17 G | 50 GiB |
+| SeaweedFS (evidence store + staging) | 43 M | 100 GiB — the growth area |
+| CNPG staging databases | — | 20 GiB |
+| Build caches (gradle) | — | 40 GiB |
+| Ephemeral PipelineRun workspaces | — | 50 GiB churn |
+| Restate / Redis / Grafana | 155 M / — / 30 M | 25 GiB |
+| **PVC subtotal** | | **~335 GiB** |
+| Talos OS + image cache, per worker | | 60-80 GiB |
+
+Do not port the current numbers across: the personal cluster requests ~438 GiB of
+business-side PVC against ~58 GiB of real data, roughly 7x over-provisioned. Prometheus is
+the only volume anywhere near its request.
+
+### 2.2 Storage: Proxmox CSI, not local-path
+
+**Decided 2026-09-07.** Business-cluster PVCs are backed by the Proxmox CSI plugin against
+Proxmox storage. `local-path` is not carried over from the personal cluster.
+
+CAPMOX makes workers cattle — replacing one is meant to be a routine, uninteresting
+operation. `local-path` pins a PVC to the node that first bound it, which turns every
+worker replacement into a data-loss event for whatever was scheduled there. Prometheus,
+Loki, SeaweedFS and CNPG all have to survive a worker being recycled, and the evidence
+store (§5) is the one thing on this cluster that genuinely cannot be re-seeded.
+
+This is the one place the business cluster deliberately diverges from the personal one
+rather than mirroring it. The alternative considered and rejected was pinning stateful
+workloads to a single designated worker, which reintroduces exactly the pet node the split
+is meant to remove.
+
+### 2.3 IaC layering: what Terraform owns, what CAPMOX owns
+
+Two APIs at two levels, and both are needed:
+
+| API | Port | Creates | Driven by |
+|---|---|---|---|
+| Proxmox | 8006 | the VM — CPU, RAM, disk, boot image | CAPMOX controllers, or Terraform |
+| Talos | 50000 (gRPC, mTLS) | the OS config inside it | CABPT/CACPPT, or `talosctl` |
+
+Talos has no SSH and no shell. A machine config is the only interface, applied over its own
+API once the VM boots — so Proxmox builds the box and Talos configures itself. Neither API
+substitutes for the other.
+
+**CAPMOX owns cluster lifecycle.** The cluster is declared as Kubernetes objects — `Cluster`,
+`ProxmoxMachineTemplate`, `TalosControlPlane`, `MachineDeployment` — and the controllers call
+both APIs. Scaling a worker is editing `replicas`; replacing one is a rolling
+`MachineDeployment` operation rather than a hand-run procedure. That is what makes the cattle
+claim in §2.2 true rather than aspirational, and it is why the Proxmox CSI decision has to
+hold: PVCs must outlive the machines.
+
+**Terraform (via the existing Atlantis in `platform-infra`) owns the substrate Cluster API
+cannot reach:** Proxmox storage pools, bridges and VLANs, DNS, and the API tokens and roles —
+**including the dedicated token the Proxmox CSI plugin authenticates with**. Creating that
+token from the cluster that depends on it is a bootstrap cycle; it belongs in Terraform.
+
+The boundary is worth stating plainly because it is otherwise re-litigated at build time:
+
+| Concern | Owner |
+|---|---|
+| Proxmox host, storage pools, network, nested-virt flags | Terraform |
+| Proxmox API tokens + roles (incl. CSI) | Terraform |
+| Control plane and worker machines, scaling, upgrades | CAPMOX |
+| Talos machine config (audit policy §5.1, logging §5.2) | CAPMOX templates |
+| Everything running *on* the cluster | ArgoCD |
+
+**Two consequences to record.** The Image Factory schematic ID (§2) that pins the
+gVisor/Kata extension set behaves as a version — it lives in git and changing it is a node
+image change, not a config tweak. And after `clusterctl move` the management cluster is
+self-hosted on `talos-cp`, so recovering a lost cluster means re-bootstrapping a `kind`
+cluster first. That sharpens the single-host failure domain already noted in §10 rather than
+adding a new one.
 
 ---
 
