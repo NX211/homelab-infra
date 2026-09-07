@@ -119,6 +119,11 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 65532
+            # Pinned high deliberately (KSV-0021): without runAsGroup the pod
+            # lands in GID 0, so a root-group-readable file on any future mount
+            # would be readable by this script. The /tmp emptyDir is 0777, so
+            # nothing here depends on the group.
+            runAsGroup: 65532
             seccompProfile:
               type: RuntimeDefault
           containers:
