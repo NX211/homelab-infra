@@ -60,9 +60,26 @@ spec:
                   prefix: index_
                   period: 24h
 
-          # Retention
+          # Retention. 30d stays the default for application logs; the streams
+          # that carry evidence are kept for a year (design §5.3/§5.4, §8.4).
+          #
+          # §5.3 describes this as a `{job="kube-audit"}` stream, but that stream
+          # does not exist on this cluster -- the kube-apiserver audit policy is
+          # Phase 3 work on the business cluster. What this cluster does hold,
+          # for as long as it hosts the build platform, is the deploy history
+          # (ArgoCD events, §5.2) and the build/approval history (Tekton and the
+          # build namespaces, §5.4). Those are selected by namespace, which is a
+          # label promtail already sets.
+          #
+          # Storage: 17G of the 100Gi PVC covers 30d of *everything*; the
+          # evidence subset is a small fraction of that volume, so a year of it
+          # fits comfortably. Revisit if the PVC passes ~70%.
           limits_config:
             retention_period: 30d
+            retention_stream:
+              - selector: '{namespace=~"argocd|tekton-pipelines|tekton-operator|pipelines-as-code|arc-systems|arc-runners|.+-builds-.+"}'
+                priority: 1
+                period: 8760h
             max_query_length: 0h
             max_query_parallelism: 32
 

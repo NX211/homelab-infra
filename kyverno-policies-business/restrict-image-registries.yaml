@@ -1,9 +1,18 @@
 ---
 # Business-plane images may only come from our GHCR namespace or the ARC upstream
 # charts. Mirrors prod's restrict-image-registries, scoped by the `plane: business`
-# namespace label so the personal services are untouched. ENFORCE: every
-# business-plane image today is ghcr.io/actions/* (allowlisted) with zero
-# PolicyReport failures, so blocking disallowed registries breaks nothing.
+# namespace label so the personal services are untouched.
+#
+# The allowlist was widened when `staging` joined the plane (design §8.1/§8.2).
+# Enumerated from what the staging pods actually pull, not from the design note,
+# which listed only Artifact Registry:
+#   us-central1-docker.pkg.dev/*  — 7 GCP projects (blue-skysolutions, capturly-app,
+#                                   corey-alan-prod, coreyalan-showcase,
+#                                   dispatchr-social, jl-shaw-486618, reggiesbbq)
+#   curlimages/curl               — staging-app http-cronjob default
+#   postgres                      — staging-app job-db-init
+# Both Docker Hub entries are pinned to the specific repository rather than
+# allowing docker.io wholesale.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -27,13 +36,15 @@ spec:
                   plane: business
       validate:
         message: >-
-          Business-plane images must come from ghcr.io/nx211/* or
-          ghcr.io/actions/* (ARC). Found a disallowed registry.
+          Business-plane images must come from ghcr.io/nx211/*, ghcr.io/actions/*
+          (ARC), us-central1-docker.pkg.dev/* (staging app images), or the two
+          Docker Hub images the staging-app chart uses directly
+          (curlimages/curl, postgres). Found a disallowed registry.
         pattern:
           spec:
             =(ephemeralContainers):
-              - image: "ghcr.io/nx211/* | ghcr.io/actions/*"
+              - image: "ghcr.io/nx211/* | ghcr.io/actions/* | us-central1-docker.pkg.dev/* | curlimages/curl:* | docker.io/curlimages/curl:* | postgres:* | docker.io/library/postgres:*"
             =(initContainers):
-              - image: "ghcr.io/nx211/* | ghcr.io/actions/*"
+              - image: "ghcr.io/nx211/* | ghcr.io/actions/* | us-central1-docker.pkg.dev/* | curlimages/curl:* | docker.io/curlimages/curl:* | postgres:* | docker.io/library/postgres:*"
             containers:
-              - image: "ghcr.io/nx211/* | ghcr.io/actions/*"
+              - image: "ghcr.io/nx211/* | ghcr.io/actions/* | us-central1-docker.pkg.dev/* | curlimages/curl:* | docker.io/curlimages/curl:* | postgres:* | docker.io/library/postgres:*"
