@@ -11,7 +11,8 @@ business-cluster SeaweedFS · no Harbor · Gitea stays personal-plane.
 **Locked decisions (2026-09-07):** Proxmox CSI for business-cluster PVCs, not `local-path`
 (§2.2) · node and storage sizing measured, not estimated (§2.1) · Terraform owns the Proxmox
 substrate and API tokens, CAPMOX owns cluster lifecycle (§2.3) · Gateway API `HTTPRoute` for
-business ingress and a MetalLB VIP instead of a pinned `hostPort` replica (§2.4).
+business ingress and a MetalLB VIP instead of a pinned `hostPort` replica (§2.4) · the
+business repo is `Corey-Alan-Consulting/business-infra` (§4.1).
 
 ---
 
@@ -311,20 +312,20 @@ succeeded end to end.**
 The exposure this closes: `build-catalog/` is pulled into the **trusted** build tier by git
 resolver from the same repository as the personal media charts.
 
-### 4.1 The business repo: `staging-infra`
+### 4.1 The business repo: `business-infra`
 
 Three repositories once the split lands, not two. `platform-infra` already exists and is
 **not** this repo — its README scopes it to the GKE production cluster
 (`platform-infra-prod`), a different plane on a different target.
 
-| Repo | Cluster | Holds |
-|---|---|---|
-| `homelab-infra` | personal k3s | media, Immich, Paperless, Matrix, Gitea, Homer |
-| `platform-infra` | **GKE prod** | prod business apps, Terraform + Atlantis, GCP surfaces |
-| **`staging-infra`** | **Talos on Proxmox** | build platform, staging estate, provisioning control plane |
+| Repo | Owner | Cluster | Holds |
+|---|---|---|---|
+| `homelab-infra` | `NX211` | personal k3s | media, Immich, Paperless, Matrix, Gitea, Homer |
+| `platform-infra` | `Corey-Alan-Consulting` | **GKE prod** | prod business apps, Terraform + Atlantis, GCP surfaces |
+| **`business-infra`** | **`Corey-Alan-Consulting`** | **Talos on Proxmox** | build platform, staging estate, provisioning control plane |
 
 ```
-staging-infra/
+business-infra/
 ├── argocd/applications/        # business app-of-apps; own ArgoCD, own hostname (§3)
 ├── bootstrap/                  # CAPMOX manifests, ArgoCD install, cluster bring-up
 ├── charts/                     # copy of the shared base charts (staging-app, …)
@@ -366,9 +367,17 @@ rule (§3) doing its job rather than an accident: a shared instance is a shared 
 and a hub with credentials to every cluster is exactly what the split removes. The cost is
 that a CVE in any of them is three PRs.
 
-**On the name.** It describes the staging estate accurately and the build platform and
-provisioning control plane less so — `provisioning/` reconciles live customer tenants, not
-staging ones. Recorded here so the mismatch is deliberate rather than discovered later.
+**Owner: the `Corey-Alan-Consulting` org**, alongside `platform-infra`, not the personal
+`NX211` account that holds `homelab-infra`. The plane split is the reason the repo exists, so
+the repo lives on the business side of it. Worth settling before creation rather than after:
+moving orgs later rewrites every ArgoCD `repoURL`, the CI secrets, the Renovate installation
+and the `git filter-repo` remotes.
+
+**On the name.** `staging-infra` was considered and rejected. It describes the staging estate
+accurately and the rest of the repo poorly — `provisioning/` reconciles live customer
+tenants, and the trusted build tier is not staging either. `business-infra` names the plane,
+matches the `<scope>-infra` convention the other two repos already follow, and survives the
+implementation changing, the same way `homelab-infra` does not say `k3s`.
 
 ---
 
