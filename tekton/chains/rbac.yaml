@@ -1,0 +1,53 @@
+---
+# The refresher's k8s identity. Its projected token (audience = the GCP WIF
+# provider) federates to impersonate homelab-chains-signer@platform-infra-prod,
+# which is the identity Fulcio puts in the signing certificate — and therefore
+# the `subject` a Kyverno keyless attestor must pin.
+#
+# The GCP side (pool subject allowlist, signer SA, bindings) is in platform-infra:
+# terraform/environments/prod/homelab-wif.tf — the subject
+# `system:serviceaccount:tekton-pipelines:chains-token-refresher` must match there.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chains-token-refresher
+  namespace: tekton-pipelines
+---
+# The refresher writes exactly one Secret, in the one namespace the Chains
+# controller runs in. `resourceNames` on the mutating verbs is what matters: it
+# stops this identity from overwriting `signing-secrets` or any other credential
+# the Tekton operator manages in this namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chains-keyless-creds-writer
+  namespace: tekton-pipelines
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "update", "patch"]
+    resourceNames: ["chains-keyless-creds"]
+  # Kubernetes RBAC cannot scope `create` by resourceNames — the object does not
+  # exist yet, so the authorizer has no name to match and ignores the field. The
+  # verb therefore has to be granted namespace-wide, which does let this SA
+  # create *other* secrets in tekton-pipelines. It cannot modify any existing one
+  # (that needs update/patch, restricted above), so the operator's credentials
+  # stay out of reach. Accepted: the alternative is committing a placeholder
+  # Secret to git purely to avoid a create.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chains-token-refresher
+  namespace: tekton-pipelines
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: chains-keyless-creds-writer
+subjects:
+  - kind: ServiceAccount
+    name: chains-token-refresher
+    namespace: tekton-pipelines

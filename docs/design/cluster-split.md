@@ -543,7 +543,7 @@ neither blocking the split:
 | Runtime behaviour | Tetragon | existing |
 | Admission decisions | Kyverno PolicyReports + policy-reporter | existing |
 | Vulnerabilities | Trivy Operator | existing |
-| Build provenance | Tekton Chains → Fulcio/Rekor | per ADR-0017 |
+| Build provenance | Tekton Chains → Fulcio/Rekor | **newly wired** — see the caveat below |
 | Build / approval history | Tekton Results | **verify deployed + retention** |
 | Deploy history | ArgoCD events → Loki | **new** (§5.2) |
 | Change management | GitHub PR + branch protection | existing |
@@ -551,6 +551,17 @@ neither blocking the split:
 
 **Falco is deliberately not adopted** — it overlaps Tetragon at the syscall layer and adds
 a second thing to tune and evidence for no new coverage.
+
+**Build provenance was claimed here before it existed.** Chains ran from Phase 0
+onward but signed nothing for 51 days: the operator creates `signing-secrets`
+empty, so its x509 signer never configured, and Chains logged the failure at
+`warn` and continued. It still annotated every TaskRun
+`chains.tekton.dev/signed: "true"` — which means "reconciled", not "attested" —
+so the gap was invisible on the objects and in this table. Keyless signing via
+GCP-federated Fulcio/Rekor is now wired (`tekton/chains/`), but this row stays
+provisional until `cosign verify-attestation` passes against a real build image.
+Nothing should gate on the annotation; `tekton/chains/README.md` has the check
+that settles this row.
 
 ---
 
@@ -622,12 +633,17 @@ cluster immediately; they do not wait for new hardware.
    `ghcr.io/nx211/*` and `ghcr.io/actions/*`; the staging apps pull from
    `us-central1-docker.pkg.dev`. Adding the label in (1) without fixing this **will block
    staging deploys** — do them in the same change.
-3. **`verify-image-signatures-business` will not match Tekton Chains artifacts.** Its
-   attestor pins `subject: https://github.com/NX211/homelab-infra/.github/workflows/*` with
-   the GitHub Actions issuer. Chains signs under the build ServiceAccount's projected OIDC
-   identity. With `failurePolicy: Ignore`, a non-matching image is admitted silently rather
-   than rejected. Add a second attestor entry for the Chains identity before the Tekton
-   channels start publishing.
+3. **`verify-image-signatures-business` does not cover Tekton output at all.** Its attestor
+   pins `subject: https://github.com/NX211/homelab-infra/.github/workflows/*` with the
+   GitHub Actions issuer, and its `imageReferences` matches only `ghcr.io/nx211/*` — the
+   Tekton channels publish to `us-central1-docker.pkg.dev`, which no rule selects. So this
+   is not a mismatched-identity problem: nothing verifies Tekton images, and until
+   `tekton/chains/` landed there was also nothing to verify. Chains signs as one
+   cluster-wide identity (`homelab-chains-signer@platform-infra-prod`), **not** under the
+   per-build ServiceAccount, so the second attestor pins that SA with the
+   `accounts.google.com` issuer. Add it only once attestations are confirmed present:
+   an Enforce rule over `us-central1-docker.pkg.dev/*` would also match every staging image
+   that Tekton never built, and reject all of them.
 4. **Loki retention is 30d against a ~1yr requirement** (§5.3). Applies to the current
    cluster too, for as long as it hosts the build platform.
 

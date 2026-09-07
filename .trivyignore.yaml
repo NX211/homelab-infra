@@ -12,10 +12,15 @@ misconfigurations:
       - "kratix/install.yaml"
   # ar-token-refresher's Role must create/update the pull-secret it writes into
   # each consuming namespace — that is the whole point of the component (same as
-  # the accepted staging/provisioning Roles). Accepted, path-scoped.
+  # the accepted staging/provisioning Roles). chains-token-refresher is the same
+  # shape: it exists to write one Secret, and RBAC cannot scope `create` by
+  # resourceName, so the verb has to be namespace-wide. Its update/patch ARE
+  # name-scoped, so it cannot touch the operator's signing-secrets.
+  # Accepted, path-scoped.
   - id: KSV-0113
     paths:
       - "ar-token-refresher/rbac.yaml"
+      - "tekton/chains/rbac.yaml"
   # prisma-engines + maven mirrors pull the upstream nginx-unprivileged image
   # from docker.io (same as the sibling verdaccio proxy). No ghcr re-mirror yet;
   # accepted, path-scoped. All other KSV findings on these files are hardened.
@@ -23,3 +28,20 @@ misconfigurations:
     paths:
       - "build-registry-proxy/prisma-mirror.yaml"
       - "build-registry-proxy/maven-mirror.yaml"
+      # alpine/k8s — the same image ar-token-refresher already runs for the same
+      # STS-exchange job. No ghcr re-mirror yet; accepted, path-scoped.
+      - "tekton/chains/refresher.yaml"
+  # KSV-0109/KSV-01010 flag the chains-token-refresher ConfigMap as "storing
+  # secrets". It stores the refresh *script*; the matches are shell identifiers
+  # and literals in that source — subjectToken, AUTH_B64, oidc-token, SECRET
+  # (a Secret *name*), SIGNER_SA (a service-account email) and the '{auths' of
+  # the dockerconfigjson it builds at runtime. No credential is committed: every
+  # token in this component is minted in-cluster and written to a Secret that is
+  # deliberately not in git. Accepted, path-scoped — narrowly, so the same rules
+  # still fire on any other manifest.
+  - id: KSV-0109
+    paths:
+      - "tekton/chains/refresher.yaml"
+  - id: KSV-01010
+    paths:
+      - "tekton/chains/refresher.yaml"
