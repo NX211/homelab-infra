@@ -93,6 +93,12 @@ staging-app:
         key: 1b00e0fd-a13a-4591-9d59-b45701208422
       - name: EMAIL_TO
         key: 42b5a1d2-fe5d-4bc6-89ef-b4570120845f
+      # Signs the server-issued form tokens (/api/form-token). The app fails
+      # CLOSED without it — minting and verification both throw — so every
+      # contact/careers post 500s. Deliberately a different value from prod:
+      # a leaked staging key must not mint tokens production accepts.
+      - name: FORM_TOKEN_SECRET
+        key: eee45cd2-7a9b-4609-8b56-b4be013e3f1f
       # SeaweedFS S3 credentials (identity: blue-sky; scoped to blue-skysolutions-uploads)
       - name: S3_ACCESS_KEY_ID
         key: b13d2ad0-b08b-4521-bdf7-b4570138e7fa
