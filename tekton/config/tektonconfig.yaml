@@ -35,6 +35,26 @@ spec:
     # (design §5, ADR-0005). Left at install defaults here so Phase 0 only stands
     # the controller up.
     disabled: false
+  pruner:
+    # The operator's default is keep: 100 per namespace, which on a homelab
+    # cadence means nothing is ever pruned -- these namespaces hold 9 and 14
+    # runs, so the job runs daily and deletes nothing.
+    #
+    # That matters more than tidiness. Each PipelineRun that binds a workspace
+    # owns its PVC through a controller ownerReference (blockOwnerDeletion:
+    # true), so the PVC lives exactly as long as the run does. Fourteen finished
+    # runs from late July were still holding ~100Gi of local-path workspaces
+    # six weeks later. Pruning the run garbage-collects the PVC with it.
+    #
+    # Keeping 5 is safe here because run history is deliberately not stored in
+    # these objects: Results is disabled below, and history/evidence come from
+    # Loki, `tkn`, and Chains -> Rekor (design §3).
+    disabled: false
+    schedule: "0 8 * * *"
+    keep: 5
+    resources:
+      - pipelinerun
+      - taskrun
   result:
     # Disabled: the operator creates the Results postgres PVC with
     # storageClassName="" (opts out of dynamic provisioning), so it never binds
