@@ -20,7 +20,9 @@ business repo is `Corey-Alan-Consulting/business-infra` (§4.1).
 
 The existing four-node k3s cluster (`blacktalon`, `yellowtalon`, `redtalon`, `greytalon`)
 keeps everything it runs today **except** the business and staging estates, which are
-rebuilt on the new cluster. Nothing is migrated in place — the business workloads are
+rebuilt on the new cluster. (The personal side later consolidates onto `blacktalon` alone
+and moves to Talos — see [`personal-cluster-consolidation.md`](personal-cluster-consolidation.md).
+That changes the node count, not the workload split described here.) Nothing is migrated in place — the business workloads are
 stateless or trivially re-seeded, which is exactly why this side moves and the media side
 does not.
 
@@ -617,8 +619,12 @@ deleted until a promotion has succeeded end to end on the new repo.
 
 ## 10. Open, not decided
 
-- **Personal cluster's future.** Left on k3s deliberately. Whether it eventually becomes
-  Talos-on-Proxmox is a separate decision; nothing here forecloses it.
+- ~~**Personal cluster's future.**~~ **Decided 2026-09-07** — it becomes Talos on Proxmox
+  too, on `blacktalon` alone, with the three R630s retired. That is a data migration rather
+  than a rebuild (113 TB in the ZFS pool, 36 node-pinned PVCs), so it is scoped separately in
+  [`personal-cluster-consolidation.md`](personal-cluster-consolidation.md). It does not
+  change anything here: §1's "keeps everything it runs today" still holds for *what* the
+  personal cluster runs, only the node count and host OS change.
 - **HA.** Neither cluster gains it. A single Proxmox host means the business control plane
   has a single physical failure domain regardless of three control-plane VMs.
 - **Tekton Results history.** Reset on migration, or exported first — decide in Phase 5.
