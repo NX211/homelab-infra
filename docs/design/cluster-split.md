@@ -560,7 +560,8 @@ empty, so its x509 signer never configured, and Chains logged the failure at
 so the gap was invisible on the objects and in this table. Keyless signing via
 GCP-federated Fulcio/Rekor is now wired (`tekton/chains/`), but this row stays
 provisional until `cosign verify-attestation` passes against a real build image.
-Nothing should gate on the annotation; §9 Phase 5 carries the verification.
+Nothing should gate on the annotation; `tekton/chains/README.md` has the check
+that settles this row.
 
 ---
 
