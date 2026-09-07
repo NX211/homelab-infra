@@ -128,6 +128,8 @@ spec:
                   description: Opaque, stable id — the Restate saga key. Never the email.
                 phase:
                   type: string
+                  # Must stay identical to the copy in kratix/promises/managed-hosting/promise.yaml
+                  # (spec.api) — see the note there.
                   enum: [Pending, Provisioning, Live, Partial, Failed, DecommissionPlanned, Decommissioned]
                 observedGeneration:
                   type: integer

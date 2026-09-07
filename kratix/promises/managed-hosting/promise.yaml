@@ -140,7 +140,10 @@ spec:
                       description: Opaque, stable id — the Restate saga key. Never the email.
                     phase:
                       type: string
-                      enum: [Pending, Provisioning, Live, Partial, Failed, Decommissioned]
+                      # Must stay identical to provisioning/tenant-crd.yaml. ArgoCD applies that copy
+                      # and Kratix reconciles this one onto the same CRD, so any divergence makes the
+                      # two controllers overwrite each other every reconcile.
+                      enum: [Pending, Provisioning, Live, Partial, Failed, DecommissionPlanned, Decommissioned]
                     observedGeneration:
                       type: integer
   workflows:
