@@ -1,0 +1,40 @@
+---
+# Keyless signing credentials for Tekton Chains — the CronJob that mints the
+# Google ID token Fulcio validates, plus the Artifact Registry token Chains
+# pushes attestations with. The Chains *config* that consumes them lives in the
+# TektonConfig CR (tekton/config), because the operator owns that surface.
+#
+# Same wave as tekton-config (-1): both need the operator's tekton-pipelines
+# namespace from wave -2, and neither depends on the other — the mounted Secret
+# is `optional: true`, so Chains starts either way and simply cannot sign until
+# the first refresh lands.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-chains-signing
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: business
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: main
+    path: tekton/chains
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tekton-pipelines
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

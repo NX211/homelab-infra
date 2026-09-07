@@ -215,6 +215,14 @@ price of full PaC — call it out to the auditor, don't hide it.
   Public log holds signing identity + digest + SLSA metadata (no artifacts/secrets);
   private repo names + commit SHAs become publicly queryable — an accepted org tradeoff.
   GCP-KMS cosign / self-hosted Rekor remain the private fallback if that ever changes.
+  **Implementation note (2026-09-07):** public Fulcio cannot validate this cluster's OIDC
+  issuer (`kubernetes.default.svc.cluster.local`), so the `audience: sigstore` token the
+  operator helpfully mounts at cosign's default path is unusable — keyless here does *not*
+  mean "the projected ServiceAccount token". The refresher in `tekton/chains/` federates
+  that token to the existing `homelab-staging` WIF pool and mints a Google ID token
+  instead, so the identity in Rekor is `homelab-chains-signer@platform-infra-prod` — one
+  cluster-wide signer, not a per-build SA. Until that landed Chains signed nothing at all
+  while annotating every TaskRun `signed: "true"`; see `tekton/chains/README.md`.
 - **Evidence retention window** — confirm Results/Loki retention meets the SOC 2 / ISO
   27001 requirement (assume ~1 year) before relying on it as the control record.
 - **`runsc` node install** is a non-GitOps bootstrap step — document it in the node

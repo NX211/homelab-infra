@@ -30,11 +30,68 @@ spec:
     # local-path) PVCs attach. Applies cluster-wide; fine for build workloads.
     coschedule: pipelineruns
   chain:
-    # Chains controller runs now; keyless Sigstore signing (Fulcio/Rekor) + SLSA
-    # provenance config is wired in Phase 1 with the trusted Android pipeline
-    # (design §5, ADR-0005). Left at install defaults here so Phase 0 only stands
-    # the controller up.
     disabled: false
+    # Keyless Sigstore signing (ADR-0005, design §5).
+    #
+    # Until this landed, Chains ran but signed nothing: `signing-secrets` is
+    # empty, so NewSigner fell through to "no valid private key found" — while
+    # still annotating every TaskRun `chains.tekton.dev/signed: "true"`. That
+    # annotation means "reconciled", not "attested"; treat it as neither.
+    #
+    # Public Fulcio cannot validate this cluster's OIDC issuer
+    # (kubernetes.default.svc.cluster.local), so the projected token the operator
+    # mounts at cosign's default path is useless to it. chains-token-refresher
+    # (tekton/chains/) federates that token to GCP and mints a Google ID token
+    # instead — accounts.google.com is an issuer Fulcio does trust — writing it
+    # to the mount below alongside an Artifact Registry token for the push.
+    # Must be an unquoted bool — the operator models this one as *bool (unlike
+    # transparency.enabled below, whose BoolValue takes either form).
+    signers.x509.fulcio.enabled: true
+    signers.x509.fulcio.address: https://fulcio.sigstore.dev
+    signers.x509.fulcio.issuer: https://accounts.google.com
+    # `provider` is deliberately unset. Chains rewrites an empty provider to its
+    # filesystem-custom-path provider whenever identity.token.file is set; naming
+    # `filesystem` explicitly would be the *default*-path provider, which reads
+    # the unusable k3s token at /var/run/sigstore/cosign/oidc-token.
+    signers.x509.identity.token.file: /var/run/chains-creds/oidc-token
+    # Rekor is what makes the provenance tamper-evident (design §5 accepts that
+    # the public log holds signing identity + digest, no artifacts or secrets).
+    transparency.enabled: "true"
+    transparency.url: https://rekor.sigstore.dev
+    # Everything below goes through `options` rather than the dedicated fields.
+    # `controllerEnvs` looks like the right home for DOCKER_CONFIG but the
+    # operator's validating webhook allowlists exactly one key there
+    # (MONGO_SERVER_URL) and rejects the whole TektonChain otherwise. The options
+    # transformer has no such allowlist and merges volumes, volumeMounts and env
+    # by name — so this adds to, rather than replaces, the operator's own
+    # signing-secrets and oidc-info mounts.
+    options:
+      deployments:
+        tekton-chains-controller:
+          spec:
+            template:
+              spec:
+                volumes:
+                  - name: chains-keyless-creds
+                    secret:
+                      secretName: chains-keyless-creds
+                      optional: true   # the CronJob may not have run yet on a
+                                       # fresh install; without this the
+                                       # controller would CrashLoop instead of
+                                       # logging that it cannot sign
+                containers:
+                  - name: tekton-chains-controller
+                    volumeMounts:
+                      - name: chains-keyless-creds
+                        mountPath: /var/run/chains-creds
+                        readOnly: true
+                    env:
+                      # artifacts.*.storage is `oci`, so Chains pushes the
+                      # attestation beside the image and needs registry
+                      # credentials of its own — the build pipeline's push token
+                      # belongs to the build pod, not to this controller.
+                      - name: DOCKER_CONFIG
+                        value: /var/run/chains-creds
   pruner:
     # The operator's default is keep: 100 per namespace, which on a homelab
     # cadence means nothing is ever pruned -- these namespaces hold 9 and 14
