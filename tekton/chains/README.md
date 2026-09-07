@@ -113,8 +113,34 @@ cosign verify-attestation --type slsaprovenance \
 Until step 3 passes for a real build, treat build provenance as **absent**,
 whatever the TaskRun annotations say.
 
+## Enforcing it
+
+Signing produces evidence; nothing acts on it until admission checks it.
+`kyverno-policies-business/verify-tekton-provenance.yaml` does that, and ships as
+**Audit** because no image in the engine repo carries an attestation yet — every
+tag predates the signing fix, so Enforce would reject the running
+provisioning-engine pod.
+
+To flip it, in one change:
+
+1. Cut a `v*` tag so a Tekton build produces a signed image.
+2. Confirm the PolicyReport is clean:
+   ```
+   kubectl get polr -A -o json | jq -r '.items[].results[]
+     | select(.policy=="verify-tekton-provenance") | "\(.result) \(.resources[0].name)"'
+   ```
+3. Set `validationFailureAction: Enforce` **and** `mutateDigest: true` — Kyverno
+   requires `mutateDigest: false` under Audit, so the two move together.
+
+That policy is deliberately cluster-wide with no `namespaceSelector`: provenance
+belongs to the artifact, not to where it happens to run. Its `imageReferences`
+glob is the security boundary and must name only repos Tekton signs — widening it
+to `us-central1-docker.pkg.dev/*` would reject the staging images, which nothing
+signs today. See `docs/design/cluster-split.md` §10.3.
+
 ## Related
 
 - GCP side: `platform-infra/terraform/environments/prod/homelab-wif.tf`
 - The same federation pattern, for image *pull*: `ar-token-refresher/`
 - Design: `docs/design/tekton-build-platform.md` §5, ADR-0005
+- Admission policy: `kyverno-policies-business/verify-tekton-provenance.yaml`
