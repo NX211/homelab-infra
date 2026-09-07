@@ -10,7 +10,8 @@ business-cluster SeaweedFS · no Harbor · Gitea stays personal-plane.
 
 **Locked decisions (2026-09-07):** Proxmox CSI for business-cluster PVCs, not `local-path`
 (§2.2) · node and storage sizing measured, not estimated (§2.1) · Terraform owns the Proxmox
-substrate and API tokens, CAPMOX owns cluster lifecycle (§2.3).
+substrate and API tokens, CAPMOX owns cluster lifecycle (§2.3) · Gateway API `HTTPRoute` for
+business ingress and a MetalLB VIP instead of a pinned `hostPort` replica (§2.4).
 
 ---
 
@@ -180,6 +181,60 @@ image change, not a config tweak. And after `clusterctl move` the management clu
 self-hosted on `talos-cp`, so recovering a lost cluster means re-bootstrapping a `kind`
 cluster first. That sharpens the single-host failure domain already noted in §10 rather than
 adding a new one.
+
+### 2.4 Ingress: Gateway API, and a VIP instead of a pet node
+
+**Decided 2026-09-07.** The business cluster routes with Gateway API `HTTPRoute`, and its
+Traefik is a `LoadBalancer` behind a floating VIP rather than a single replica pinned to one
+node.
+
+**Why Gateway API on this cluster and not the personal one.** The personal cluster has 56
+`IngressRoute` objects and works; rewriting them buys nothing. The business cluster is
+greenfield, so it can start on the surface the ecosystem standardised on. Traefik v3
+implements Gateway API v1.2.1 and publishes a conformance report, and the chart already has
+the provider behind `providers.kubernetesGateway.enabled` (off by default).
+
+The estate that actually moves is **HTTP-only** — three `IngressRoute` files (the
+`staging-app` base chart, `provisioning/`, `tekton/pac/`). The single `IngressRouteTCP` in
+the repo is `staging-k8s-api`, which exists to expose the k3s API to prod GKE ArgoCD and
+retires in Phase 6 along with the registration it serves (§10). So the **Standard channel is
+sufficient**; `TCPRoute`/`TLSRoute` remain Experimental and are not needed here.
+
+**What Gateway API does and does not buy, stated honestly.** Routing becomes portable: an
+`HTTPRoute` is the same object whether the implementation is Traefik, Envoy or Cilium.
+Policy does not. Traefik middlewares are reached through an `ExtensionRef` filter:
+
+```yaml
+filters:
+  - type: ExtensionRef
+    extensionRef:
+      group: traefik.io
+      kind: Middleware
+      name: authelia-forwardauth
+```
+
+which means the Kubernetes CRD provider stays enabled alongside the Gateway provider, and
+the middleware objects remain Traefik-shaped. The win is that the *routing* layer stops
+being vendor-specific and the vendor surface shrinks to a named reference. Anyone reading
+this expecting full portability should know the boundary sits there.
+
+**Deployment model.** The personal cluster runs one Traefik replica pinned to `yellowtalon`
+with `hostPort` 80/443 and `updateStrategy: Recreate`. That is deliberate and documented in
+its values — RollingUpdate deadlocks because the new pod cannot bind ports the old one still
+holds — but it makes every Traefik upgrade a short ingress outage and makes one node a single
+point of failure for all inbound traffic.
+
+The business cluster does not inherit it. Traefik runs as a `LoadBalancer` service with more
+than one replica, addressed by a VIP:
+
+| Concern | Mechanism |
+|---|---|
+| Control-plane endpoint | Talos' native VIP (`machine.network.interfaces[].vip`) |
+| Ingress service address | MetalLB in L2 mode, allocating from a Proxmox VLAN range |
+
+That gives rolling Traefik upgrades with no ingress gap, survives losing a worker, and
+removes the pet-node property §2.2 removes for storage. The address MetalLB allocates is the
+"business Traefik" that §3.1 points the `staging.*` names at.
 
 ---
 
@@ -521,7 +576,7 @@ cluster immediately; they do not wait for new hardware.
 |---|---|---|
 | **0** | The §8 policy fixes, on the current cluster | staging is in-plane, registry + signature policies match reality, no PolicyReport regressions |
 | **1** | Proxmox prep + CAPMOX management cluster; Talos image with gVisor/Kata extensions; **verify nested virt for Kata** | `talosctl` reaches a booted cluster; a pod runs under each RuntimeClass |
-| **2** | Business-cluster platform: ArgoCD, ESO (new Bitwarden machine account), cert-manager, Traefik, CNPG, SeaweedFS, Kyverno, Tetragon, Trivy, monitoring + Alloy | new ArgoCD healthy; a test IngressRoute issues a certificate |
+| **2** | Business-cluster platform: ArgoCD, ESO (new Bitwarden machine account), cert-manager, **MetalLB**, **Gateway API CRDs**, Traefik (Gateway provider, §2.4), CNPG, SeaweedFS, Kyverno, Tetragon, Trivy, monitoring + Alloy | new ArgoCD healthy; a test **`HTTPRoute`** issues a certificate on the MetalLB VIP, and a Traefik upgrade completes with no ingress gap |
 | **3** | Audit pipeline: machine-config audit policy, Alloy host scrape, Loki S3 + 365d stream, ArgoCD events | `{job="kube-audit"}` queryable in the business Grafana; an `exec` into a pod appears with `RequestResponse` |
 | **4** | Repo split (`git filter-repo`), business ArgoCD re-pointed, CI secrets re-created, `STAGING_GITHUB_REPO` re-pointed | a full build → staging → promote cycle succeeds end to end on the new repo |
 | **5** | Move Tekton + build namespaces + registry proxies + ARC; move `staging-apps`; move Kratix/Restate/Metacontroller/provisioning; register the second Kratix `Destination` | untrusted and trusted builds both run on Talos; staging serves on the new Traefik |
