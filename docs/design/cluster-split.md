@@ -633,17 +633,39 @@ cluster immediately; they do not wait for new hardware.
    `ghcr.io/nx211/*` and `ghcr.io/actions/*`; the staging apps pull from
    `us-central1-docker.pkg.dev`. Adding the label in (1) without fixing this **will block
    staging deploys** — do them in the same change.
-3. **`verify-image-signatures-business` does not cover Tekton output at all.** Its attestor
-   pins `subject: https://github.com/NX211/homelab-infra/.github/workflows/*` with the
-   GitHub Actions issuer, and its `imageReferences` matches only `ghcr.io/nx211/*` — the
-   Tekton channels publish to `us-central1-docker.pkg.dev`, which no rule selects. So this
-   is not a mismatched-identity problem: nothing verifies Tekton images, and until
-   `tekton/chains/` landed there was also nothing to verify. Chains signs as one
-   cluster-wide identity (`homelab-chains-signer@platform-infra-prod`), **not** under the
-   per-build ServiceAccount, so the second attestor pins that SA with the
-   `accounts.google.com` issuer. Add it only once attestations are confirmed present:
-   an Enforce rule over `us-central1-docker.pkg.dev/*` would also match every staging image
-   that Tekton never built, and reject all of them.
+3. **Signature verification is scoped by a placement label, so it never sees the artifact.**
+   This was twice described as a missing attestor entry. It is not: `plane: business`
+   answers *"does this namespace move to the Talos cluster?"*, and using it to scope
+   supply-chain policy makes coverage a side effect of migration bookkeeping. The two sets
+   have already diverged —
+
+   | Namespace | `plane: business` | Artifact Registry pods | Chains-signed |
+   |---|---|---|---|
+   | `staging` | yes | 23 | none — pushed by app-repo GitHub Actions |
+   | `provisioning` | no | 1 — the engine | the only Tekton-built image |
+   | `capturly-live` | no | 2 | no |
+
+   The one image Chains protects sits outside every policy, while the namespace the policy
+   does cover runs 23 unsigned ones. Adding an attestor changes nothing, and labelling
+   `provisioning` makes it worse: five of its six images are outside the
+   `restrict-image-registries-business` allowlist, which fails **closed**.
+
+   **Fix: scope signature verification by artifact, registry restriction by namespace.**
+   Provenance is a property of the image — it should hold wherever the image runs,
+   including after the split — whereas "what may run here" genuinely is a placement
+   question. `kyverno-policies-business/verify-tekton-provenance.yaml` is therefore
+   cluster-wide with no `namespaceSelector`, and its `imageReferences` glob is the security
+   boundary: it must name only repos Tekton signs. Widening it to
+   `us-central1-docker.pkg.dev/*` would reject all 23 staging pods on their next restart.
+
+   It ships as **Audit** — every tag in the engine repo predates the signing fix, so
+   nothing carries an attestation yet and Enforce would reject the running pod. Flip to
+   Enforce (together with `mutateDigest: true`, which Kyverno requires to be `false` under
+   Audit) once a build produces a signed image and the PolicyReport is clean.
+
+   Chains signs as one cluster-wide identity, `homelab-chains-signer@platform-infra-prod`
+   with the `accounts.google.com` issuer — **not** the per-build ServiceAccount an earlier
+   draft of this item assumed.
 4. **Loki retention is 30d against a ~1yr requirement** (§5.3). Applies to the current
    cluster too, for as long as it hosts the build platform.
 

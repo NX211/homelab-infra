@@ -1,0 +1,101 @@
+---
+# Verify Tekton Chains build provenance on the images we build in-cluster.
+#
+# Deliberately NOT namespace-scoped, unlike its two siblings in this directory.
+# `plane: business` answers "does this namespace move to the Talos cluster?" —
+# a placement question. Provenance is a property of the *artifact*: an image we
+# built should carry our signature wherever it runs, including after it moves.
+# Scoping this by placement is what left the one Chains-signed image
+# (provisioning-engine, in the unlabelled `provisioning` namespace) outside every
+# policy, while the labelled `staging` namespace ran 23 unsigned Artifact
+# Registry pods. See docs/design/cluster-split.md §10.3.
+#
+# `restrict-image-registries-business` stays namespace-scoped, because "what may
+# run here" genuinely is a placement question.
+#
+# THE imageReferences GLOB IS THE SECURITY BOUNDARY. It must enumerate only the
+# repos Tekton actually signs. Widening it to us-central1-docker.pkg.dev/* would
+# sweep in the staging images, which are pushed by app-repo GitHub Actions and
+# are not signed by anything — 23 pods rejected on their next restart. Adding a
+# build channel means adding its repo here, as a reviewed line.
+#
+# AUDIT for now (audit -> enforce, per docs/runbooks/staging-phase1-hardening.md).
+# No image in the engine repo carries an attestation yet: every tag there predates
+# the signing fix, so Enforce today would reject the running provisioning-engine
+# pod. Audit reports whether verification *would* pass; flip to Enforce once a
+# build produces a signed image and the PolicyReport is clean. Turning on
+# enforcement against an unverified assumption is the same mistake as trusting
+# `chains.tekton.dev/signed`, one layer up.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-tekton-provenance
+  annotations:
+    policies.kyverno.io/title: Verify Tekton Chains Provenance
+    policies.kyverno.io/category: Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Requires images built by the in-cluster Tekton channels to carry a Sigstore
+      signature and a SLSA provenance attestation from Tekton Chains, signed by
+      the homelab-chains-signer identity and recorded in Rekor.
+spec:
+  validationFailureAction: Audit
+  background: false
+  # Fail-open on webhook error. This matters more for a cluster-wide rule, not
+  # less: a Sigstore or registry blip must not wedge deploys. It only covers
+  # webhook *errors* — a genuinely unsigned image still fails verification.
+  failurePolicy: Ignore
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-chains-signed-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "us-central1-docker.pkg.dev/coreyalan-provisioning/provisioning-engine/*"
+          # Must stay false while the action is Audit — Kyverno rejects the
+          # policy otherwise ("mutateDigest must be set to false for 'Audit'
+          # failure action"). Flip this to true in the same change that flips
+          # validationFailureAction to Enforce, so verified images get pinned to
+          # their digest at admission.
+          mutateDigest: false
+          # Chains signs as one cluster-wide identity — the GCP service account
+          # the in-cluster refresher impersonates — NOT the per-build
+          # ServiceAccount. Public Fulcio cannot validate this cluster's OIDC
+          # issuer, so the projected token is federated to GCP and exchanged for
+          # a Google ID token; accounts.google.com is the issuer that ends up in
+          # the certificate, and the SA email is its SAN. See tekton/chains/.
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "homelab-chains-signer@platform-infra-prod.iam.gserviceaccount.com"
+                    issuer: "https://accounts.google.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+          # The signature above proves who signed. This proves what was built:
+          # §5.4 claims *build provenance*, which is the SLSA predicate, not the
+          # bare signature. Verified present on a real Chains-signed image
+          # (predicateType https://slsa.dev/provenance/v0.2, builder
+          # https://tekton.dev/chains/v2).
+          #
+          # The `builder.id` condition is the one part here not yet exercised
+          # against a live PolicyReport — which is what Audit mode is for. If the
+          # JMESPath into the predicate is wrong it shows up as a report failure,
+          # not as silent success.
+          attestations:
+            - type: https://slsa.dev/provenance/v0.2
+              attestors:
+                - entries:
+                    - keyless:
+                        subject: "homelab-chains-signer@platform-infra-prod.iam.gserviceaccount.com"
+                        issuer: "https://accounts.google.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ builder.id }}"
+                      operator: Equals
+                      value: "https://tekton.dev/chains/v2"
