@@ -67,9 +67,22 @@ spec:
     # signing-secrets and oidc-info mounts.
     options:
       deployments:
+        # `deployments` is typed map[string]appsv1.Deployment, so the API server
+        # materialises that struct's zero values on write: creationTimestamp,
+        # selector, strategy, resources and status. They are spelled out here
+        # only so the stored object matches this file — otherwise ArgoCD diffs
+        # them forever and selfHeal rewrites the CR every few minutes. Nothing
+        # below them is load-bearing; the operator's own transformer supplies the
+        # real selector and strategy.
         tekton-chains-controller:
+          metadata:
+            creationTimestamp: null
           spec:
+            selector: null
+            strategy: {}
             template:
+              metadata:
+                creationTimestamp: null
               spec:
                 volumes:
                   - name: chains-keyless-creds
@@ -81,6 +94,7 @@ spec:
                                        # logging that it cannot sign
                 containers:
                   - name: tekton-chains-controller
+                    resources: {}
                     volumeMounts:
                       - name: chains-keyless-creds
                         mountPath: /var/run/chains-creds
@@ -92,6 +106,7 @@ spec:
                       # belongs to the build pod, not to this controller.
                       - name: DOCKER_CONFIG
                         value: /var/run/chains-creds
+          status: {}
   pruner:
     # The operator's default is keep: 100 per namespace, which on a homelab
     # cadence means nothing is ever pruned -- these namespaces hold 9 and 14
