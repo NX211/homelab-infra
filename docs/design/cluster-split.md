@@ -542,7 +542,7 @@ neither blocking the split:
 | Node OS / machine | Talos API (`talosctl logs`), `machine.logging.destinations` | **new** |
 | Runtime behaviour | Tetragon | existing |
 | Admission decisions | Kyverno PolicyReports + policy-reporter | existing |
-| Vulnerabilities | Trivy Operator | existing |
+| Vulnerabilities | Trivy Operator | existing — **but see the caveat below** |
 | Build provenance | Tekton Chains → Fulcio/Rekor | **newly wired** — see the caveat below |
 | Build / approval history | Tekton Results | **verify deployed + retention** |
 | Deploy history | ArgoCD events → Loki | **new** (§5.2) |
@@ -551,6 +551,17 @@ neither blocking the split:
 
 **Falco is deliberately not adopted** — it overlaps Tetragon at the syscall layer and adds
 a second thing to tune and evidence for no new coverage.
+
+**Vulnerability coverage did not include any Artifact Registry image.** The chart
+defaults `useGCRServiceAccount: true`, which routes GCR/AR authentication through the GCP
+metadata server. k3s has no metadata server, so the attempt could not succeed — and taking
+that path meant trivy-operator never fell back to the workload's `imagePullSecrets`. Scan
+jobs were created with no credentials and every AR image failed `DENIED: Unauthenticated
+request`, which in a report is indistinguishable from an unscannable image. 407
+VulnerabilityReports existed; **zero** were for a `pkg.dev` image, i.e. none of the
+first-party application images. Fixed by disabling that flag. Note the scope is still
+`targetNamespaces: staging,provisioning` by design, so `capturly-live` remains unscanned —
+a deliberate choice, not a gap to fix silently.
 
 **Build provenance was claimed here before it existed.** Chains ran from Phase 0
 onward but signed nothing for 51 days: the operator creates `signing-secrets`
