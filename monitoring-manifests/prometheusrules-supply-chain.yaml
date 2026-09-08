@@ -1,0 +1,73 @@
+---
+# Supply-chain alerting.
+#
+# Tekton Chains has no metric that says whether it signed anything. It exposes
+# only knative's generic watcher_reconcile_count, and the runs we know went
+# unsigned for 51 days all counted as success="true" there — the controller logs
+# the signing failure at `warn` and returns success. So Chains' own telemetry
+# reproduces the exact blind spot that hid the original bug, and alerting on it
+# would inherit that blindness.
+#
+# What can be watched is the cause. Signing depends on a Google ID token the
+# refresher mints every 20 minutes, valid for 60. If that CronJob stops
+# succeeding, the mounted token expires and Chains reverts to precisely the old
+# silent failure: warn in the logs, `chains.tekton.dev/signed: "true"` on the
+# object, no attestation, nothing surfaced. Watching the refresher catches that
+# *before* it happens rather than after.
+#
+# The `release` label is load-bearing: this Prometheus selects rules with
+# `ruleSelector.matchLabels.release: kube-prometheus-stack`, so without it the
+# rule is accepted by the API server and silently never evaluated.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: supply-chain
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: supply-chain.rules
+      rules:
+        - alert: ChainsSigningCredentialStale
+          # Fires with roughly 15 minutes of token validity left: the job runs
+          # every 20 min and the token lives 60, so 45 min means two consecutive
+          # runs have failed and the third is the last chance. Deliberately a
+          # leading indicator — once the token actually expires the only symptom
+          # is builds quietly going unsigned.
+          expr: |
+            (time() - kube_cronjob_status_last_successful_time{cronjob="chains-token-refresher"}) > 2700
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: >-
+              Tekton Chains signing credential is going stale — the token
+              refresher has not succeeded in over 45 minutes.
+            description: >-
+              chains-token-refresher mints the Google ID token Fulcio validates.
+              It is valid for 60 minutes and refreshed every 20. Once it expires,
+              Chains stops signing but keeps annotating TaskRuns
+              chains.tekton.dev/signed="true" and logs the failure only at warn,
+              so nothing else will report this. Check the CronJob, then confirm
+              the WIF subject allowlist still contains
+              system:serviceaccount:tekton-pipelines:chains-token-refresher.
+              Runbook: tekton/chains/README.md
+        - alert: ArtifactRegistryPullCredentialStale
+          # Same failure shape, different blast radius: image pulls, not signing.
+          # This job had already failed twice unnoticed before alerts were
+          # delivered anywhere.
+          expr: |
+            (time() - kube_cronjob_status_last_successful_time{cronjob="ar-token-refresher"}) > 3000
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              Artifact Registry pull credentials are going stale — the token
+              refresher has not succeeded in over 50 minutes.
+            description: >-
+              ar-token-refresher rewrites the gcr-pull-secret-* secrets that
+              staging, provisioning and capturly-live pull with. Existing pods
+              keep running; new pulls start failing ImagePullBackOff once the
+              token expires. Runbook: ar-token-refresher/README.md

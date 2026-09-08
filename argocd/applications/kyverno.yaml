@@ -30,6 +30,16 @@ spec:
         # block, so a brief controller blip cannot wedge deploys.
         admissionController:
           replicas: 1
+          # Kyverno exposes metrics on :8000 and the Service already exists, but
+          # nothing scraped it — `kyverno_policy_results_total` had zero series,
+          # so image-verification outcomes were invisible to Prometheus. Needed
+          # before anything can alert on the difference between "unsigned" and
+          # "Kyverno could not reach the registry", which look identical in a
+          # PolicyReport. No label required: this Prometheus selects all
+          # ServiceMonitors (serviceMonitorSelector is empty), unlike its
+          # ruleSelector.
+          serviceMonitor:
+            enabled: true
           # Keyless Artifact Registry auth for image verification. Kyverno pulls
           # manifests, signatures and attestations itself and cannot see a
           # workload's imagePullSecrets, so without this every AR image reports
