@@ -85,7 +85,71 @@ spec:
         alertmanager:
           enabled: true
 
+          # Until this existed, every rule fired into `receiver: "null"` — the
+          # chart's default. 34 rule groups, 23 alerts firing, nothing delivered
+          # anywhere, including two controllers in CrashLoopBackOff. An alerting
+          # stack that reports healthy and notifies no one is the same class of
+          # problem as an unsigned image annotated `signed: "true"`.
+          #
+          # Pushover, because that is what prod already pages through
+          # (platform-infra terraform/modules/alerting) — same account, so this
+          # does not invent a second channel to forget about. Credentials are
+          # read from files so nothing is inlined here; see
+          # monitoring-manifests/externalsecrets.yaml.
+          config:
+            global:
+              resolve_timeout: 5m
+            route:
+              group_by: ["namespace", "alertname"]
+              group_wait: 30s
+              group_interval: 5m
+              repeat_interval: 12h
+              receiver: pushover
+              routes:
+                # Watchdog is the always-firing heartbeat that proves the
+                # pipeline works; paging on it every 12h would train exactly the
+                # wrong reflex. InfoInhibitor is plumbing, not a signal.
+                - matchers: ['alertname = "Watchdog"']
+                  receiver: "null"
+                - matchers: ['alertname = "InfoInhibitor"']
+                  receiver: "null"
+                - matchers: ['severity = "info"']
+                  receiver: "null"
+                - matchers: ['severity = "critical"']
+                  receiver: pushover-critical
+                  repeat_interval: 4h
+            receivers:
+              - name: "null"
+              - name: pushover
+                pushover_configs:
+                  - user_key_file: /etc/alertmanager/secrets/alertmanager-pushover/user-key
+                    token_file: /etc/alertmanager/secrets/alertmanager-pushover/api-token
+                    priority: "0"
+                    title: '[staging] {{ .CommonLabels.alertname }} ({{ .Alerts.Firing | len }} firing)'
+                    message: |-
+                      {{ range .Alerts -}}
+                      {{ .Labels.namespace }}/{{ .Labels.pod }}{{ .Labels.job_name }}
+                      {{ .Annotations.summary }}
+                      {{ end }}
+              - name: pushover-critical
+                pushover_configs:
+                  - user_key_file: /etc/alertmanager/secrets/alertmanager-pushover/user-key
+                    token_file: /etc/alertmanager/secrets/alertmanager-pushover/api-token
+                    # 1 = high priority: bypasses the quiet hours a homelab
+                    # otherwise silently swallows overnight alerts into.
+                    priority: "1"
+                    title: '[staging CRITICAL] {{ .CommonLabels.alertname }}'
+                    message: |-
+                      {{ range .Alerts -}}
+                      {{ .Labels.namespace }}/{{ .Labels.pod }}{{ .Labels.job_name }}
+                      {{ .Annotations.summary }}
+                      {{ end }}
+
           alertmanagerSpec:
+            # Mounts at /etc/alertmanager/secrets/alertmanager-pushover/, which is
+            # what the *_file settings above point at.
+            secrets:
+              - alertmanager-pushover
             # Node placement
             nodeSelector:
               kubernetes.io/hostname: blacktalon
@@ -136,16 +200,23 @@ spec:
             kubeApiserverBurnrate: true
             kubeApiserverHistogram: true
             kubeApiserverSlos: true
-            kubeControllerManager: true
+            # k3s embeds the scheduler, controller-manager and kube-proxy in
+            # the server process: there are no discrete pods and no separate
+            # metrics endpoints, so these three groups alert Down permanently and
+            # can never clear. They were harmless while everything went to
+            # /dev/null; with delivery on they would be three standing false
+            # pages, which is how people learn to ignore the channel. The
+            # apiserver is scraped and healthy.
+            kubeControllerManager: false
             kubelet: true
-            kubeProxy: true
+            kubeProxy: false
             kubePrometheusGeneral: true
             kubePrometheusNodeRecording: true
             kubernetesApps: true
             kubernetesResources: true
             kubernetesStorage: true
             kubernetesSystem: true
-            kubeSchedulerAlerting: true
+            kubeSchedulerAlerting: false
             kubeSchedulerRecording: true
             kubeStateMetrics: true
             network: true
