@@ -1,0 +1,54 @@
+---
+# install.yaml is a pristine copy of the upstream rolling `latest` release asset
+# and must stay that way: .github/workflows/kratix-revendor.yml overwrites it
+# wholesale every week.
+#
+# Local hardening therefore lives here as an overlay rather than as an edit
+# inside the vendored file. It used to be inline, with a comment noting that
+# "re-vendoring drops this" and relying on the Trivy KSV-0014 gate to catch the
+# loss. That tripwire worked — it fired on the very first re-vendor — but it puts
+# a human in the loop every week to re-apply the same patch by hand. Expressed
+# here, the patch survives re-vendoring by construction and the gate goes back to
+# catching genuine regressions.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - install.yaml
+
+patches:
+  # KSV-0014: upstream ships the manager without a read-only root filesystem.
+  #
+  # Every write the manager makes lands under os.TempDir(): util/git/git.go
+  # createLocalDirectory does os.MkdirTemp("", "kratix-repo"), and the git
+  # state-store writer (lib/writers/git.go) plus the repository cache write
+  # beneath that root. The emptyDir keeps those paths writable while the rest of
+  # the root filesystem is sealed. Ephemeral by design — Kratix re-clones the
+  # state store on start, so nothing here needs to survive a restart.
+  #
+  # Strategic merge matches volumes and volumeMounts by name, so /tmp is added
+  # alongside the two serving-cert mounts rather than replacing them. The kubelet
+  # orders nested mounts parent-first, so those Secrets still land inside /tmp
+  # read-only.
+  - target:
+      kind: Deployment
+      name: kratix-platform-controller-manager
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: kratix-platform-controller-manager
+        namespace: kratix-platform-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: manager
+                securityContext:
+                  readOnlyRootFilesystem: true
+                volumeMounts:
+                  - mountPath: /tmp
+                    name: tmp
+            volumes:
+              - name: tmp
+                emptyDir: {}

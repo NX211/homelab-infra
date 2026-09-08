@@ -4,6 +4,21 @@ misconfigurations:
   # Kratix platform controller (vendored install manifest). Its manager
   # ClusterRole must manage tenant Secrets and bind/escalate Roles to provision
   # tenants — that is the controller's job. Accepted, path-scoped.
+  # KSV-0014: the vendored file deliberately has no readOnlyRootFilesystem,
+  # because it is a pristine copy of upstream's release asset that
+  # .github/workflows/kratix-revendor.yml overwrites wholesale. The hardening is
+  # applied by kratix/kustomization.yaml instead, which is what ArgoCD renders
+  # and deploys. Trivy scans the file, not the rendered output, so it sees the
+  # unpatched form.
+  #
+  # This exception is only safe while that overlay exists. Verify with:
+  #   kubectl kustomize kratix | trivy config -
+  # which should report no KSV-0014. Previously the patch was inline in
+  # install.yaml and this gate was the tripwire for a re-vendor silently
+  # dropping it; the overlay removes that failure mode by construction.
+  - id: KSV-0014
+    paths:
+      - "kratix/install.yaml"
   - id: KSV-0041
     paths:
       - "kratix/install.yaml"

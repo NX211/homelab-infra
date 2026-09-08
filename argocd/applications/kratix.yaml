@@ -2,9 +2,18 @@
 # Kratix (L3, ADR-0018) — the platform-framework operator + CRDs, vendored from
 # the upstream `latest` release (github.com/syntasso/kratix, kratix.yaml asset).
 # Upstream stopped cutting semver tags after v0.125.0 (Jul 2024) and now ships a
-# rolling `latest`, so there is no version to pin to — re-vendor to refresh:
-#   curl -sL https://github.com/syntasso/kratix/releases/download/latest/kratix.yaml \
-#     -o kratix/install.yaml
+# rolling `latest`, so there is no version to pin to.
+#
+# Refresh via the weekly .github/workflows/kratix-revendor.yml, which re-vendors
+# the whole asset and opens a PR. Do NOT bump the image digest on its own: the
+# controller, its CRDs and its RBAC ship as one artifact with no version to
+# correlate them by, and a Renovate manager that moved only the image skewed
+# them on 2026-09-04 — the newer controller stopped writing
+# status.workflows{,Failed,Succeeded} while the vendored CRD still required
+# them, so every Promise status write was rejected, the reconciler spun, and
+# 2438 untidied reconcile Jobs OOM-killed both this controller and
+# trivy-operator for three days. That manager has been removed.
+#
 # Needs cert-manager (homelab has it) for the webhook serving cert.
 # ServerSideApply for the large CRDs; negative sync-wave so the operator + CRDs
 # land before the kratix-config app's CRs.
