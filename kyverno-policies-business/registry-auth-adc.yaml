@@ -1,0 +1,49 @@
+---
+# Keyless Artifact Registry authentication for Kyverno's image verification.
+#
+# Kyverno fetches the manifest, signature and attestation itself — as its own
+# ServiceAccount, which cannot read Secrets outside this namespace, so a
+# workload's imagePullSecrets are invisible to it. Without credentials every AR
+# image fails verification with "DENIED: Unauthenticated request", which is
+# indistinguishable from an unsigned image in a PolicyReport.
+#
+# This holds no credential. It is an `external_account` config: the pool, the
+# account to impersonate, and the path to the projected ServiceAccount token the
+# kubelet rotates. Kyverno's `google` registry credential helper resolves it via
+# Google ADC, which exchanges that token at STS for a ~60-min access token in
+# memory. Nothing is stored, so there is no key to rotate and no expiry window
+# where verification silently starts failing — the alternative (a CronJob writing
+# a bearer token into a Secret) has both.
+#
+# `homelab-ar-puller` is reused deliberately: it already holds
+# roles/artifactregistry.reader on every project the cluster pulls from, and
+# read is all verification needs. The Chains *signer* is a separate identity with
+# write — see tekton/chains/.
+#
+# GCP side: platform-infra/terraform/environments/prod/homelab-wif.tf
+#
+# Lives here rather than with the chart because argocd/applications/kyverno.yaml
+# is a Helm source and cannot carry raw manifests, and this app already targets
+# the kyverno namespace. It therefore syncs *after* the chart (wave -3 vs -5), so
+# on a first bootstrap the admission controller starts before this exists; the
+# volume is marked optional so it starts rather than crash-loops, and the policy
+# is Audit, so the window is a report failure and not an outage. Roll the
+# admission controller once after a fresh bootstrap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kyverno-registry-adc
+  namespace: kyverno
+data:
+  credential-config.json: |
+    {
+      "type": "external_account",
+      "audience": "//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc",
+      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+      "token_url": "https://sts.googleapis.com/v1/token",
+      "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/homelab-ar-puller@platform-infra-prod.iam.gserviceaccount.com:generateAccessToken",
+      "credential_source": {
+        "file": "/var/run/secrets/gcp-sts/token",
+        "format": { "type": "text" }
+      }
+    }
