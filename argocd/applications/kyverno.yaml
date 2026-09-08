@@ -30,6 +30,44 @@ spec:
         # block, so a brief controller blip cannot wedge deploys.
         admissionController:
           replicas: 1
+          # Keyless Artifact Registry auth for image verification. Kyverno pulls
+          # manifests, signatures and attestations itself and cannot see a
+          # workload's imagePullSecrets, so without this every AR image reports
+          # "DENIED: Unauthenticated request" — which looks exactly like an
+          # unsigned image. Federated, not a stored token: the projected token
+          # below is exchanged at STS in memory. Config map holds no secret; see
+          # kyverno-policies-business/registry-auth-adc.yaml.
+          extraVolumes:
+            - name: gcp-sts-token
+              projected:
+                sources:
+                  - serviceAccountToken:
+                      # Must equal the WIF provider's expected audience and the
+                      # `audience` in the credential config.
+                      audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+                      expirationSeconds: 3600
+                      path: token
+            - name: gcp-adc
+              configMap:
+                name: kyverno-registry-adc
+                # This app syncs at wave -5, the ConfigMap's at -3, so on a first
+                # bootstrap it does not exist yet. Optional keeps the controller
+                # starting instead of crash-looping; roll it once afterwards.
+                optional: true
+          extraVolumeMounts:
+            - name: gcp-sts-token
+              mountPath: /var/run/secrets/gcp-sts
+              readOnly: true
+            - name: gcp-adc
+              mountPath: /etc/gcp
+              readOnly: true
+          container:
+            extraEnvVars:
+              # Where Google ADC looks. The container runs with a read-only root
+              # filesystem; both mounts above are read-only volumes, so nothing
+              # here needs to write.
+              - name: GOOGLE_APPLICATION_CREDENTIALS
+                value: /etc/gcp/credential-config.json
         backgroundController:
           replicas: 1
         reportsController:

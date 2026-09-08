@@ -45,3 +45,11 @@ misconfigurations:
   - id: KSV-01010
     paths:
       - "tekton/chains/refresher.yaml"
+      # Matches the literal string "service_account_impersonation_url" in the
+      # Kyverno ADC config — a URL naming *which* account to impersonate, not a
+      # credential. An external_account config is designed to be non-secret:
+      # holding no key material is the entire reason it exists in place of a
+      # service-account key, which is what the org policy bans. The only thing
+      # resembling a credential is the path to a projected token the kubelet
+      # writes at runtime.
+      - "kyverno-policies-business/registry-auth-adc.yaml"

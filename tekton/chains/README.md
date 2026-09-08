@@ -129,7 +129,12 @@ To flip it, in one change:
    kubectl get polr -A -o json | jq -r '.items[].results[]
      | select(.policy=="verify-tekton-provenance") | "\(.result) \(.resources[0].name)"'
    ```
-3. Set `validationFailureAction: Enforce` **and** `mutateDigest: true` — Kyverno
+3. Confirm the failures you see are *missing signature*, not `DENIED:
+   Unauthenticated request`. The second means Kyverno's own Artifact Registry
+   credential is broken, and in a report the two look the same — enforcing on
+   that would reject every AR image. Kyverno federates for read access; see
+   `kyverno-policies-business/registry-auth-adc.yaml`.
+4. Set `validationFailureAction: Enforce` **and** `mutateDigest: true` — Kyverno
    requires `mutateDigest: false` under Audit, so the two move together.
 
 That policy is deliberately cluster-wide with no `namespaceSelector`: provenance

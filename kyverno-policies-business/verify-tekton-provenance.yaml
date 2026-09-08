@@ -62,6 +62,20 @@ spec:
           # validationFailureAction to Enforce, so verified images get pinned to
           # their digest at admission.
           mutateDigest: false
+          # Kyverno fetches the manifest, signature and attestation itself, as
+          # its own ServiceAccount — which cannot read Secrets outside the
+          # kyverno namespace, so the workload's imagePullSecrets are invisible
+          # to it. Without this, every Artifact Registry image fails with
+          # "DENIED: Unauthenticated request", which is indistinguishable from an
+          # unsigned image in a PolicyReport.
+          #
+          # `google` resolves through Google ADC, pointed by
+          # GOOGLE_APPLICATION_CREDENTIALS at the external_account config in
+          # kyverno-policies-business/registry-auth-adc.yaml — federated, so no
+          # token is ever stored and there is no refresh that can silently lapse.
+          imageRegistryCredentials:
+            providers:
+              - google
           # Chains signs as one cluster-wide identity — the GCP service account
           # the in-cluster refresher impersonates — NOT the per-build
           # ServiceAccount. Public Fulcio cannot validate this cluster's OIDC

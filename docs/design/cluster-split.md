@@ -666,6 +666,28 @@ cluster immediately; they do not wait for new hardware.
    Chains signs as one cluster-wide identity, `homelab-chains-signer@platform-infra-prod`
    with the `accounts.google.com` issuer — **not** the per-build ServiceAccount an earlier
    draft of this item assumed.
+
+   **Kyverno needs its own registry credential.** It fetches the manifest, signature and
+   attestation itself, under its own ServiceAccount, which cannot read Secrets outside the
+   `kyverno` namespace — so a workload's `imagePullSecrets` are invisible to it. Without
+   credentials every Artifact Registry image reports `DENIED: Unauthenticated request`,
+   which in a PolicyReport is **indistinguishable from an unsigned image**. It federates
+   through the existing `homelab-staging` pool and impersonates the read-only
+   `homelab-ar-puller`, so nothing is stored: no token at rest, and no refresh that can
+   silently lapse and turn every verification into a false negative.
+
+   **Final shape.** The narrow glob and the federated credential are both stages, not the
+   destination. Recording the target so the direction stays legible:
+
+   | Stage | State | What it unblocks |
+   |---|---|---|
+   | 1 — now | Provenance scoped by artifact; Kyverno federates for AR read; Audit | Tekton output is verifiable at all |
+   | 2 — next | Every *first-party* image signed, not just Tekton-built. The eight staging AR images are signed by nothing today, which is exactly why the glob must stay narrow. `cosign sign` in the app-repo workflows, mirroring the four that already sign `ghcr.io/nx211/*` | Enforce, and a glob that can widen safely |
+   | 3 — end state | **Zot in-cluster** (§6) as the source of truth for internal images | References point in-cluster, so verification needs no external registry credential at all — the problem disappears rather than being solved once per cluster |
+
+   Stage 3 is why a pull-through mirror is not a shortcut for stage 1: node-level mirroring
+   (`registries.yaml`) redirects *containerd*, while Kyverno resolves the registry named in
+   the image reference. Only moving the reference in-cluster removes the credential.
 4. **Loki retention is 30d against a ~1yr requirement** (§5.3). Applies to the current
    cluster too, for as long as it hosts the build platform.
 
