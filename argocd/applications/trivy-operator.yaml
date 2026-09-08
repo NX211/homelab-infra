@@ -28,21 +28,6 @@ spec:
         targetNamespaces: "staging,provisioning"
         operator:
           scanJobsConcurrentLimit: 1
-          # The chart defaults this to true, which tells trivy-operator to
-          # authenticate to GCR/Artifact Registry via the GCP metadata server.
-          # There is no metadata server on k3s, so the attempt cannot succeed —
-          # and because it takes that path it never falls back to the workload's
-          # imagePullSecrets. Scan jobs were created with no credentials at all
-          # and every AR image failed with "DENIED: Unauthenticated request",
-          # which reads in a report as an unscannable image rather than as an
-          # auth problem.
-          #
-          # The result was zero coverage where it was most wanted: 407
-          # VulnerabilityReports existed and not one was for a pkg.dev image.
-          # False makes it use the imagePullSecrets the workloads already carry
-          # (ar-token-refresher keeps them fresh), which trivy-operator has RBAC
-          # to read and copies into the scan namespace.
-          useGCRServiceAccount: false
           # Rescan weekly, not the 24h default.
           scannerReportTTL: "168h"
           # Vulnerability reports are the only signal we consume; policy
@@ -52,6 +37,25 @@ spec:
           infraAssessmentScannerEnabled: false
           clusterComplianceEnabled: false
         trivyOperator:
+          # The chart defaults this to true, telling trivy-operator to
+          # authenticate to GCR/Artifact Registry via the GCP metadata server.
+          # k3s has none, so the attempt cannot succeed — and taking that path
+          # means it never falls back to the workload's imagePullSecrets. Scan
+          # jobs were created with no credentials at all and every AR image
+          # failed "DENIED: Unauthenticated request", which in a report is
+          # indistinguishable from an image that simply cannot be scanned.
+          #
+          # Result: 407 VulnerabilityReports and not one for a pkg.dev image.
+          # False makes it use the imagePullSecrets the workloads already carry
+          # and ar-token-refresher keeps fresh; trivy-operator has RBAC to read
+          # them and copies them into the scan namespace.
+          #
+          # Belongs to `trivyOperator`, NOT `operator` — #1089 put it under the
+          # latter, where the chart never reads it, so the rendered ConfigMap
+          # stayed scanJob.useGCRServiceAccount=true and nothing changed. The
+          # value is only observable in the rendered ConfigMap, so `helm template`
+          # is the check that matters, not whether Argo reports Synced.
+          useGCRServiceAccount: false
           # Parity with prod: kyverno require-labels demands
           # app.kubernetes.io/name on every Pod (string form, not a map).
           scanJobPodTemplateLabels: "app.kubernetes.io/name=trivy-scan-job"
