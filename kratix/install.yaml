@@ -1196,6 +1196,12 @@ spec:
                               and resource) to run in; needs to be an existing namespace
                               or else workflow won't start
                             type: string
+                          reconciliationInterval:
+                            description: Interval at which all workflows (promise
+                              and resource) defined in this Promise are reconciled;
+                              if not set, defaults to the platform-wide reconciliation
+                              interval
+                            type: string
                         type: object
                       promise:
                         description: Pipelines triggered when the Promise itself is
@@ -1455,6 +1461,11 @@ spec:
                           resource) to run in; needs to be an existing namespace or
                           else workflow won't start
                         type: string
+                      reconciliationInterval:
+                        description: Interval at which all workflows (promise and
+                          resource) defined in this Promise are reconciled; if not
+                          set, defaults to the platform-wide reconciliation interval
+                        type: string
                     type: object
                   promise:
                     description: Pipelines triggered when the Promise itself is created,
@@ -1682,24 +1693,6 @@ spec:
                 description: Version of the Promise, derived from the PromiseRelease
                   if installed via one
                 type: string
-              workflows:
-                description: Total number of Promise-level workflow pipelines
-                format: int64
-                type: integer
-              workflowsFailed:
-                description: Number of Promise-level workflow pipelines that have
-                  failed
-                format: int64
-                type: integer
-              workflowsSucceeded:
-                description: Number of Promise-level workflow pipelines that have
-                  completed successfully
-                format: int64
-                type: integer
-            required:
-            - workflows
-            - workflowsFailed
-            - workflowsSucceeded
             type: object
         type: object
     served: true
@@ -2554,7 +2547,7 @@ subjects:
 ---
 apiVersion: v1
 data:
-  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:5b4c4b1c36579422f36d9b766d0d70579528330835235ea1e8de390d43fd93e2
+  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:80fad8969ccb5a09906b93b770ede054603aecc14713ef212528da7dde49b765
 kind: ConfigMap
 metadata:
   labels:
@@ -2637,6 +2630,8 @@ spec:
         - --health-probe-bind-address=:8081
         - --leader-elect
         command:
+        - /sbin/tini
+        - --
         - /manager
         env:
         - name: PIPELINE_ADAPTER_IMG
@@ -2644,7 +2639,7 @@ spec:
             configMapKeyRef:
               key: PIPELINE_ADAPTER_IMG
               name: kratix-platform-pipeline-adapter-config
-        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:5b4c4b1c36579422f36d9b766d0d70579528330835235ea1e8de390d43fd93e2
+        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:80fad8969ccb5a09906b93b770ede054603aecc14713ef212528da7dde49b765
         livenessProbe:
           httpGet:
             path: /healthz
@@ -2675,24 +2670,10 @@ spec:
             drop:
             - ALL
           privileged: false
-          # LOCAL DEVIATION from the vendored upstream manifest (KSV-0014).
-          # Upstream ships no readOnlyRootFilesystem. Every write the manager
-          # makes lands under os.TempDir(): util/git/git.go createLocalDirectory
-          # does os.MkdirTemp("", "kratix-repo"), and the git state-store writer
-          # (lib/writers/git.go) plus the repository cache write beneath that
-          # root. The emptyDir below keeps those paths writable while the rest
-          # of the root filesystem is sealed. Re-vendoring drops this — the
-          # Trivy config gate fails on KSV-0014 if it goes missing, so the loss
-          # is caught rather than silent.
-          readOnlyRootFilesystem: true
           runAsNonRoot: true
           seccompProfile:
             type: RuntimeDefault
         volumeMounts:
-        # Parent of the two serving-cert mounts below; the kubelet orders nested
-        # mounts parent-first, so those Secrets still land inside it read-only.
-        - mountPath: /tmp
-          name: tmp
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
           readOnly: true
@@ -2704,11 +2685,6 @@ spec:
       serviceAccountName: kratix-platform-controller-manager
       terminationGracePeriodSeconds: 10
       volumes:
-      # Backs the read-only root filesystem above: git worktrees and the
-      # repository cache live here. Ephemeral by design — Kratix re-clones the
-      # state store on start, so nothing here needs to survive a restart.
-      - name: tmp
-        emptyDir: {}
       - name: cert
         secret:
           defaultMode: 420

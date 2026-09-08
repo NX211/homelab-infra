@@ -1,0 +1,100 @@
+# Re-vendor the whole Kratix distribution, atomically.
+#
+# Upstream ships one kratix.yaml containing the controller image, its CRDs and
+# its RBAC, on a rolling `latest` with no semver since v0.125.0 — so there is no
+# version to correlate the parts by. A Renovate custom manager used to bump just
+# the image digest in kratix/install.yaml, which split an atomic artifact across
+# two update paths and guaranteed eventual skew.
+#
+# It skewed on 2026-09-04: the newer controller stopped writing
+# status.workflows{,Failed,Succeeded} while the CRD vendored on 2026-08-16 still
+# marked them required, so every Promise status update was rejected. The
+# reconciler retried every few seconds, spawning reconcile Jobs with no TTL —
+# 2438 of them — until both the Kratix controller (256Mi) and trivy-operator,
+# which builds a VulnerabilityReport per Job, were OOMKilled in a loop for three
+# days.
+#
+# This replaces that manager: the image only ever moves together with the CRDs
+# and RBAC it was built against, which is how upstream ships it.
+name: Kratix Re-vendor
+
+on:
+  schedule:
+    # Weekly. CVE currency was the reason the image was tracked at all; keeping
+    # it on a schedule preserves that without splitting the artifact.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  revendor:
+    name: Re-vendor kratix/install.yaml
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Fetch upstream distribution
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 \
+            https://github.com/syntasso/kratix/releases/download/latest/kratix.yaml \
+            -o /tmp/kratix.yaml
+
+          # Never open a PR against a truncated download or a GitHub error page.
+          # Without this, a 404 rendered as HTML would sail through as a "change"
+          # and replace a working install manifest with nothing usable.
+          test -s /tmp/kratix.yaml
+          grep -q 'kind: CustomResourceDefinition' /tmp/kratix.yaml
+          grep -q 'kratix-platform@sha256:' /tmp/kratix.yaml
+          crds=$(grep -c 'kind: CustomResourceDefinition' /tmp/kratix.yaml)
+          test "$crds" -ge 10 || { echo "only $crds CRDs; refusing"; exit 1; }
+
+          cp /tmp/kratix.yaml kratix/install.yaml
+          echo "digest=$(grep -oE 'kratix-platform@sha256:[a-f0-9]{12}' kratix/install.yaml | head -1)" >> "$GITHUB_ENV"
+
+      - name: Open PR if changed
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: chore/kratix-revendor
+          title: "chore(kratix): re-vendor the upstream distribution"
+          commit-message: |
+            chore(kratix): re-vendor the upstream distribution
+
+            Image, CRDs and RBAC move together, as upstream ships them.
+          body: |
+            Automated re-vendor of `kratix/install.yaml` from the upstream
+            rolling `latest` release asset.
+
+            Now at `${{ env.digest }}`.
+
+            Local hardening is not in this file — it lives in
+            `kratix/kustomization.yaml` and is re-applied on render, so a
+            wholesale overwrite here cannot drop it.
+
+            **Review the CRD diff, not just the image.** Upstream ships the
+            controller and its schemas as one artifact and has changed required
+            status fields between builds — that skew is what wedged the platform
+            for three days in September 2026. If the CRD `required:` blocks moved,
+            check that the running controller writes those fields before merging.
+
+            After merge, confirm the controller settles rather than reconciling
+            hot:
+
+            ```
+            kubectl logs -n kratix-platform-system \
+              -l control-plane=controller-manager --tail=50 | grep -i "reconciler error"
+            kubectl get jobs -n provisioning --no-headers | grep -c kratix
+            ```
