@@ -23,9 +23,13 @@ spec:
     targetRevision: 0.36.0
     helm:
       valuesObject:
-        # Only the namespaces feeding the Port scorecard signal; runtime
-        # security is tetragon's job.
-        targetNamespaces: "staging,provisioning"
+        # Namespaces running first-party images. Was staging,provisioning —
+        # scoped to what feeds the Port scorecard — but that is a reporting
+        # rationale, not a risk one, and it left capturly-live out: the only
+        # internet-facing namespace here (two IngressRoutes), running two
+        # first-party Artifact Registry images. Least visibility on the most
+        # exposed surface. Runtime security remains tetragon's job.
+        targetNamespaces: "staging,provisioning,capturly-live"
         operator:
           scanJobsConcurrentLimit: 1
           # Rescan weekly, not the 24h default.

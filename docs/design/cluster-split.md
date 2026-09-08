@@ -559,9 +559,17 @@ that path meant trivy-operator never fell back to the workload's `imagePullSecre
 jobs were created with no credentials and every AR image failed `DENIED: Unauthenticated
 request`, which in a report is indistinguishable from an unscannable image. 407
 VulnerabilityReports existed; **zero** were for a `pkg.dev` image, i.e. none of the
-first-party application images. Fixed by disabling that flag. Note the scope is still
-`targetNamespaces: staging,provisioning` by design, so `capturly-live` remains unscanned —
-a deliberate choice, not a gap to fix silently.
+first-party application images. Fixed by disabling that flag — though it took two attempts: the first set the value under
+`operator`, which the chart never reads, so ArgoCD reported Synced while the rendered
+ConfigMap was unchanged. Helm ignores unmatched values keys silently; only the rendered
+output is evidence.
+
+Scope was also widened to include `capturly-live`. It had been
+`staging,provisioning` — the namespaces feeding the Port scorecard — but that is a
+reporting rationale rather than a risk one, and it excluded the only internet-facing
+namespace here, running two first-party Artifact Registry images. Note those two are still
+pinned to `:latest` rather than a digest, so what gets scanned is whatever the tag resolves
+to at scan time; pinning them is tracked separately.
 
 **Build provenance was claimed here before it existed.** Chains ran from Phase 0
 onward but signed nothing for 51 days: the operator creates `signing-secrets`
