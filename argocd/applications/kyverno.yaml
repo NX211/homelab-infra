@@ -22,7 +22,7 @@ spec:
   source:
     repoURL: https://kyverno.github.io/kyverno/
     chart: kyverno
-    targetRevision: 3.9.0
+    targetRevision: 3.9.1
     helm:
       valuesObject:
         # Single replica per controller — staging is resource-constrained. The
