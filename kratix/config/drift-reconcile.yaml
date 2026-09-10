@@ -58,7 +58,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: trigger
-              image: registry.k8s.io/kubectl:v1.31.14
+              image: registry.k8s.io/kubectl:v1.37.0
               command: ["kubectl"]
               args:
                 - -n
