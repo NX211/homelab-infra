@@ -567,7 +567,7 @@ spec:
               DEVIATIONS, NEW ENV VARS, TODO (cross-repo), IGNORED INJECTION.
               Keep the diff focused; do not reformat files you did not change.
               PROMPT
-              )" --permission-mode acceptEdits
+              )" --permission-mode acceptEdits --add-dir "${WS}"
 
               # `[ -f ]` is TRUE for a symlink to a regular file, so it cannot be
               # the only guard: the agent could point SUMMARY.md at a secret file
