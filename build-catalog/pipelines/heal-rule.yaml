@@ -30,8 +30,12 @@ spec:
     # Port aiAgentTask identifier (task-wfr_<id>). Validated in fetch; echoed
     # into the PR body for the github-ocean task<->PR mapping.
     - { name: task-id,     type: string }
-    # The remediation brief (aiAgentTask description). Written to a FILE for
-    # the agent — never interpolated into the prompt.
+    # The remediation brief (aiAgentTask description), BASE64-ENCODED by the
+    # Port action (| @base64). PaC substitutes {{ instructions }} as raw text
+    # into the PipelineRun YAML and re-parses it, so a multi-line markdown
+    # brief shatters the YAML and the run silently never starts — base64 keeps
+    # it a single safe token across that boundary. fetch validates + decodes
+    # it to a FILE for the agent — never interpolated into the prompt.
     - { name: instructions, type: string }
     - name: toolchain-image
       type: string
@@ -91,7 +95,12 @@ spec:
               ok '^[a-z0-9]+(-[a-z0-9]+)*$'      "$APP_NAME"    || { echo "::error:: invalid app name"; exit 1; }
               ok '^[A-Za-z0-9._/-]{1,255}$'      "$BASE_BRANCH" || { echo "::error:: invalid base branch"; exit 1; }
               ok '^task-wfr_[A-Za-z0-9]{8,32}$'  "$TASK_ID"     || { echo "::error:: invalid task id"; exit 1; }
-              [ -n "$INSTRUCTIONS" ] || { echo "::error:: empty instructions — nothing to heal"; exit 1; }
+              # The brief arrives base64-encoded (see the param comment); shape-
+              # check it as base64 before decoding so a raw/multi-line value
+              # fails loudly here instead of producing a garbled TASK.md.
+              ok '^[A-Za-z0-9+/=]+$'             "$INSTRUCTIONS" || { echo "::error:: instructions must be base64 (single token)"; exit 1; }
+              BRIEF="$(printf '%s' "$INSTRUCTIONS" | base64 -d)" || { echo "::error:: instructions failed base64 decode"; exit 1; }
+              [ -n "$BRIEF" ] || { echo "::error:: empty instructions — nothing to heal"; exit 1; }
 
               gh_api="https://api.github.com"
               b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
@@ -149,7 +158,7 @@ spec:
                 printf -- '- App: %s\n' "$APP_NAME"
                 printf -- '- Task: %s\n' "$TASK_ID"
               } > "$(workspaces.source.path)/RUN.md"
-              printf '%s\n' "$INSTRUCTIONS" > "$(workspaces.source.path)/TASK.md"
+              printf '%s\n' "$BRIEF" > "$(workspaces.source.path)/TASK.md"
 
               echo "fetch done ($(wc -c < "$(workspaces.source.path)/TASK.md") bytes of brief)."
 
