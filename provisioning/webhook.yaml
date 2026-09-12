@@ -182,8 +182,10 @@ spec:
           # and the whole package-manager surface are gone. The webhook only uses
           # node:http/node:crypto. Digest-pinned + Renovate-tracked so it can't
           # freeze on a stale build (the old node:22-alpine pin did exactly that).
-          # renovate: datasource=docker depName=gcr.io/distroless/nodejs22-debian12
-          image: gcr.io/distroless/nodejs22-debian12@sha256:8a3e96fe3345b5d83ecec2066e7c498139a02a6d1214e4f6c39f9ce359f3f5bc
+          # debian13 base: debian12's libssl3 3.0.18 carries CVE-2026-31789
+          # (critical) with no rebuilt distroless image available.
+          # renovate: datasource=docker depName=gcr.io/distroless/nodejs22-debian13
+          image: gcr.io/distroless/nodejs22-debian13@sha256:b55ac629fa389f4eb34ec53846bdefa081a9d25381fa1d37415414d623fe10ae
           command: ["/nodejs/bin/node", "/app/server.mjs"]
           ports:
             - containerPort: 8080

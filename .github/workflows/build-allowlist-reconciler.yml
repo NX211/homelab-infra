@@ -17,7 +17,7 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/nx211/allowlist-reconciler
-  VERSION: "0.1.0"
+  VERSION: "0.2.0"
   MANIFEST: allowlist-reconciler/deployment.yaml
 
 jobs:
@@ -46,7 +46,7 @@ jobs:
       # shipping an image that silently stops recording applied versions.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Test
         working-directory: apps/allowlist-reconciler
