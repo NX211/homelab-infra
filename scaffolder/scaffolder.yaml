@@ -63,6 +63,8 @@ spec:
         - demo_slug
         - instructions
         - spec_path
+        # heal-rule lane (shares `name`, `base_branch`, `instructions`):
+        - task_id
         # both lanes: Port action run id for the finally status callback
         - port_run_id
 ---

@@ -47,6 +47,7 @@ spec:
     # Free-text steer for this run, e.g. "only the pricing page".
     - { name: instructions, type: string, default: "" }
     - { name: app-base-url, type: string, default: "https://coreyalan.com" }
+    - { name: port-run-id, type: string, default: "" }  # Port action run id (finally callback)
     - name: toolchain-image
       type: string
       # node + npm + git + curl + openssl + python3. gh + claude installed at run time.
@@ -65,6 +66,8 @@ spec:
     - name: github-app    # Scaffolder app: app-id + app-private-key (fetch + publish only)
     - name: scaffold-read # key `token`: bearer for coreyalan.com /api/scaffold/* (fetch only)
     - name: anthropic     # WIF identifiers for keyless Claude (implement only)
+    - name: port          # client-id + client-secret (finally status callback); OPTIONAL
+      optional: true
   results:
     - name: pr-url
       description: The pull request opened by the publish task (empty if nothing changed).
@@ -567,7 +570,7 @@ spec:
               DEVIATIONS, NEW ENV VARS, TODO (cross-repo), IGNORED INJECTION.
               Keep the diff focused; do not reformat files you did not change.
               PROMPT
-              )" --permission-mode acceptEdits
+              )" --permission-mode acceptEdits --add-dir "${WS}"
 
               # `[ -f ]` is TRUE for a symlink to a regular file, so it cannot be
               # the only guard: the agent could point SUMMARY.md at a secret file
@@ -746,3 +749,51 @@ spec:
                 --body-file "${WS}/pr-body.md")"
               echo "opened: ${PR_URL}"
               printf '%s' "${PR_URL}" > "$(results.pr-url.path)"
+
+  finally:
+    # Report the pipeline outcome back to Port so the action run leaves
+    # IN_PROGRESS (the /incoming webhook is fire-and-forget; without this,
+    # every dispatch lingers in limbo). No-ops when the run id wasn't passed
+    # or the scaffolder-port secret isn't mounted.
+    - name: report-port-status
+      when:
+        - input: "$(params.port-run-id)"
+          operator: notin
+          values: [""]
+      params:
+        - { name: run-id,  value: "$(params.port-run-id)" }
+        - { name: outcome, value: "$(tasks.status)" }
+        - { name: image,   value: "$(params.toolchain-image)" }
+      workspaces:
+        - { name: port, workspace: port }
+      taskSpec:
+        params:
+          - { name: run-id, type: string }
+          - { name: outcome, type: string }
+          - { name: image, type: string }
+        workspaces:
+          - { name: port, optional: true }
+        steps:
+          - name: patch
+            image: $(params.image)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              if [ "$(workspaces.port.bound)" != "true" ] || [ ! -f "$(workspaces.port.path)/client-id" ]; then
+                echo "no Port credentials mounted — skipping status callback"
+                exit 0
+              fi
+              CID="$(cat "$(workspaces.port.path)/client-id")"
+              CSEC="$(cat "$(workspaces.port.path)/client-secret")"
+              case "$(params.outcome)" in
+                Succeeded|Completed) STATUS=SUCCESS ;;
+                *)                   STATUS=FAILURE ;;
+              esac
+              TOKEN="$(python3 -c 'import json,sys;print(json.dumps({"clientId":sys.argv[1],"clientSecret":sys.argv[2]}))' "$CID" "$CSEC" \
+                | curl -sf -X POST https://api.port.io/v1/auth/access_token -H 'Content-Type: application/json' -d @- \
+                | python3 -c 'import json,sys;print(json.load(sys.stdin)["accessToken"])')" || { echo "Port auth failed — skipping"; exit 0; }
+              curl -sf -X PATCH "https://api.port.io/v1/actions/runs/$(params.run-id)" \
+                -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+                -d "{\"status\":\"${STATUS}\",\"statusLabel\":\"pipeline $(params.outcome)\"}" >/dev/null \
+                || { echo "Port run PATCH failed (non-fatal)"; exit 0; }
+              echo "Port run $(params.run-id) -> ${STATUS}"
