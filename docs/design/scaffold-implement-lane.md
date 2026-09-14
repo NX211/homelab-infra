@@ -348,6 +348,14 @@ is churn, not progress. The wake is currently the operator re-firing
 automation that fires it from CI-failure events can ride the same input
 later without touching the pipeline.
 
+A third park class is the **confidence pre-flight**: before the builder runs,
+a cheap read-only session scores (0-100) whether the spec + demo + operator
+instructions carry enough truth to implement without inventing facts; below
+threshold the run parks with the blocking questions instead of burning the
+full harness cost on work verification would fail anyway. Degrade-open: a
+broken pre-flight never parks real work. Unlike the human-commit park, this
+one clears itself — fix the spec (usually: add the missing Facts) and re-run.
+
 Spec symmetry rides along: the builder must append new `REQ-NNN` entries (never
 renumber, never reuse) when operator instructions demand behavior the spec
 lacks, so spec and code merge together — app-template's `check-spec-symmetry`
