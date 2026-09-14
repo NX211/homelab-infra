@@ -626,7 +626,12 @@ spec:
               sources:
                 - serviceAccountToken:
                     path: token
-                    expirationSeconds: 7200
+                    # 3600, not longer: the Anthropic federation rule caps the
+                    # identity-token lifetime and rejects (401 "federation rule
+                    # matches your identity token") a 2h token. kubelet refreshes
+                    # this projected token in place, so each agent call across a
+                    # long run still reads a valid one.
+                    expirationSeconds: 3600
                     audience: https://api.anthropic.com
         sidecars:
           # Ephemeral per-run database, alive for every step. Trust auth is
@@ -727,11 +732,16 @@ spec:
                 # Prisma reads a .env from the schema dir and the task cwd —
                 # write it in both places for every schema in the repo, plus
                 # the repo root for `next build`/`start`.
-                printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> .env
+                add_db_env() { grep -q '^DATABASE_URL=' "$1" 2>/dev/null || printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> "$1"; }
+                add_db_env .env
                 for sf in $(find . -name schema.prisma -not -path '*/node_modules/*'); do
-                  sd="$(dirname "$sf")"
-                  printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> "$sd/.env"
-                  printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> "$sd/../.env"
+                  # Write to the schema package's cwd (nearest package.json),
+                  # which is where prisma loads .env from — and NOT into the
+                  # prisma/ dir, or prisma aborts on the .env/prisma/.env
+                  # conflict.
+                  d="$(dirname "$sf")"
+                  while [ "$d" != "." ] && [ ! -f "$d/package.json" ]; do d="$(dirname "$d")"; done
+                  add_db_env "$d/.env"
                 done
                 pnpm db:generate || echo "::warning:: db:generate failed — verifier may lack a typed client"
                 # A schema that will not apply degrades to no-DB verification —
