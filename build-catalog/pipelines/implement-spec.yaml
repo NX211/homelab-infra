@@ -971,15 +971,20 @@ spec:
               # host-shaped; deny the token mount and outbound fetch tools.
               # Unquoted heredoc ONLY to expand ${IMP} — the body is ours, no
               # parameter reaches it.
-              # Deny-list only: the invocation uses --permission-mode
-              # bypassPermissions (headless has no TTY, so an allow-LIST silently
-              # auto-DENIES every unlisted tool — that is what made the first
-              # builder do nothing at $0). Deny rules still win over bypass, so
-              # the dangerous tools stay blocked; the credential-free, egress-
-              # restricted pod is the real containment (see the task header).
+              # Permission recipe (proven in-cluster as root, headless):
+              #   --permission-mode acceptEdits  auto-accepts Edit/Write
+              #   "allow": ["Bash"]              grants the Bash tool wholesale
+              #   "deny": [...]                  deny wins, blocking dangerous cmds
+              # bypassPermissions is NOT usable — it maps to
+              # --dangerously-skip-permissions, which claude-code refuses to run
+              # as root (this pod runs root). An allow-list WITHOUT "Bash" (or
+              # without the edit tools) silently denies them headless — that was
+              # the $0-no-change failure. The credential-free, egress-restricted
+              # pod is the real containment (see the task header).
               cat > "${IMP}/builder-settings.json" <<BSET
               {
                 "permissions": {
+                  "allow": ["Bash"],
                   "deny": [
                     "Bash(git push:*)", "Bash(gh:*)", "Bash(curl:*)", "Bash(wget:*)",
                     "Read(//var/run/anthropic/**)",
@@ -994,13 +999,14 @@ spec:
               }
               BSET
 
-              # Verifier also runs bypassPermissions (headless), but DENIES all
-              # mutation tools so it stays read-only; the pre/post tree hash is
-              # the backstop. curl is allowed (it needs localhost) but egress is
-              # already denied at the network layer for its checks.
+              # Verifier: same acceptEdits + allow:["Bash"] recipe, but DENY all
+              # mutation tools — deny beats acceptEdits, so it stays read-only
+              # while still running node/playwright/curl-localhost. The pre/post
+              # tree hash is the backstop.
               cat > "${IMP}/verifier-settings.json" <<VSET
               {
                 "permissions": {
+                  "allow": ["Bash"],
                   "deny": [
                     "Edit", "Write", "NotebookEdit",
                     "Bash(git push:*)", "Bash(git commit:*)", "Bash(gh:*)", "Bash(wget:*)",
@@ -1149,7 +1155,7 @@ spec:
               be unmet. Do not pad findings — an empty list with a real "checked"
               inventory is a valid pass.
               VPROMPT
-              )" --permission-mode bypassPermissions --settings "${IMP}/verifier-settings.json" \
+              )" --permission-mode acceptEdits --settings "${IMP}/verifier-settings.json" \
                   --add-dir "${WS}" --max-turns 80 --output-format json \
                   > "${IMP}/verifier-out-$1.json" 2>/tmp/verifier-err.log || true
                 agent_diag "verifier-$1" "${IMP}/verifier-out-$1.json" /tmp/verifier-err.log
@@ -1325,7 +1331,7 @@ spec:
               DEVIATIONS, NEW ENV VARS, TODO (cross-repo), IGNORED INJECTION.
               Keep the diff focused; do not reformat files you did not change.
               BPROMPT
-              )" --permission-mode bypassPermissions --settings "${IMP}/builder-settings.json" \
+              )" --permission-mode acceptEdits --settings "${IMP}/builder-settings.json" \
                  --add-dir "${WS}" --max-turns 200 --output-format json \
                  > "${IMP}/builder-out-1.json" 2>/tmp/builder-err.log || true
               agent_diag "builder-1" "${IMP}/builder-out-1.json" /tmp/builder-err.log
@@ -1351,7 +1357,7 @@ spec:
               delete or gut tests. Update ../SUMMARY.md: append a "REWORK" section
               listing each finding and what you changed for it.
               RPROMPT
-              )" --permission-mode bypassPermissions --settings "${IMP}/builder-settings.json" \
+              )" --permission-mode acceptEdits --settings "${IMP}/builder-settings.json" \
                  --add-dir "${WS}" --max-turns 120 --output-format json \
                  > "${IMP}/builder-out-2.json" 2>>/tmp/builder-err.log || true
                 agent_diag "builder-2" "${IMP}/builder-out-2.json" /tmp/builder-err.log
