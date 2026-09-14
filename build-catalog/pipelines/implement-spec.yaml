@@ -362,6 +362,24 @@ spec:
                   print("        the render task will screenshot it; static files are a shell")
               PY
                 rm -f demo/raw.json
+
+                # Vendor the playwright MODULE for the render task. The render
+                # image ships only the BROWSERS (/ms-playwright) — no npm
+                # package — and the render pod has no egress by design, so the
+                # install must happen here, in the task that is allowed to
+                # fetch. Version-locked to the render image tag (1.49.0 <->
+                # v1.49.0-noble) so the module matches the bundled browser
+                # build; bump BOTH together. Probed working under gVisor
+                # 2026-09-13. Non-fatal like everything render: a miss degrades
+                # the run to no-screenshots, loudly, and never blocks the PR.
+                if [ -n "${SLUG}" ]; then
+                  export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+                  mkdir -p render-deps && ( cd render-deps \
+                    && npm init -y >/dev/null 2>&1 \
+                    && npm install --no-audit --no-fund --save-exact playwright@1.49.0 >/dev/null 2>&1 \
+                    && echo "vendored playwright 1.49.0 for render" ) \
+                    || echo "::warning:: could not vendor playwright — render will produce no screenshots"
+                fi
               fi
 
               echo "fetch done."
@@ -425,6 +443,18 @@ spec:
                 echo "no demo for this run — skipping render"
                 exit 0
               fi
+
+              # The playwright MODULE is vendored onto the workspace by fetch
+              # (this image carries only the browsers, and this pod has no
+              # egress to install anything). Check it loudly: without this, a
+              # missing module surfaced only as a generic non-zero renderer
+              # exit — a silently screenshot-less run.
+              if [ ! -f "${WS}/render-deps/node_modules/playwright/package.json" ]; then
+                echo "::error:: playwright module not vendored (fetch step failed?) — no screenshots this run"
+                exit 0
+              fi
+              export NODE_PATH="${WS}/render-deps/node_modules"
+              export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
               node -e '
                 const { chromium } = require("playwright");
