@@ -274,6 +274,30 @@ spec:
     - secretKey: client-secret
       remoteRef: { key: 9dc5b2f3-309d-4dd7-a084-b4b70183ddfb }   # SCAFFOLDER_PORT_CLIENT_SECRET
 ---
+# Read-only npm registry token for the private @corey-alan-consulting scope.
+# The implement-spec verification harness runs `pnpm install` on the app repo;
+# app-template-derived apps depend on private org packages (auth-core etc.),
+# which 404 without auth. Consumed ONLY by the harness setup step, written to
+# the pod's own HOME/.npmrc (never the shared PVC). Read-only, single scope —
+# the least token that unblocks install. Rotate by 2026-12-13 (90-day expiry).
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-npm-read
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-npm-read
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: token
+      remoteRef: { key: 30d5fd15-a3d5-4764-875c-b4c500dda4a8 }   # NPM_READ_TOKEN (Build Platform)
+---
 # The render task runs the CLIENT'S OWN JavaScript (headless Chromium
 # screenshotting an approved demo) — the only untrusted code in the scaffolder
 # namespace. This denies it every byte of egress.
