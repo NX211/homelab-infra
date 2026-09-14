@@ -2600,13 +2600,21 @@ spec:
 
               cd "${WS}/fresh"
 
+              # A no-change run is only "nothing to publish" when there is no
+              # open PR to refresh. A continuation that re-verified the branch
+              # as it stands must still deliver the FRESH verdict to the PR —
+              # gate-7 attempt 3 found the gap: the run succeeded, the branch
+              # was already right, and the PR kept the stale verdict because
+              # this used to exit before the update path.
+              NO_CHANGES=false
               if [ -z "$(git status --porcelain)" ]; then
-                echo "agent made no changes — nothing to publish"
-                printf '' > "$(results.pr-url.path)"
-                exit 0
+                NO_CHANGES=true
+                echo "agent made no changes — branch already at the desired state"
               fi
 
-              if [ "$CONTINUATION" = "true" ]; then
+              if [ "$NO_CHANGES" = "true" ]; then
+                : # nothing to commit or push; an existing PR still gets its body refreshed below
+              elif [ "$CONTINUATION" = "true" ]; then
                 git add -A
                 git commit -q -m "fix($APP_NAME): address review and CI findings"
                 git push origin "HEAD:$BRANCH"
@@ -2737,7 +2745,9 @@ spec:
                 "$gh_api/repos/$GH_ORG/$APP_NAME/pulls?head=$GH_ORG:$BRANCH&base=$BASE_BRANCH&state=open" \
                 | python3 -c 'import sys,json;prs=json.load(sys.stdin);print(prs[0]["number"] if prs else "")' 2>/dev/null || true)"
               if [ -n "$EXISTING" ]; then
-                if [ "$CONTINUATION" = "true" ]; then
+                if [ "$NO_CHANGES" = "true" ]; then
+                  NOTE="Run \`$RUN_NAME\`: the branch already addressed the findings — re-verified in place; verification verdict refreshed in the PR body."
+                elif [ "$CONTINUATION" = "true" ]; then
                   NOTE="Continuation run \`$RUN_NAME\`: addressed the review/CI findings; verification verdict refreshed in the PR body."
                 else
                   NOTE="Rerun \`$RUN_NAME\`: branch rebuilt from \`$BASE_BRANCH\` (previous head superseded); verification verdict refreshed in the PR body."
@@ -2775,6 +2785,11 @@ spec:
                 PR_URL="https://github.com/$GH_ORG/$APP_NAME/pull/$EXISTING"
                 echo "updated: ${PR_URL}"
               else
+                if [ "$NO_CHANGES" = "true" ]; then
+                  echo "no changes and no open PR — nothing to publish"
+                  printf '' > "$(results.pr-url.path)"
+                  exit 0
+                fi
                 PR_URL="$(gh pr create ${DRAFT_FLAG} \
                   --repo "$GH_ORG/$APP_NAME" \
                   --base "$BASE_BRANCH" \
