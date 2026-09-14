@@ -700,9 +700,20 @@ spec:
                 exit 1
               fi
 
-              pnpm db:generate || { echo "::error:: db:generate failed — environment bug, not app bug"; exit 1; }
-              pnpm db:deploy || pnpm db:push || { echo "::error:: could not apply the schema to the sidecar database"; exit 1; }
-              pnpm db:seed || echo "no seed (or seed failed) — verifier works against an empty database"
+              # DB steps only when the app declares one — the fleet has DB-less
+              # apps (blue-skysolutions-com et al.). `pnpm run` lists the scripts
+              # actually defined; grep is exact so a "db:generate:foo" would not
+              # match. The sidecar stays up regardless (idle, harmless).
+              HAS_DB=false
+              if pnpm run 2>/dev/null | grep -qE '^\s*db:generate\b'; then HAS_DB=true; fi
+              printf '{"hasDb":%s}\n' "$HAS_DB" > "${WS}/.implement/env.json"
+              if [ "$HAS_DB" = "true" ]; then
+                pnpm db:generate || { echo "::error:: db:generate failed — environment bug, not app bug"; exit 1; }
+                pnpm db:deploy || pnpm db:push || { echo "::error:: could not apply the schema to the sidecar database"; exit 1; }
+                pnpm db:seed || echo "no seed (or seed failed) — verifier works against an empty database"
+              else
+                echo "no db:generate script — DB-less app, skipping database setup"
+              fi
 
               # CI-parity BASELINE of the UNMODIFIED tree. A pre-existing red
               # is recorded, not fatal: the gates later require "no worse than
@@ -1019,7 +1030,14 @@ spec:
                   tail -n 15 /tmp/boot-build.log
                   return 0
                 fi
-                ( pnpm --filter ./apps/web start > /tmp/boot-run.log 2>&1 & echo $! > /tmp/app.pid ) || true
+                # Monorepo (app-template shape) starts the web workspace by
+                # filter; a single-package app starts at the root. Detect rather
+                # than assume — the fleet has both shapes.
+                if [ -d apps/web ]; then
+                  ( pnpm --filter ./apps/web start > /tmp/boot-run.log 2>&1 & echo $! > /tmp/app.pid ) || true
+                else
+                  ( pnpm start > /tmp/boot-run.log 2>&1 & echo $! > /tmp/app.pid ) || true
+                fi
                 APP_PID="$(cat /tmp/app.pid 2>/dev/null || true)"
                 for i in $(seq 1 45); do
                   if curl -sf -o /dev/null "http://127.0.0.1:3000/api/health"; then BOOT_OK=true; break; fi
