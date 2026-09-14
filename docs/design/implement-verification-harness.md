@@ -156,3 +156,34 @@ doubles the builder. Budget walls make the worst case a known number:
    orthogonal).
 3. Dogfood: Gate 7's proving run scores the first verified PR against the
    reggiesbbq taxonomy before any client work rides on the lane.
+
+## 9. Implementation notes (2026-09-14, first build)
+
+Deviations from §2–3, all deliberate:
+
+- **One image for every implement step** (the pinned Playwright/noble image:
+  node 22, git, corepack, browsers). Tekton cannot loop across steps, and the
+  rework cycle needs builder → gates → verifier → builder in one script; the
+  per-step image split died to that constraint. Steps are `setup` and
+  `build-verify`.
+- **Gates are CI-parity, not build**: `lint` + `type-check` +
+  `test -- --passWithNoTests`, judged **relative to a baseline** captured from
+  the unmodified tree (a fix run on an already-red app still lands; a run may
+  never turn a green gate red, nor reduce the test-file count). `pnpm build`
+  happens in the verify phase as the boot attempt — the template's own CI
+  never builds either (build env is deploy-time), so a failed build is a
+  verifier finding, not a hard gate.
+- **npm read token is a hard prerequisite for harness mode**: the
+  `@corey-alan-consulting` packages are private on npmjs, so `pnpm install`
+  needs auth. Operator worklist: create a granular read-only token, store in
+  BWS (Build Platform project), add ExternalSecret `scaffolder-npm-read`
+  (key `token`), bind the `npm` workspace in
+  `platform-infra/.tekton/implement-spec-incoming.yaml`. Until then harness
+  runs fail at setup with that exact message; `verify: "false"` (legacy) and
+  `dry-run` need none of it.
+- **Verifier tamper detection**: the verifier has no edit permissions, and the
+  harness hashes the tree (plumbing `write-tree` on a temp index) before and
+  after — a changed hash voids the verification with a blocker finding.
+- **Verdict travels as `.implement/result.json`** (schema-checked, symlink-
+  guarded in publish, same discipline as SUMMARY.md); publish renders the
+  Verification section from it and adds `--draft` on any non-pass.
