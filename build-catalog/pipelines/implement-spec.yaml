@@ -328,11 +328,25 @@ spec:
                 echo "continuation: working on ${AGENT_BRANCH}"
 
                 # Pre-load the PR's review comments + failing checks for the
-                # builder. Separate least-privilege token; read-only.
-                PR_TOKEN="$(mint_repo_token "$GH_ORG" "$APP_NAME" '{"contents":"read","pull_requests":"read","checks":"read"}')"
+                # builder. Separate least-privilege token; read-only. Request
+                # ONLY permissions the Scaffolder App holds — a scoped token
+                # request naming a permission the installation lacks (e.g.
+                # checks:read; gate-7 P3 found this) is a GitHub 422, not a
+                # narrower token; check-runs ride the same PR-scoped token
+                # and degrade to an empty section if they 403. Degrade-open
+                # throughout: a broken context pre-load must not kill a
+                # continuation that can still act on wake_reason — warn
+                # loudly and let the builder proceed.
+                PR_TOKEN="$(mint_repo_token "$GH_ORG" "$APP_NAME" '{"contents":"read","pull_requests":"read"}' || true)"
+                [ -n "$PR_TOKEN" ] || echo "::warning:: continuation context mint failed — builder gets wake_reason only, no PR context"
                 curl -q -sf -H "Authorization: Bearer $PR_TOKEN" -H "Accept: application/vnd.github+json" \
                   "$gh_api/repos/$GH_ORG/$APP_NAME/pulls?head=$GH_ORG:$AGENT_BRANCH&state=open" > /tmp/prs.json || printf '[]' > /tmp/prs.json
-                PR_NUM="$(python3 -c 'import sys,json;prs=json.load(open("/tmp/prs.json"));print(prs[0]["number"] if prs else "")')"
+                PR_NUM="$(python3 -c 'import json
+              try:
+                  prs = json.load(open("/tmp/prs.json"))
+                  print(prs[0]["number"] if prs else "")
+              except Exception:
+                  print("")')"
                 if [ -n "$PR_NUM" ]; then
                   HEAD_SHA="$(python3 -c 'import json;print(json.load(open("/tmp/prs.json"))[0]["head"]["sha"])')"
                   curl -q -sf -H "Authorization: Bearer $PR_TOKEN" -H "Accept: application/vnd.github+json" \
