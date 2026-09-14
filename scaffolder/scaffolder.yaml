@@ -64,6 +64,7 @@ spec:
         - instructions
         - spec_path
         - dry_run
+        - design_scope
         # heal-rule lane (shares `name`, `base_branch`, `instructions`):
         - task_id
         # both lanes: Port action run id for the finally status callback
