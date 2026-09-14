@@ -626,12 +626,15 @@ spec:
               sources:
                 - serviceAccountToken:
                     path: token
-                    # 3600, not longer: the Anthropic federation rule caps the
-                    # identity-token lifetime and rejects (401 "federation rule
-                    # matches your identity token") a 2h token. kubelet refreshes
-                    # this projected token in place, so each agent call across a
-                    # long run still reads a valid one.
-                    expirationSeconds: 3600
+                    # 600 (the k8s minimum), NOT 3600: Anthropic's WIF exchange
+                    # requires a freshly-ISSUED identity token, and claude-code
+                    # re-exchanges throughout a session. kubelet refreshes a
+                    # projected token at ~80% of its TTL, so 3600 kept the same
+                    # token on disk for ~48min — a long agent session (a 42-turn
+                    # builder ran 15min) then re-exchanged a stale token and
+                    # 401'd. At 600, kubelet re-issues every ~8min, keeping the
+                    # token fresh enough for every re-exchange across a long run.
+                    expirationSeconds: 600
                     audience: https://api.anthropic.com
         sidecars:
           # Ephemeral per-run database, alive for every step. Trust auth is
