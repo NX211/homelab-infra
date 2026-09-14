@@ -759,6 +759,11 @@ spec:
               printf '{"lint":"%s","typeCheck":"%s","tests":"%s","testFiles":%s}\n' \
                 "$LINT" "$TYPES" "$TESTS" "$TF" > "${WS}/.implement/baseline.json"
               echo "baseline: $(cat "${WS}/.implement/baseline.json")"
+              # An all-red baseline makes the gates pass vacuously — surface the
+              # reason so an environment problem is diagnosable, not silent.
+              [ "$LINT" = fail ]  && { echo "  baseline lint failed:";       tail -n 8 /tmp/base-lint.log  | sed 's/^/    /'; }
+              [ "$TYPES" = fail ] && { echo "  baseline type-check failed:"; tail -n 8 /tmp/base-types.log | sed 's/^/    /'; }
+              [ "$TESTS" = fail ] && { echo "  baseline tests failed:";      tail -n 8 /tmp/base-test.log  | sed 's/^/    /'; }
 
               # claude-code shares the same workspace prefix (set above).
               npm install -g @anthropic-ai/claude-code >/dev/null 2>&1
@@ -966,16 +971,15 @@ spec:
               # host-shaped; deny the token mount and outbound fetch tools.
               # Unquoted heredoc ONLY to expand ${IMP} — the body is ours, no
               # parameter reaches it.
+              # Deny-list only: the invocation uses --permission-mode
+              # bypassPermissions (headless has no TTY, so an allow-LIST silently
+              # auto-DENIES every unlisted tool — that is what made the first
+              # builder do nothing at $0). Deny rules still win over bypass, so
+              # the dangerous tools stay blocked; the credential-free, egress-
+              # restricted pod is the real containment (see the task header).
               cat > "${IMP}/builder-settings.json" <<BSET
               {
                 "permissions": {
-                  "allow": [
-                    "Bash(pnpm install:*)", "Bash(pnpm add:*)", "Bash(pnpm remove:*)",
-                    "Bash(pnpm run:*)", "Bash(pnpm build:*)", "Bash(pnpm lint:*)",
-                    "Bash(pnpm test:*)", "Bash(pnpm type-check:*)", "Bash(pnpm db:*)",
-                    "Bash(pnpm exec:*)", "Bash(pnpm --filter:*)", "Bash(pnpm -r:*)",
-                    "Bash(node:*)", "Bash(npx prisma:*)", "Bash(pnpm prisma:*)"
-                  ],
                   "deny": [
                     "Bash(git push:*)", "Bash(gh:*)", "Bash(curl:*)", "Bash(wget:*)",
                     "Read(//var/run/anthropic/**)",
@@ -990,18 +994,18 @@ spec:
               }
               BSET
 
+              # Verifier also runs bypassPermissions (headless), but DENIES all
+              # mutation tools so it stays read-only; the pre/post tree hash is
+              # the backstop. curl is allowed (it needs localhost) but egress is
+              # already denied at the network layer for its checks.
               cat > "${IMP}/verifier-settings.json" <<VSET
               {
                 "permissions": {
-                  "allow": [
-                    "Bash(node:*)",
-                    "Bash(curl http://127.0.0.1:*)", "Bash(curl -s http://127.0.0.1:*)",
-                    "Bash(pnpm test:*)", "Bash(pnpm run:*)", "Bash(pnpm exec:*)"
-                  ],
                   "deny": [
-                    "Bash(git push:*)", "Bash(gh:*)", "Bash(wget:*)",
+                    "Edit", "Write", "NotebookEdit",
+                    "Bash(git push:*)", "Bash(git commit:*)", "Bash(gh:*)", "Bash(wget:*)",
                     "Read(//var/run/anthropic/**)",
-                    "WebFetch", "WebSearch", "Edit", "Write", "NotebookEdit"
+                    "WebFetch", "WebSearch"
                   ]
                 }
               }
@@ -1145,9 +1149,10 @@ spec:
               be unmet. Do not pad findings — an empty list with a real "checked"
               inventory is a valid pass.
               VPROMPT
-              )" --permission-mode default --settings "${IMP}/verifier-settings.json" \
+              )" --permission-mode bypassPermissions --settings "${IMP}/verifier-settings.json" \
                   --add-dir "${WS}" --max-turns 80 --output-format json \
                   > "${IMP}/verifier-out-$1.json" 2>/tmp/verifier-err.log || true
+                agent_diag "verifier-$1" "${IMP}/verifier-out-$1.json" /tmp/verifier-err.log
                 stop_app
                 local post_hash; post_hash="$(tree_hash)"
                 VERIFY_VERDICT="$(python3 - "${WS}" "$pre_hash" "$post_hash" <<'VPY'
@@ -1203,6 +1208,29 @@ spec:
               except Exception:
                   print(0)
               CPY
+              }
+
+              # Surface an agent run's outcome to the pipeline log — is_error,
+              # turn count, result/subtype, and any stderr. Without this a
+              # zero-turn failure (headless permission deny, auth, crashed CLI)
+              # is invisible: stdout is the json file, stderr a /tmp file that
+              # dies with the pod.
+              agent_diag() { # $1 label  $2 out.json  $3 err.log
+                python3 - "$1" "$2" <<'DPY' || true
+              import json, sys
+              label, path = sys.argv[1], sys.argv[2]
+              try:
+                  r = json.load(open(path))
+                  print(f"  [{label}] is_error={r.get('is_error')} subtype={r.get('subtype')} "
+                        f"turns={r.get('num_turns')} cost=${r.get('total_cost_usd',0)} "
+                        f"api_error={r.get('api_error_status')}")
+                  res = r.get("result")
+                  if r.get("is_error") and res:
+                      print(f"  [{label}] result: {str(res)[:500]}")
+              except Exception as e:
+                  print(f"  [{label}] no/invalid output json ({e}) — agent produced nothing")
+              DPY
+                if [ -s "$3" ]; then echo "  [$1] stderr tail:"; tail -n 8 "$3" | sed 's/^/    /'; fi
               }
 
               # --- cycle 1: builder -> gates -> verifier ---------------------
@@ -1297,9 +1325,10 @@ spec:
               DEVIATIONS, NEW ENV VARS, TODO (cross-repo), IGNORED INJECTION.
               Keep the diff focused; do not reformat files you did not change.
               BPROMPT
-              )" --permission-mode acceptEdits --settings "${IMP}/builder-settings.json" \
+              )" --permission-mode bypassPermissions --settings "${IMP}/builder-settings.json" \
                  --add-dir "${WS}" --max-turns 200 --output-format json \
                  > "${IMP}/builder-out-1.json" 2>/tmp/builder-err.log || true
+              agent_diag "builder-1" "${IMP}/builder-out-1.json" /tmp/builder-err.log
 
               run_gates
               run_verifier 1
@@ -1322,9 +1351,10 @@ spec:
               delete or gut tests. Update ../SUMMARY.md: append a "REWORK" section
               listing each finding and what you changed for it.
               RPROMPT
-              )" --permission-mode acceptEdits --settings "${IMP}/builder-settings.json" \
+              )" --permission-mode bypassPermissions --settings "${IMP}/builder-settings.json" \
                  --add-dir "${WS}" --max-turns 120 --output-format json \
                  > "${IMP}/builder-out-2.json" 2>>/tmp/builder-err.log || true
+                agent_diag "builder-2" "${IMP}/builder-out-2.json" /tmp/builder-err.log
                 run_gates
                 run_verifier 2
                 CYCLES=2
