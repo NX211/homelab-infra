@@ -228,6 +228,28 @@ spec:
                 echo "spec: app/$SPEC_PATH not present — demo-only run"
               fi
 
+              # --- v2 parking markers: refuse to burn tokens on an unresolved
+              # spec (framework standards/spec-format.md). HTML comments and
+              # inline code spans are stripped first — the skeleton's commented
+              # examples and the standard's own backticked mentions must not
+              # park anything. Never parks demo-only runs (no spec, no markers).
+              if [ "$HAVE_SPEC" = "true" ]; then
+                MARKERS="$(python3 - "app/$SPEC_PATH" <<'MKPY'
+              import re, sys
+              raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+              text = re.sub(r"<!--.*?-->", "", raw, flags=re.S)
+              text = re.sub(r"`[^`\n]*`", "", text)
+              for m in re.findall(r"\[NEEDS (?:CLARIFICATION|FACT):[^\]]*\]", text):
+                  print(" ".join(m.split())[:200])
+              MKPY
+              )"
+                if [ -n "$MARKERS" ]; then
+                  echo "::error:: spec has unresolved markers — resolve them, then re-run:"
+                  printf '%s\n' "$MARKERS"
+                  exit 1
+                fi
+              fi
+
               # --- resolve the demo slug --------------------------------------
               # The Port action's demo_slug input is an ENTITY picker on the
               # brand_kit blueprint, so what arrives is the entity IDENTIFIER.
@@ -945,14 +967,19 @@ spec:
 
               GATES_VERDICT=fail
               run_gates() {
-                local lint=pass types=pass tests=pass
+                local lint=pass types=pass tests=pass spec=skip
                 pnpm lint       > /tmp/g-lint.log  2>&1 || lint=fail
                 pnpm type-check > /tmp/g-types.log 2>&1 || types=fail
                 pnpm test -- --passWithNoTests > /tmp/g-test.log 2>&1 || tests=fail
+                # REQ-to-test traceability (spec-format v2; self-skips legacy).
+                if [ -f scripts/check-spec-traceability.mjs ]; then
+                  spec=pass
+                  node scripts/check-spec-traceability.mjs > /tmp/g-spec.log 2>&1 || spec=fail
+                fi
                 local tf; tf="$(git ls-files '*.test.*' '*.spec.*' | wc -l | tr -d ' ')"
-                GATES_VERDICT="$(python3 - "$lint" "$types" "$tests" "$tf" "${WS}" <<'GPY'
+                GATES_VERDICT="$(python3 - "$lint" "$types" "$tests" "$tf" "$spec" "${WS}" <<'GPY'
               import json, sys
-              lint, types, tests, tf, ws = sys.argv[1:6]
+              lint, types, tests, tf, spec, ws = sys.argv[1:7]
               base = json.load(open(f"{ws}/.implement/baseline.json"))
               ok = True
               # No worse than baseline: a gate may fail only if it already
@@ -963,7 +990,12 @@ spec:
               # Deleting tests is the classic dodge — file count may not drop.
               if int(tf) < int(base.get("testFiles", 0)):
                   ok = False
+              # Traceability is absolute, not baseline-relative: the agent owns
+              # writing REQ-referencing tests for whatever it implements.
+              if spec == "fail":
+                  ok = False
               json.dump({"lint": lint, "typeCheck": types, "tests": tests,
+                         "specTraceability": spec,
                          "testFiles": int(tf), "verdict": "pass" if ok else "fail"},
                         open(f"{ws}/.implement/gates.json", "w"))
               print("pass" if ok else "fail")
@@ -1041,11 +1073,20 @@ spec:
                     "claim": "<what is broken or unmet, one sentence>",
                     "evidence": "<command output, HTTP status, or screenshot filename — REQUIRED>" }
                 ],
+                "requirements": [
+                  { "id": "REQ-NNN", "met": true | false,
+                    "evidence": "<how you know — REQUIRED>" }
+                ],
                 "checked": ["<short labels of what you exercised>"]
               }
+              If the spec declares `spec-format: v2`, judge EVERY active id under
+              its "## Requirements" section, one entry each, evidence per entry —
+              that array is the conformance verdict, and any unmet requirement is
+              also a finding. For legacy specs omit "requirements".
               Rules: findings without evidence are discarded. "pass" requires the
-              primary flow to work when the app is live. Do not pad findings —
-              an empty list with a real "checked" inventory is a valid pass.
+              primary flow to work when the app is live AND no v2 requirement to
+              be unmet. Do not pad findings — an empty list with a real "checked"
+              inventory is a valid pass.
               VPROMPT
               )" --permission-mode default --settings "${IMP}/verifier-settings.json" \
                   --add-dir "${WS}" --max-turns 80 --output-format json \
@@ -1067,6 +1108,20 @@ spec:
                       out["verdict"] = raw.get("verdict") if raw.get("verdict") in ("pass", "fail") else "fail"
                       out["findings"] = fs
                       out["checked"] = [str(c) for c in raw.get("checked", [])][:40]
+                      # Per-requirement conformance (spec-format v2): evidence
+                      # is mandatory per entry; any unmet requirement is a
+                      # finding and fails the verdict regardless of what the
+                      # verifier concluded overall.
+                      reqs = [r for r in raw.get("requirements", [])
+                              if isinstance(r, dict) and str(r.get("evidence", "")).strip()
+                              and isinstance(r.get("id"), str)]
+                      out["requirements"] = reqs[:100]
+                      for r in reqs:
+                          if r.get("met") is not True:
+                              out["verdict"] = "fail"
+                              out["findings"].append({"severity": "major",
+                                  "claim": f"requirement {r['id']} unmet",
+                                  "evidence": str(r.get("evidence", ""))[:300]})
                   except Exception as e:
                       out["findings"].append({"severity": "blocker", "claim": f"verify.json unreadable: {e}", "evidence": "harness check"})
               else:
@@ -1154,6 +1209,11 @@ spec:
               ALSO:
                 - Every behavior the spec promises needs a test you have RUN. Write
                   tests first for the core flows, then make them pass.
+                - If the spec declares `spec-format: v2`, its requirements carry
+                  REQ-NNN ids: every requirement you implement gets a test that
+                  REFERENCES its id (in the test name or a comment), and a gate
+                  fails the run when an active id has no referencing test. Do
+                  not renumber or invent ids.
                 - NEVER invent business facts (prices, hours, origin stories,
                   processes, addresses). If the spec does not state a fact the page
                   needs, write the literal token [NEEDS FACT: <what>] in the copy
@@ -1411,6 +1471,11 @@ spec:
                   lines.append(f"| {label} | {icon.get(g.get(k), g.get(k, '?'))} |")
               lines.append(f"| test files | {g.get('testFiles','?')} (baseline {r.get('baseline',{}).get('testFiles','?')}) |")
               lines.append(f"| app boot | {'healthy' if b.get('bootOk') else 'did not boot'} |")
+              lines.append(f"| spec traceability | {g.get('specTraceability','skip')} |")
+              reqs = v.get("requirements", [])
+              if reqs:
+                  met = sum(1 for r in reqs if r.get("met") is True)
+                  lines.append(f"| requirements met | {met}/{len(reqs)} |")
               lines.append("")
               checked = v.get("checked", [])
               if checked:
