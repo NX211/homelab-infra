@@ -37,49 +37,49 @@ metadata:
   name: implement-spec
 spec:
   params:
-    - { name: name,        type: string }                                   # repo + app name (kebab)
-    - { name: github-org,  type: string, default: "Corey-Alan-Consulting" }
-    - { name: base-branch, type: string, default: "main" }
+    - {name: name, type: string} # repo + app name (kebab)
+    - {name: github-org, type: string, default: "Corey-Alan-Consulting"}
+    - {name: base-branch, type: string, default: "main"}
     # Showcase slug of the approved demo. Empty = spec-only run (no design source).
-    - { name: demo-slug,   type: string, default: "" }
+    - {name: demo-slug, type: string, default: ""}
     # In-repo spec. Absent is allowed when demo-slug is set — the demo is then
     # the whole specification.
-    - { name: spec-path,   type: string, default: "docs/SPEC.md" }
+    - {name: spec-path, type: string, default: "docs/SPEC.md"}
     # Free-text steer for this run, e.g. "only the pricing page".
-    - { name: instructions, type: string, default: "" }
-    - { name: app-base-url, type: string, default: "https://coreyalan.com" }
-    - { name: port-run-id, type: string, default: "" }  # Port action run id (finally callback)
+    - {name: instructions, type: string, default: ""}
+    - {name: app-base-url, type: string, default: "https://coreyalan.com"}
+    - {name: port-run-id, type: string, default: ""} # Port action run id (finally callback)
     # "true" = stop after render: fetch + resolve + screenshot, but never run the
     # agent or open a PR. The cheap way to exercise the lane's plumbing (Port ->
     # PaC -> gVisor render -> Port callback) without an API-billed agent run.
-    - { name: dry-run, type: string, default: "false" }
+    - {name: dry-run, type: string, default: "false"}
     # "true" = the gate-2 verification harness (real dev env + sidecar DB, Stop
     # hook, fresh-context verifier, one rework cycle, draft-PR-on-failure —
     # docs/design/implement-verification-harness.md). "false" = the legacy
     # blind single-shot agent, kept as the escape hatch.
-    - { name: verify, type: string, default: "true" }
+    - {name: verify, type: string, default: "true"}
     - name: toolchain-image
       type: string
       # node + npm + git + curl + openssl + python3. gh + claude installed at run
       # time. Digest-pinned (22-bookworm, resolved 2026-09-13) like the rest of
       # the build platform — bump deliberately, never by tag drift.
-      default: docker.io/library/node:22-bookworm@sha256:8a34c4ab3ea2c5cd194f07e317b2a8f09461d3c8b05c4e34c8ccd56d56024c4d
+      default: ghcr.io/nx211/harness-runtime:0.1.0@sha256:29de7318e42a4cb31df8e742175a08704a7ec41d9effca3d77f943fca11f13fb
     - name: render-image
       type: string
       # Chromium + deps, for screenshotting JS-rendered demos. Digest-pinned
       # (v1.49.0-noble, resolved 2026-09-13) — that is the pull-check the design
       # doc's prerequisite 7 asks for. Mirror into ghcr.io/nx211/* only if the
       # business-plane registry allowlist ever covers this namespace.
-      default: mcr.microsoft.com/playwright:v1.49.0-noble@sha256:0fc07c73230cb7c376a528d7ffc83c4bdcdcd3fc7efbe54a2eed72b1ec118377
+      default: ghcr.io/nx211/harness-runtime:0.1.0@sha256:29de7318e42a4cb31df8e742175a08704a7ec41d9effca3d77f943fca11f13fb
     # Viewport for the screenshots. 1280 is the width most demos are designed at.
-    - { name: render-width,  type: string, default: "1280" }
-    - { name: render-height, type: string, default: "900" }
+    - {name: render-width, type: string, default: "1280"}
+    - {name: render-height, type: string, default: "900"}
   workspaces:
-    - name: source        # scratch: app clone, demo payload, agent summary
-    - name: github-app    # Scaffolder app: app-id + app-private-key (fetch + publish only)
+    - name: source # scratch: app clone, demo payload, agent summary
+    - name: github-app # Scaffolder app: app-id + app-private-key (fetch + publish only)
     - name: scaffold-read # key `token`: bearer for coreyalan.com /api/scaffold/* (fetch only)
-    - name: anthropic     # WIF identifiers for keyless Claude (implement only)
-    - name: port          # client-id + client-secret (finally status callback); OPTIONAL
+    - name: anthropic # WIF identifiers for keyless Claude (implement only)
+    - name: port # client-id + client-secret (finally status callback); OPTIONAL
       optional: true
     # key `token`: READ-ONLY npm registry token for the private
     # @corey-alan-consulting scope (implement setup only — pnpm install needs
@@ -96,19 +96,19 @@ spec:
     # ── fetch: clone the app + download the approved demo ────────────────────
     - name: fetch
       workspaces:
-        - { name: source, workspace: source }
-        - { name: github-app, workspace: github-app }
-        - { name: scaffold-read, workspace: scaffold-read }
+        - {name: source, workspace: source}
+        - {name: github-app, workspace: github-app}
+        - {name: scaffold-read, workspace: scaffold-read}
         # Read-only Port creds, ONLY to resolve a brand_kit entity id into its
         # source_slug (see the demo section). Optional so a direct PaC POST
         # without the secret still works with a raw showcase slug.
-        - { name: port, workspace: port }
+        - {name: port, workspace: port}
       taskSpec:
         workspaces:
-          - { name: source }
-          - { name: github-app }
-          - { name: scaffold-read }
-          - { name: port, optional: true }
+          - {name: source}
+          - {name: github-app}
+          - {name: scaffold-read}
+          - {name: port, optional: true}
         # Pipeline params propagate into this inline taskSpec (no explicit
         # declaration/passing needed — declaring them would disable propagation).
         steps:
@@ -120,18 +120,18 @@ spec:
               # $HOME/.gitconfig; the agent can write anywhere on the shared PVC
               # (it is told to write ../SUMMARY.md), so a workspace HOME lets it
               # plant config that runs in a pod holding the GitHub App key.
-              - { name: HOME, value: /tmp/home }
+              - {name: HOME, value: /tmp/home}
               # Params arrive from a Port form through a webhook. Tekton substitutes
               # $(params.x) as RAW TEXT into the script body before bash parses it,
               # so a value containing a quote breaks out and executes. Binding them
               # here puts the value in the pod spec, where bash never re-parses it.
               # NEVER reference $(params.*) inside a script: body.
-              - { name: APP_NAME,     value: $(params.name) }
-              - { name: GH_ORG,       value: $(params.github-org) }
-              - { name: BASE_BRANCH,  value: $(params.base-branch) }
-              - { name: DEMO_SLUG,    value: $(params.demo-slug) }
-              - { name: SPEC_PATH,    value: $(params.spec-path) }
-              - { name: APP_BASE_URL, value: $(params.app-base-url) }
+              - {name: APP_NAME, value: $(params.name)}
+              - {name: GH_ORG, value: $(params.github-org)}
+              - {name: BASE_BRANCH, value: $(params.base-branch)}
+              - {name: DEMO_SLUG, value: $(params.demo-slug)}
+              - {name: SPEC_PATH, value: $(params.spec-path)}
+              - {name: APP_BASE_URL, value: $(params.app-base-url)}
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -423,7 +423,6 @@ spec:
               fi
 
               echo "fetch done."
-
     # ── render: screenshot the demo. SANDBOXED, no network, no credentials. ──
     #
     # Why this exists: the source endpoint returns HTML + CSS, so a demo whose
@@ -446,10 +445,10 @@ spec:
     - name: render
       runAfter: [fetch]
       workspaces:
-        - { name: source, workspace: source }
+        - {name: source, workspace: source}
       taskSpec:
         workspaces:
-          - { name: source }
+          - {name: source}
         steps:
           - name: render
             image: $(params.render-image)
@@ -572,11 +571,10 @@ spec:
               # NOT the workspace: HOME must not resolve to the shared PVC, so a
               # credential a sibling task leaves there is never read implicitly
               # by git/npm/etc running in this pod.
-              - { name: HOME, value: /tmp/home }
-              - { name: WS,   value: $(workspaces.source.path) }
-              - { name: W,    value: $(params.render-width) }
-              - { name: H,    value: $(params.render-height) }
-
+              - {name: HOME, value: /tmp/home}
+              - {name: WS, value: $(workspaces.source.path)}
+              - {name: W, value: $(params.render-width)}
+              - {name: H, value: $(params.render-height)}
     # ── implement: the agent + verification harness. ─────────────────────────
     # Gate 2 (docs/design/implement-verification-harness.md): the agent gets a
     # REAL dev environment — deps installed, migrated sidecar Postgres, Bash
@@ -608,14 +606,14 @@ spec:
           values: ["true"]
       timeout: "90m"
       workspaces:
-        - { name: source, workspace: source }
-        - { name: anthropic, workspace: anthropic }
-        - { name: npm, workspace: npm }
+        - {name: source, workspace: source}
+        - {name: anthropic, workspace: anthropic}
+        - {name: npm, workspace: npm}
       taskSpec:
         workspaces:
-          - { name: source }
-          - { name: anthropic }
-          - { name: npm, optional: true }
+          - {name: source}
+          - {name: anthropic}
+          - {name: npm, optional: true}
         # Keyless Claude (WIF) identity is MINTED PER AGENT SESSION via the
         # TokenRequest API (see mint_identity_token in build-verify), not a
         # projected-token volume: a projected token is refreshed by kubelet on
@@ -642,9 +640,9 @@ spec:
               seccompProfile:
                 type: RuntimeDefault
             env:
-              - { name: POSTGRES_HOST_AUTH_METHOD, value: trust }
-              - { name: POSTGRES_DB, value: app }
-              - { name: PGDATA, value: /tmp/pgdata }
+              - {name: POSTGRES_HOST_AUTH_METHOD, value: trust}
+              - {name: POSTGRES_DB, value: app}
+              - {name: PGDATA, value: /tmp/pgdata}
             readinessProbe:
               exec:
                 command: ["pg_isready", "-U", "postgres"]
@@ -659,9 +657,9 @@ spec:
               # NOT the workspace: HOME must not resolve to the shared PVC, so
               # nothing this step writes there (the npm token in ~/.npmrc!) is
               # readable by the agent later.
-              - { name: HOME, value: /tmp/home }
-              - { name: CI, value: "1" }
-              - { name: VERIFY, value: $(params.verify) }
+              - {name: HOME, value: /tmp/home}
+              - {name: CI, value: "1"}
+              - {name: VERIFY, value: $(params.verify)}
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -780,7 +778,6 @@ spec:
                   || echo "::warning:: could not vendor playwright — the verifier will be browserless"
               fi
               echo "setup done."
-
           # ── build-verify: builder agent -> gates -> verifier (+1 rework) ──
           - name: build-verify
             image: $(params.render-image)
@@ -789,18 +786,18 @@ spec:
               # NOT the workspace: HOME must not resolve to the shared PVC, so a
               # credential a sibling task leaves there is never read implicitly
               # by git/npm/etc running in this pod.
-              - { name: HOME, value: /tmp/home }
-              - { name: CI, value: "1" }
+              - {name: HOME, value: /tmp/home}
+              - {name: CI, value: "1"}
               # Params arrive from a Port form through a webhook. Tekton substitutes
               # $(params.x) as RAW TEXT into the script body before bash parses it,
               # so a value containing a quote breaks out and executes. Binding them
               # here puts the value in the pod spec, where bash never re-parses it.
               # NEVER reference $(params.*) inside a script: body.
-              - { name: APP_NAME,     value: $(params.name) }
-              - { name: SPEC_PATH,    value: $(params.spec-path) }
-              - { name: INSTRUCTIONS, value: $(params.instructions) }
-              - { name: VERIFY,       value: $(params.verify) }
-              - { name: PLAYWRIGHT_BROWSERS_PATH, value: /ms-playwright }
+              - {name: APP_NAME, value: $(params.name)}
+              - {name: SPEC_PATH, value: $(params.spec-path)}
+              - {name: INSTRUCTIONS, value: $(params.instructions)}
+              - {name: VERIFY, value: $(params.verify)}
+              - {name: PLAYWRIGHT_BROWSERS_PATH, value: /ms-playwright}
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -1423,7 +1420,6 @@ spec:
               print("result:", result["verdict"], "cost $" + str(result["costUsd"]))
               RPY
               echo "implement done (harness)."
-
     # ── publish: commit + PR. No agent. ──────────────────────────────────────
     # Skipped-on-dry-run like implement (a task that merely runAfter's a skipped
     # task still runs — the guard must be repeated here or a dry run would clone,
@@ -1435,12 +1431,12 @@ spec:
           operator: notin
           values: ["true"]
       workspaces:
-        - { name: source, workspace: source }
-        - { name: github-app, workspace: github-app }
+        - {name: source, workspace: source}
+        - {name: github-app, workspace: github-app}
       taskSpec:
         workspaces:
-          - { name: source }
-          - { name: github-app }
+          - {name: source}
+          - {name: github-app}
         results:
           - name: pr-url
             description: URL of the opened PR, or empty when the agent changed nothing.
@@ -1453,17 +1449,17 @@ spec:
               # $HOME/.gitconfig; the agent can write anywhere on the shared PVC
               # (it is told to write ../SUMMARY.md), so a workspace HOME lets it
               # plant config that runs in a pod holding the GitHub App key.
-              - { name: HOME, value: /tmp/home }
+              - {name: HOME, value: /tmp/home}
               # Params arrive from a Port form through a webhook. Tekton substitutes
               # $(params.x) as RAW TEXT into the script body before bash parses it,
               # so a value containing a quote breaks out and executes. Binding them
               # here puts the value in the pod spec, where bash never re-parses it.
               # NEVER reference $(params.*) inside a script: body.
-              - { name: APP_NAME,    value: $(params.name) }
-              - { name: GH_ORG,      value: $(params.github-org) }
-              - { name: BASE_BRANCH, value: $(params.base-branch) }
-              - { name: DEMO_SLUG,   value: $(params.demo-slug) }
-              - { name: SPEC_PATH,   value: $(params.spec-path) }
+              - {name: APP_NAME, value: $(params.name)}
+              - {name: GH_ORG, value: $(params.github-org)}
+              - {name: BASE_BRANCH, value: $(params.base-branch)}
+              - {name: DEMO_SLUG, value: $(params.demo-slug)}
+              - {name: SPEC_PATH, value: $(params.spec-path)}
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -1648,7 +1644,6 @@ spec:
                 --body-file "${WS}/pr-body.md")"
               echo "opened: ${PR_URL}"
               printf '%s' "${PR_URL}" > "$(results.pr-url.path)"
-
   finally:
     # Report the pipeline outcome back to Port so the action run leaves
     # IN_PROGRESS (the /incoming webhook is fire-and-forget; without this,
@@ -1660,18 +1655,18 @@ spec:
           operator: notin
           values: [""]
       params:
-        - { name: run-id,  value: "$(params.port-run-id)" }
-        - { name: outcome, value: "$(tasks.status)" }
-        - { name: image,   value: "$(params.toolchain-image)" }
+        - {name: run-id, value: "$(params.port-run-id)"}
+        - {name: outcome, value: "$(tasks.status)"}
+        - {name: image, value: "$(params.toolchain-image)"}
       workspaces:
-        - { name: port, workspace: port }
+        - {name: port, workspace: port}
       taskSpec:
         params:
-          - { name: run-id, type: string }
-          - { name: outcome, type: string }
-          - { name: image, type: string }
+          - {name: run-id, type: string}
+          - {name: outcome, type: string}
+          - {name: image, type: string}
         workspaces:
-          - { name: port, optional: true }
+          - {name: port, optional: true}
         steps:
           - name: patch
             image: $(params.image)
