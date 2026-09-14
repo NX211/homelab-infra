@@ -60,16 +60,17 @@ spec:
     - {name: verify, type: string, default: "true"}
     - name: toolchain-image
       type: string
-      # node + npm + git + curl + openssl + python3. gh + claude installed at run
-      # time. Digest-pinned (22-bookworm, resolved 2026-09-13) like the rest of
-      # the build platform — bump deliberately, never by tag drift.
+      # node 24 + npm + git + curl + openssl + python3. gh + claude installed at
+      # run time. Digest-pinned (harness-runtime, auto-pinned by
+      # build-harness-runtime.yml) like the rest of the build platform — bump
+      # deliberately, never by tag drift.
       default: ghcr.io/nx211/harness-runtime:0.1.0@sha256:29de7318e42a4cb31df8e742175a08704a7ec41d9effca3d77f943fca11f13fb
     - name: render-image
       type: string
-      # Chromium + deps, for screenshotting JS-rendered demos. Digest-pinned
-      # (v1.49.0-noble, resolved 2026-09-13) — that is the pull-check the design
-      # doc's prerequisite 7 asks for. Mirror into ghcr.io/nx211/* only if the
-      # business-plane registry allowlist ever covers this namespace.
+      # Chromium (playwright 1.55.0 browser build) + node 24, for rendering
+      # JS-built demos. Same harness-runtime image as toolchain-image,
+      # auto-pinned by build-harness-runtime.yml — that is the pull-check the
+      # design doc's prerequisite 7 asks for.
       default: ghcr.io/nx211/harness-runtime:0.1.0@sha256:29de7318e42a4cb31df8e742175a08704a7ec41d9effca3d77f943fca11f13fb
     # Viewport for the screenshots. 1280 is the width most demos are designed at.
     - {name: render-width, type: string, default: "1280"}
@@ -417,22 +418,35 @@ spec:
                   mkdir -p render-deps && ( cd render-deps \
                     && npm init -y >/dev/null 2>&1 \
                     && npm install --no-audit --no-fund --save-exact playwright@1.55.0 >/dev/null 2>&1 \
-                    && echo "vendored playwright 1.49.0 for render" ) \
+                    && echo "vendored playwright 1.55.0 for render" ) \
                     || echo "::warning:: could not vendor playwright — render will produce no screenshots"
                 fi
               fi
 
               echo "fetch done."
-    # ── render: screenshot the demo. SANDBOXED, no network, no credentials. ──
+    # ── render: screenshot + distill the demo. SANDBOXED, no network, no ─────
+    # credentials.
     #
     # Why this exists: the source endpoint returns HTML + CSS, so a demo whose
     # layout is built by JavaScript arrives as an empty shell. `fetch` records
     # that in MANIFEST.json (`staticRender.staticRenderable: false`); this task
-    # produces the design signal that a shell cannot carry — a picture of it.
+    # produces the design signals that a shell cannot carry:
+    #   * demo/screens/*.png      — a picture of each page
+    #   * demo/tokens.json        — DTCG-draft design tokens from computed styles
+    #   * demo/theme.css          — a Tailwind v4 @theme starting point
+    #   * demo/style-map.json     — role-mapped computed values (fidelity gate)
+    #   * demo/tree/*.json        — sparse box/a11y tree per page
+    # The distiller reads getComputedStyle off the LIVE DOM (post-JS), so it
+    # covers demos static CSS parsing cannot. It is inline on purpose: this pod
+    # can never install packages, and the repo's precedent is inline-or-vendor,
+    # never fork (Oklab distance is ~20 lines; no token library needed).
     #
-    # A screenshot is also INERT. It is a lower prompt-injection surface than the
+    # A screenshot is INERT. It is a lower prompt-injection surface than the
     # HTML text already passed to the agent, which is why screenshots were chosen
-    # over serializing the post-render DOM.
+    # over serializing the post-render DOM. The distilled artifacts DO carry
+    # demo-derived strings (font names, headings in the tree) — they inherit the
+    # payload's `untrusted: true` and consumers treat them as data, never
+    # instructions.
     #
     # Containment (ADR-0017's untrusted-tier posture, applied in-namespace):
     #   * runtimeClassName gvisor          — hostile JS runs on a userspace kernel
@@ -495,76 +509,382 @@ spec:
               export NODE_PATH="${WS}/render-deps/node_modules"
               export PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-              node -e '
-                const { chromium } = require("playwright");
-                const fs = require("fs"), path = require("path");
-                const ws = process.env.WS;
-                const manifest = JSON.parse(fs.readFileSync(path.join(ws, "demo/MANIFEST.json"), "utf8"));
-                const filesDir = path.join(ws, "demo/files");
-                const outDir = path.join(ws, "demo/screens");
+              cat > /tmp/render.js <<'RENDER_JS'
+              // Screenshots + design distillation for each demo page. Written to /tmp by
+              // the task script; runs against the vendored playwright module (NODE_PATH).
+              // A page that will not render or distill is a DEGRADED run, never a failed
+              // one — every failure path lands in the manifest, loudly, and exits 0.
+              const { chromium } = require("playwright");
+              const fs = require("fs"), path = require("path");
+              const ws = process.env.WS;
+              const manifest = JSON.parse(fs.readFileSync(path.join(ws, "demo/MANIFEST.json"), "utf8"));
+              const filesDir = path.join(ws, "demo/files");
+              const outDir = path.join(ws, "demo/screens");
+              const treeDir = path.join(ws, "demo/tree");
+              fs.mkdirSync(treeDir, { recursive: true });
 
-                // Entry page first, then any other HTML the manifest lists.
-                const pages = [manifest.entryFile, ...(manifest.files || [])
-                  .filter(f => f.kind === "html").map(f => f.path)]
-                  .filter((p, i, all) => p && all.indexOf(p) === i)
-                  .slice(0, 12);
+              // Entry page first, then any other HTML the manifest lists.
+              const pages = [manifest.entryFile, ...(manifest.files || [])
+                .filter(f => f.kind === "html").map(f => f.path)]
+                .filter((p, i, all) => p && all.indexOf(p) === i)
+                .slice(0, 12);
 
-                // Re-check containment here rather than trusting the manifest.
-                // This task turns a path into a file:// URL that headless Chromium
-                // loads and screenshots, and the screenshot is handed to the agent
-                // as a design reference — so an escape reads out any file the pod
-                // can see. Deliberately independent of the check in the fetch task.
-                const filesRoot = path.resolve(filesDir);
-                const inside = rel => {
-                  const abs = path.resolve(filesRoot, rel);
-                  return abs === filesRoot || abs.startsWith(filesRoot + path.sep);
-                };
+              // Re-check containment here rather than trusting the manifest. This task
+              // turns a path into a file:// URL that headless Chromium loads, and the
+              // output is handed to the agent as a design reference — so an escape reads
+              // out any file the pod can see. Deliberately independent of the fetch check.
+              const filesRoot = path.resolve(filesDir);
+              const inside = rel => {
+                const abs = path.resolve(filesRoot, rel);
+                return abs === filesRoot || abs.startsWith(filesRoot + path.sep);
+              };
 
-                (async () => {
-                  // --no-sandbox: Chromium'"'"'s own namespace sandbox does not work under
-                  // gVisor, and gVisor IS the sandbox here. Do not add network.
-                  const browser = await chromium.launch({
-                    args: ["--no-sandbox", "--disable-dev-shm-usage"],
-                  });
-                  const ctx = await browser.newContext({
-                    viewport: { width: Number(process.env.W), height: Number(process.env.H) },
-                    javaScriptEnabled: true,
-                  });
-                  // Belt and braces: the NetworkPolicy already denies egress, but
-                  // abort any non-file request so a hung external fetch cannot
-                  // stall the run waiting for a timeout.
-                  await ctx.route("**/*", route =>
-                    route.request().url().startsWith("file://") ? route.continue() : route.abort());
+              // ── color math: sRGB → Oklab. "Lab space" for clustering and the fidelity
+              // gate = Oklab: perceptually uniform and ~20 lines, so no token library —
+              // this pod can never install packages, and the repo precedent is
+              // inline-or-vendor, never fork.
+              function oklab(r, g, b) {
+                const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+                const lr = lin(r), lg = lin(g), lb = lin(b);
+                const l = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+                const m = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+                const s = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
+                return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+                        1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+                        0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+              }
+              const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+              const parseRgb = s => {
+                const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(s || "");
+                if (!m) return null;
+                if (m[4] !== undefined && Number(m[4]) < 0.05) return null;
+                return [m[1], m[2], m[3]].map(v => Math.round(Number(v)));
+              };
+              const toHex = rgb => "#" + rgb.map(v => v.toString(16).padStart(2, "0")).join("");
 
-                  const rendered = [], failed = [];
-                  for (const rel of pages) {
-                    if (!inside(rel)) { failed.push({ page: rel, reason: "path escape" }); continue; }
-                    const src = path.resolve(filesRoot, rel);
-                    if (!fs.existsSync(src)) { failed.push({ page: rel, reason: "file missing" }); continue; }
-                    const out = rel.replace(/[\/]/g, "_").replace(/\.html?$/i, "") + ".png";
-                    const page = await ctx.newPage();
-                    try {
-                      await page.goto("file://" + src, { waitUntil: "load", timeout: 20000 });
-                      // JS demos paint after load; give the frame a beat to settle.
-                      await page.waitForTimeout(1500);
-                      await page.screenshot({ path: path.join(outDir, out), fullPage: true });
-                      rendered.push({ page: rel, screenshot: "screens/" + out });
-                    } catch (err) {
-                      failed.push({ page: rel, reason: String(err && err.message || err).slice(0, 200) });
-                    } finally {
-                      await page.close().catch(() => {});
-                    }
+              // Runs INSIDE the page (page.evaluate) — self-contained, returns plain JSON.
+              // Tallies computed styles across visible elements and builds a sparse
+              // box/a11y tree. The fidelity checker in the implement task samples the app
+              // the same way; keep the two in sync.
+              const samplePage = () => {
+                const vw = window.innerWidth, vh = window.innerHeight;
+                const tally = (map, key, w) => { if (key) map.set(key, (map.get(key) || 0) + w); };
+                const colors = new Map(), fonts = new Map(), sizes = new Map(),
+                      radii = new Map(), shadows = new Map(), spacing = new Map();
+                const clean = f => (f || "").split(",")[0].trim().replace(/^["']|["']$/g, "");
+                const pageBg = getComputedStyle(document.body).backgroundColor;
+                const els = Array.from(document.querySelectorAll("body, body *")).slice(0, 3000);
+                for (const el of els) {
+                  const cs = getComputedStyle(el);
+                  if (cs.display === "none" || cs.visibility === "hidden") continue;
+                  const r = el.getBoundingClientRect();
+                  if (r.width < 2 || r.height < 2) continue;
+                  const area = Math.min(r.width * r.height, vw * vh);
+                  const text = Array.from(el.childNodes)
+                    .filter(n => n.nodeType === 3).map(n => n.textContent).join("").trim();
+                  if (text) {
+                    tally(colors, cs.color + "|fg", text.length);
+                    tally(fonts, clean(cs.fontFamily), text.length);
+                    tally(sizes, String(Math.round(parseFloat(cs.fontSize))), 1);
                   }
-                  await browser.close().catch(() => {});
+                  if (cs.backgroundColor !== "rgba(0, 0, 0, 0)") tally(colors, cs.backgroundColor + "|bg", area);
+                  if (parseFloat(cs.borderTopWidth) > 0) tally(colors, cs.borderTopColor + "|border", 1);
+                  const rad = Math.round(parseFloat(cs.borderTopLeftRadius) || 0);
+                  if (rad > 0 && rad <= 100) tally(radii, String(rad), 1);
+                  if (cs.boxShadow && cs.boxShadow !== "none") tally(shadows, cs.boxShadow.slice(0, 120), 1);
+                  for (const v of [cs.paddingTop, cs.paddingBottom, cs.marginTop, cs.marginBottom]) {
+                    const px = Math.round(parseFloat(v) || 0);
+                    if (px >= 4 && px <= 200) tally(spacing, String(px), 1);
+                  }
+                }
+                const pick = el => {
+                  if (!el) return null;
+                  const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+                  return { tag: el.tagName.toLowerCase(), fontFamily: clean(cs.fontFamily),
+                    fontSizePx: Math.round(parseFloat(cs.fontSize)), fontWeight: cs.fontWeight,
+                    color: cs.color, background: cs.backgroundColor,
+                    radiusPx: Math.round(parseFloat(cs.borderTopLeftRadius) || 0),
+                    box: [r.x, r.y, r.width, r.height].map(Math.round) };
+                };
+                const samples = {};
+                for (const sel of ["h1", "h2", "h3", "p"]) samples[sel] = pick(document.querySelector(sel));
+                // Primary action: the largest button/link whose background differs from the page.
+                let action = null, best = 0;
+                for (const el of document.querySelectorAll("a, button, [role=button], input[type=submit]")) {
+                  const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+                  if (r.width < 40 || r.height < 16 || r.width * r.height <= best) continue;
+                  if (cs.backgroundColor === "rgba(0, 0, 0, 0)" || cs.backgroundColor === pageBg) continue;
+                  action = el; best = r.width * r.height;
+                }
+                samples.action = pick(action);
+                // Sparse box/a11y tree: structural elements only, depth- and count-capped.
+                let count = 0;
+                const IMPLICIT = { nav: "navigation", header: "banner", footer: "contentinfo",
+                  main: "main", aside: "complementary", form: "form", button: "button",
+                  a: "link", img: "img", h1: "heading", h2: "heading", h3: "heading", h4: "heading" };
+                const walk = (el, depth) => {
+                  if (count >= 250 || depth > 6) return null;
+                  const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+                  if (cs.display === "none" || r.width < 8 || r.height < 8) return null;
+                  const tag = el.tagName.toLowerCase();
+                  const role = el.getAttribute("role") || IMPLICIT[tag] || null;
+                  const structural = role || r.width * r.height >= vw * vh * 0.003;
+                  const children = [];
+                  for (const c of el.children) {
+                    const k = walk(c, depth + 1);
+                    if (k) children.push(k);
+                    if (children.length >= 12) break;
+                  }
+                  if (!structural && children.length === 0) return null;
+                  count++;
+                  const node = { tag, box: [r.x, r.y, r.width, r.height].map(Math.round) };
+                  if (role) node.role = role;
+                  const name = (el.getAttribute("aria-label") || el.getAttribute("alt") ||
+                    (/^(h[1-4]|a|button)$/.test(tag) ? (el.textContent || "").trim() : "")).slice(0, 60);
+                  if (name) node.name = name;
+                  const style = {};
+                  if (cs.backgroundColor !== "rgba(0, 0, 0, 0)") style.bg = cs.backgroundColor;
+                  if (children.length === 0) {
+                    style.color = cs.color;
+                    style.fontSizePx = Math.round(parseFloat(cs.fontSize));
+                  }
+                  if (Object.keys(style).length) node.style = style;
+                  if (children.length) node.children = children;
+                  return node;
+                };
+                const m2a = m => Array.from(m, pair => ({ k: pair[0], w: pair[1] }));
+                return { pageBackground: pageBg, colors: m2a(colors), fonts: m2a(fonts),
+                  sizes: m2a(sizes), radii: m2a(radii), shadows: m2a(shadows),
+                  spacing: m2a(spacing), samples, tree: walk(document.body, 0) };
+              };
 
-                  manifest.screenshots = rendered;
-                  manifest.screenshotsFailed = failed;
-                  fs.writeFileSync(path.join(ws, "demo/MANIFEST.json"), JSON.stringify(manifest, null, 2));
-                  console.log(`  rendered ${rendered.length}/${pages.length} page(s)`);
-                  // Report failures loudly; a partial render must not read as complete.
-                  for (const f of failed) console.log(`  RENDER FAILED ${f.page}: ${f.reason}`);
-                })().catch(err => { console.log("render aborted: " + err); process.exit(0); });
-              ' || echo "renderer exited non-zero — continuing without screenshots"
+              // ── aggregation: merge per-page samples into tokens.json + theme.css +
+              // style-map.json. Best-effort by contract — the caller catches everything.
+              function distill(pagesArr) {
+                const colorsW = new Map(), fontsW = new Map(), sizesW = new Map(),
+                      radiiW = new Map(), shadowsW = new Map(), spacingW = new Map();
+                const merge = (map, arr, mul) => { for (const e of arr) map.set(e.k, (map.get(e.k) || 0) + e.w * mul); };
+                for (const d of pagesArr) {
+                  // Entry page dominates: weight it 3x so subpage chrome cannot outvote it.
+                  const mul = d.page === manifest.entryFile ? 3 : 1;
+                  merge(colorsW, d.sample.colors, mul); merge(fontsW, d.sample.fonts, mul);
+                  merge(sizesW, d.sample.sizes, mul); merge(radiiW, d.sample.radii, mul);
+                  merge(shadowsW, d.sample.shadows, mul); merge(spacingW, d.sample.spacing, mul);
+                }
+
+                // Cluster colors perceptually (0.02 Oklab ≈ just-noticeable difference).
+                const clusters = [];
+                const entries = Array.from(colorsW, pair => {
+                  const i = pair[0].lastIndexOf("|");
+                  return { rgb: parseRgb(pair[0].slice(0, i)), kind: pair[0].slice(i + 1), w: pair[1] };
+                }).filter(e => e.rgb).sort((a, b) => b.w - a.w);
+                for (const e of entries) {
+                  const lab = oklab(e.rgb[0], e.rgb[1], e.rgb[2]);
+                  let c = clusters.find(x => dist(x.lab, lab) < 0.02);
+                  if (!c) { c = { rgb: e.rgb, lab, w: 0, kinds: {} }; clusters.push(c); }
+                  c.w += e.w; c.kinds[e.kind] = (c.kinds[e.kind] || 0) + e.w;
+                }
+                clusters.sort((a, b) => b.w - a.w);
+                for (const c of clusters) {
+                  c.hex = toHex(c.rgb);
+                  c.chroma = Math.hypot(c.lab[1], c.lab[2]);
+                  c.L = c.lab[0];
+                }
+
+                // Semantic role guesses, named to line up with the app template's @theme.
+                const entry = pagesArr.find(d => d.page === manifest.entryFile) || pagesArr[0];
+                const near = rgbStr => {
+                  const rgb = parseRgb(rgbStr); if (!rgb) return null;
+                  const lab = oklab(rgb[0], rgb[1], rgb[2]);
+                  let bestC = null, bestD = 0.1;
+                  for (const c of clusters) { const d = dist(c.lab, lab); if (d < bestD) { bestD = d; bestC = c; } }
+                  return bestC;
+                };
+                const roles = {};
+                const taken = c => Object.values(roles).indexOf(c) !== -1;
+                const take = (name, c) => { if (c && !taken(c)) roles[name] = c; };
+                take("background", near(entry.sample.pageBackground) || clusters.find(c => c.kinds.bg));
+                const bg = roles.background;
+                take("foreground", clusters.find(c => c.kinds.fg && bg && Math.abs(c.L - bg.L) > 0.3) ||
+                  clusters.find(c => c.kinds.fg));
+                const act = entry.sample.samples.action;
+                take("primary", (act && near(act.background)) || clusters.find(c => c.chroma >= 0.05 && c !== bg));
+                const pri = roles.primary;
+                take("primary-foreground", act && near(act.color));
+                take("accent", clusters.find(c => c.chroma >= 0.05 && c !== bg && (!pri || dist(c.lab, pri.lab) > 0.1)));
+                take("card", clusters.find(c => c.kinds.bg && bg && c !== bg && c.chroma < 0.05 &&
+                  dist(c.lab, bg.lab) > 0.02 && dist(c.lab, bg.lab) < 0.25));
+                take("border", clusters.find(c => c.kinds.border && c.chroma < 0.06));
+                take("muted", clusters.find(c => c.kinds.bg && c.chroma < 0.05 && !taken(c)));
+                for (const name of Object.keys(roles)) roles[name].role = name;
+
+                const fontsRanked = Array.from(fontsW, pair => ({ family: pair[0], w: pair[1] }))
+                  .filter(f => f.family).sort((a, b) => b.w - a.w);
+                const bodyFont = fontsRanked.length ? fontsRanked[0].family : null;
+                let displayFont = null;
+                for (const d of pagesArr) {
+                  const h = d.sample.samples.h1 || d.sample.samples.h2;
+                  if (h && h.fontFamily) { displayFont = h.fontFamily; break; }
+                }
+                displayFont = displayFont || bodyFont;
+
+                const rank = m => Array.from(m, pair => ({ v: Number(pair[0]), w: pair[1] }))
+                  .sort((a, b) => b.w - a.w);
+                const typeScale = rank(sizesW).slice(0, 12).map(e => e.v).sort((a, b) => b - a);
+                const radiiRanked = rank(radiiW).slice(0, 6).map(e => e.v).sort((a, b) => a - b);
+                const spacingScale = rank(spacingW).slice(0, 12).map(e => e.v).sort((a, b) => a - b);
+                const topShadows = Array.from(shadowsW, pair => ({ shadow: pair[0], w: pair[1] }))
+                  .sort((a, b) => b.w - a.w).slice(0, 3);
+
+                // tokens.json — DTCG third-editors'-draft shapes (object-form color with a
+                // hex fallback, px dimensions). The draft is still moving; hex is the
+                // stable field consumers should prefer.
+                const comp = v => Math.round((v / 255) * 10000) / 10000;
+                const tokens = { color: {}, fontFamily: {}, dimension: {}, shadow: {} };
+                clusters.slice(0, 24).forEach((c, i) => {
+                  tokens.color[c.role || "palette-" + (i + 1)] = {
+                    "$type": "color",
+                    "$value": { colorSpace: "srgb", components: c.rgb.map(comp), alpha: 1, hex: c.hex },
+                    "$extensions": { "com.corey-alan.distill": { weight: Math.round(c.w), kinds: c.kinds } },
+                  };
+                });
+                if (bodyFont) tokens.fontFamily.body = { "$type": "fontFamily", "$value": [bodyFont] };
+                if (displayFont) tokens.fontFamily.display = { "$type": "fontFamily", "$value": [displayFont] };
+                typeScale.forEach((px, i) => {
+                  tokens.dimension["font-size-" + (i + 1)] = { "$type": "dimension", "$value": { value: px, unit: "px" } };
+                });
+                radiiRanked.forEach((px, i) => {
+                  tokens.dimension["radius-" + (i + 1)] = { "$type": "dimension", "$value": { value: px, unit: "px" } };
+                });
+                topShadows.forEach((s, i) => {
+                  tokens.shadow["shadow-" + (i + 1)] = { "$type": "shadow", "$value": s.shadow,
+                    "$extensions": { "com.corey-alan.distill": { authoredAs: "css" } } };
+                });
+                fs.writeFileSync(path.join(ws, "demo/tokens.json"), JSON.stringify(tokens, null, 2));
+
+                // theme.css — a Tailwind v4 @theme starting point in the app's token names.
+                const hexOf = (role, fb) => (roles[role] && roles[role].hex) || fb || null;
+                const lines = [];
+                lines.push("/* Distilled from demo '" + (manifest.slug || "") + "' by the render task.");
+                lines.push("   A STARTING POINT, not a drop-in: keep the app's semantic token NAMES in");
+                lines.push("   apps/web/src/app/globals.css and replace the VALUES from here. Fonts are");
+                lines.push("   family names only — wire real faces via next/font in layout.tsx. */");
+                lines.push("@theme {");
+                for (const role of ["background", "foreground", "primary", "accent", "card", "border", "muted"]) {
+                  const h = hexOf(role);
+                  if (h) lines.push("  --color-" + role + ": " + h + ";");
+                }
+                const priFg = hexOf("primary-foreground", pri && pri.L < 0.65 ? "#ffffff" : "#111111");
+                if (pri) lines.push("  --color-primary-foreground: " + priFg + ";");
+                if (bodyFont) lines.push("  --font-sans: '" + bodyFont + "', ui-sans-serif, system-ui, sans-serif;");
+                if (displayFont && displayFont !== bodyFont) {
+                  lines.push("  --font-display: '" + displayFont + "', ui-sans-serif, system-ui, sans-serif;");
+                }
+                if (radiiRanked.length) {
+                  lines.push("  --radius-sm: " + radiiRanked[0] + "px;");
+                  lines.push("  --radius-md: " + radiiRanked[Math.floor(radiiRanked.length / 2)] + "px;");
+                  lines.push("  --radius-lg: " + radiiRanked[radiiRanked.length - 1] + "px;");
+                }
+                lines.push("}");
+                lines.push("");
+                lines.push("/* Full distilled palette (weight-ranked):");
+                for (const c of clusters.slice(0, 24)) {
+                  lines.push("   " + c.hex + "  " + Object.keys(c.kinds).join("+") +
+                    "  weight " + Math.round(c.w) + (c.role ? "  (" + c.role + ")" : ""));
+                }
+                lines.push("   Type scale px: " + typeScale.join(", "));
+                lines.push("   Spacing px: " + spacingScale.join(", "));
+                for (const s of topShadows) lines.push("   shadow: " + s.shadow);
+                lines.push("*/");
+                fs.writeFileSync(path.join(ws, "demo/theme.css"), lines.join("\n") + "\n");
+
+                // style-map.json — the fidelity gate's expected values, content-independent.
+                const styleMap = {
+                  generator: "implement-spec render distiller v1",
+                  viewport: { width: Number(process.env.W), height: Number(process.env.H) },
+                  palette: clusters.slice(0, 24).map(c => ({
+                    hex: c.hex, weight: Math.round(c.w), kinds: c.kinds,
+                    chroma: Math.round(c.chroma * 1000) / 1000, L: Math.round(c.L * 1000) / 1000,
+                    role: c.role || null,
+                  })),
+                  fontFamilies: { body: bodyFont, display: displayFont,
+                    ranked: fontsRanked.slice(0, 8).map(f => f.family) },
+                  typeScalePx: typeScale, radiiPx: radiiRanked, spacingPx: spacingScale,
+                  shadows: topShadows.map(s => s.shadow),
+                  pages: pagesArr.map(d => ({ page: d.page, background: d.sample.pageBackground, samples: d.sample.samples })),
+                };
+                fs.writeFileSync(path.join(ws, "demo/style-map.json"), JSON.stringify(styleMap, null, 2));
+              }
+
+              (async () => {
+                // --no-sandbox: Chromium's own namespace sandbox does not work under
+                // gVisor, and gVisor IS the sandbox here. Do not add network.
+                const browser = await chromium.launch({
+                  args: ["--no-sandbox", "--disable-dev-shm-usage"],
+                });
+                const ctx = await browser.newContext({
+                  viewport: { width: Number(process.env.W), height: Number(process.env.H) },
+                  javaScriptEnabled: true,
+                });
+                // Belt and braces: the NetworkPolicy already denies egress, but
+                // abort any non-file request so a hung external fetch cannot
+                // stall the run waiting for a timeout.
+                await ctx.route("**/*", route =>
+                  route.request().url().startsWith("file://") ? route.continue() : route.abort());
+
+                const rendered = [], failed = [], distilled = [], distillFailed = [];
+                for (const rel of pages) {
+                  if (!inside(rel)) { failed.push({ page: rel, reason: "path escape" }); continue; }
+                  const src = path.resolve(filesRoot, rel);
+                  if (!fs.existsSync(src)) { failed.push({ page: rel, reason: "file missing" }); continue; }
+                  const flat = rel.replace(/[\/]/g, "_").replace(/\.html?$/i, "");
+                  const page = await ctx.newPage();
+                  try {
+                    await page.goto("file://" + src, { waitUntil: "load", timeout: 20000 });
+                    // JS demos paint after load; give the frame a beat to settle.
+                    await page.waitForTimeout(1500);
+                    await page.screenshot({ path: path.join(outDir, flat + ".png"), fullPage: true });
+                    rendered.push({ page: rel, screenshot: "screens/" + flat + ".png" });
+                    // Distill AFTER the screenshot: a sampling failure never costs the picture.
+                    try {
+                      const s = await page.evaluate(samplePage);
+                      fs.writeFileSync(path.join(treeDir, flat + ".json"),
+                        JSON.stringify({ page: rel, background: s.pageBackground, tree: s.tree }, null, 1));
+                      distilled.push({ page: rel, sample: s, tree: "tree/" + flat + ".json" });
+                    } catch (err) {
+                      distillFailed.push({ page: rel, reason: String(err && err.message || err).slice(0, 200) });
+                    }
+                  } catch (err) {
+                    failed.push({ page: rel, reason: String(err && err.message || err).slice(0, 200) });
+                  } finally {
+                    await page.close().catch(() => {});
+                  }
+                }
+                await browser.close().catch(() => {});
+
+                manifest.screenshots = rendered;
+                manifest.screenshotsFailed = failed;
+                try {
+                  if (distilled.length) {
+                    distill(distilled);
+                    manifest.tokens = "tokens.json";
+                    manifest.themeCss = "theme.css";
+                    manifest.styleMap = "style-map.json";
+                    manifest.trees = distilled.map(d => ({ page: d.page, tree: d.tree }));
+                  }
+                } catch (err) {
+                  distillFailed.push({ page: "*", reason: String(err && err.message || err).slice(0, 200) });
+                }
+                if (distillFailed.length) manifest.distillFailed = distillFailed;
+                fs.writeFileSync(path.join(ws, "demo/MANIFEST.json"), JSON.stringify(manifest, null, 2));
+                console.log("  rendered " + rendered.length + "/" + pages.length +
+                  " page(s), distilled " + distilled.length);
+                // Report failures loudly; a partial render must not read as complete.
+                for (const f of failed) console.log("  RENDER FAILED " + f.page + ": " + f.reason);
+                for (const f of distillFailed) console.log("  DISTILL FAILED " + f.page + ": " + f.reason);
+              })().catch(err => { console.log("render aborted: " + err); process.exit(0); });
+              RENDER_JS
+              node /tmp/render.js || echo "renderer exited non-zero — continuing without screenshots"
 
               echo "render done."
             env:
