@@ -1081,25 +1081,25 @@ spec:
               BOOT_OK=false
               boot_app() {
                 BOOT_OK=false
-                if ! pnpm build > /tmp/boot-build.log 2>&1; then
-                  echo "build failed — verifier runs without a live app (tail):"
-                  tail -n 15 /tmp/boot-build.log
-                  return 0
-                fi
-                # Monorepo (app-template shape) starts the web workspace by
-                # filter; a single-package app starts at the root. Detect rather
-                # than assume — the fleet has both shapes.
-                if [ -d apps/web ]; then
-                  ( pnpm --filter ./apps/web start > /tmp/boot-run.log 2>&1 & echo $! > /tmp/app.pid ) || true
-                else
-                  ( pnpm start > /tmp/boot-run.log 2>&1 & echo $! > /tmp/app.pid ) || true
-                fi
+                # Boot in DEV mode (next dev), not a production build+start.
+                # Two reasons: (1) `next start` runs NODE_ENV=production, which
+                # trips an app's prod-only env validation (Stripe/Shippo/etc.
+                # keys we deliberately do not hold) — dev mode is NODE_ENV
+                # development and skips that gate, so a real app actually boots
+                # for live verification; (2) no build step, so boot is faster.
+                # A single-package app runs at the root; the app-template
+                # monorepo runs the web workspace — cd into it so `next` is the
+                # local one. Turbopack off (--turbo can flake headless); dev
+                # compiles routes on first request, so allow a long warmup.
+                local webdir=.
+                [ -d apps/web ] && webdir=apps/web
+                ( cd "$webdir" && PORT=3000 pnpm exec next dev -p 3000 > /tmp/boot-run.log 2>&1 & echo $! > /tmp/app.pid ) || true
                 APP_PID="$(cat /tmp/app.pid 2>/dev/null || true)"
-                for i in $(seq 1 45); do
+                for i in $(seq 1 75); do
                   if curl -sf -o /dev/null "http://127.0.0.1:3000/api/health"; then BOOT_OK=true; break; fi
                   sleep 2
                 done
-                $BOOT_OK && echo "app booted (health OK)" || { echo "app did not become healthy (tail):"; tail -n 15 /tmp/boot-run.log; }
+                $BOOT_OK && echo "app booted in dev mode (health OK)" || { echo "app did not become healthy (tail):"; tail -n 20 /tmp/boot-run.log; }
               }
               stop_app() {
                 [ -n "${APP_PID}" ] && kill "${APP_PID}" >/dev/null 2>&1 || true
@@ -1167,6 +1167,14 @@ spec:
               primary flow to work when the app is live AND no v2 requirement to
               be unmet. Do not pad findings — an empty list with a real "checked"
               inventory is a valid pass.
+
+              CRITICAL: writing ../.implement/verify.json is your LAST and
+              MOST IMPORTANT action — the run is scored ONLY from that file, and
+              producing no file is itself a blocker finding against you. Write it
+              even if the app did not boot (verify statically from the code and
+              the spec) and even if you are running low on turns. Do not end your
+              turn until that file exists with a verdict and, for a v2 spec, one
+              requirements[] entry per active REQ id.
               VPROMPT
               )" --permission-mode acceptEdits --settings "${IMP}/verifier-settings.json" \
                   --add-dir "${WS}" --max-turns 80 --output-format json \
