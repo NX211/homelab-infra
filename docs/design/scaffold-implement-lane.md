@@ -85,12 +85,14 @@ This is why `spec_url` lives on `scaffold_app` (committing `docs/SPEC.md` into
 the scaffold PR) rather than only on this lane — the doc arrives *with* the
 scaffold request and is already in the repo when this lane runs.
 
-`scaffold-app.sh --spec-url <https-url>` fetches it in a new phase 1.6, between
-branding and onboard. Two guards: the URL must be https, and the GitHub token is
-sent **only** to github.com hosts, so a spec URL on any other host cannot be used
-to exfiltrate it. The Phase 2.5 plumbing agent is explicitly told the spec is
-inert and must not be implemented — building features in the onboarding lane
-would defeat the separation this whole design rests on.
+`scaffold-app.sh --spec-url <https-url>` fetches it in phase 2.7 — deliberately
+**after** the Phase 2.5 plumbing agent, not before it (the script's comments say
+"DO NOT move this call back above phase25_agent"): the spec is arbitrary bytes
+from a URL supplied on a web form, and fetching it after the agent means it can
+never steer a credentialed run. The fetch is **anonymous** (https only, no
+GitHub token sent anywhere), and phase3_pr stages the file so the bytes still
+reach the scaffold PR. Building features in the onboarding lane would defeat
+the separation this whole design rests on — that remains this lane's job.
 
 ## 4. The conflict rule
 
@@ -121,12 +123,12 @@ ADR-0021 is explicit: showcases are arbitrary client-uploaded HTML and JavaScrip
 served under a deliberately loose CSP. Feeding them to a code-writing agent is a
 prompt-injection surface. Two structural mitigations, plus one in the prompt:
 
-**Structural — the agent task holds no credentials.** The pipeline is three
+**Structural — the agent task holds no credentials.** The pipeline is four
 tasks, and Tekton gives each its own pod:
 
 | Task | Workspaces | Runs the agent? | Sandboxed? |
 |---|---|---|---|
-| `fetch` | source, github-app, scaffold-read | no | no |
+| `fetch` | source, github-app, scaffold-read, port (read, optional) | no | no |
 | `render` | source | no | **gVisor, no SA token, no egress** |
 | `implement` | source, anthropic (WIF *identifiers*, not credentials) | **yes** | no |
 | `publish` | source, github-app | no | no |
@@ -279,8 +281,14 @@ Neither the action nor the lane works until all of these land:
    (`tekton/runtimeclasses/gvisor.yaml`, handler `runsc`, installed by
    `node-bootstrap/gvisor/install-runsc.sh` — or, post-ADR-0022, the Talos system
    extension). Without it the render pod does not schedule and the run fails.
-7. Mirror or pull-check the `render-image` (Playwright/Chromium). It is the one
-   image here not already in use by the scaffolder lane.
+   The `fix-tekton-entrypoint-perms-untrusted` ClusterPolicy also carries a
+   scaffolder-scoped rule (keyed on `build.capturly/lane: scaffolder` + the pod's
+   `runtimeClassName: gvisor`) — without it the render container dies at start
+   with exit 126, because gVisor cannot exec Tekton's 0311 entrypoint.
+7. ~~Mirror or pull-check the `render-image`~~ — DONE 2026-09-13: both
+   `toolchain-image` and `render-image` defaults are digest-pinned in the
+   pipeline. Mirroring into ghcr.io stays optional (availability, not integrity)
+   unless the business-plane registry allowlist ever covers this namespace.
 8. `terraform apply` in `platform-infra/terraform/environments/prod` **last** —
    `port-implement-spec.tf` (new) and the `spec_url` input on
    `port-scaffold-app.tf`. Until the PipelineRuns exist, applying first leaves

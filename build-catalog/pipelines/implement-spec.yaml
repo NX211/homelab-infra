@@ -20,10 +20,11 @@
 # showcases:source scope) so a client app can actually resemble what the client
 # approved.
 #
-# PRIVILEGE SEPARATION — the reason this is three tasks and not one step:
-#   fetch      github-app + scaffold-read   clone + download.        no agent
-#   implement  source + anthropic WIF ids   runs claude.             NO credentials
-#   publish    github-app                   commit, push, open PR.   no agent
+# PRIVILEGE SEPARATION — the reason this is four tasks and not one step:
+#   fetch      github-app + scaffold-read + port   clone + download.  no agent
+#   render     source only                  screenshots the demo.     no agent, gVisor + no egress
+#   implement  source + anthropic WIF ids   runs claude.              NO credentials
+#   publish    github-app                   commit, push, open PR.    no agent
 # Tekton gives each Task its own pod, so the agent pod never mounts a GitHub App
 # private key or the scaffold read token. This matters because the demo bytes are
 # arbitrary client-uploaded HTML/JS (ADR-0021) — hostile input reaching a
@@ -48,16 +49,23 @@ spec:
     - { name: instructions, type: string, default: "" }
     - { name: app-base-url, type: string, default: "https://coreyalan.com" }
     - { name: port-run-id, type: string, default: "" }  # Port action run id (finally callback)
+    # "true" = stop after render: fetch + resolve + screenshot, but never run the
+    # agent or open a PR. The cheap way to exercise the lane's plumbing (Port ->
+    # PaC -> gVisor render -> Port callback) without an API-billed agent run.
+    - { name: dry-run, type: string, default: "false" }
     - name: toolchain-image
       type: string
-      # node + npm + git + curl + openssl + python3. gh + claude installed at run time.
-      default: docker.io/library/node:22-bookworm
+      # node + npm + git + curl + openssl + python3. gh + claude installed at run
+      # time. Digest-pinned (22-bookworm, resolved 2026-09-13) like the rest of
+      # the build platform — bump deliberately, never by tag drift.
+      default: docker.io/library/node:22-bookworm@sha256:8a34c4ab3ea2c5cd194f07e317b2a8f09461d3c8b05c4e34c8ccd56d56024c4d
     - name: render-image
       type: string
-      # Chromium + deps, for screenshotting JS-rendered demos. Mirror it into
-      # ghcr.io/nx211/* if the business-plane registry allowlist ever covers this
-      # namespace.
-      default: mcr.microsoft.com/playwright:v1.49.0-noble
+      # Chromium + deps, for screenshotting JS-rendered demos. Digest-pinned
+      # (v1.49.0-noble, resolved 2026-09-13) — that is the pull-check the design
+      # doc's prerequisite 7 asks for. Mirror into ghcr.io/nx211/* only if the
+      # business-plane registry allowlist ever covers this namespace.
+      default: mcr.microsoft.com/playwright:v1.49.0-noble@sha256:0fc07c73230cb7c376a528d7ffc83c4bdcdcd3fc7efbe54a2eed72b1ec118377
     # Viewport for the screenshots. 1280 is the width most demos are designed at.
     - { name: render-width,  type: string, default: "1280" }
     - { name: render-height, type: string, default: "900" }
@@ -79,11 +87,16 @@ spec:
         - { name: source, workspace: source }
         - { name: github-app, workspace: github-app }
         - { name: scaffold-read, workspace: scaffold-read }
+        # Read-only Port creds, ONLY to resolve a brand_kit entity id into its
+        # source_slug (see the demo section). Optional so a direct PaC POST
+        # without the secret still works with a raw showcase slug.
+        - { name: port, workspace: port }
       taskSpec:
         workspaces:
           - { name: source }
           - { name: github-app }
           - { name: scaffold-read }
+          - { name: port, optional: true }
         # Pipeline params propagate into this inline taskSpec (no explicit
         # declaration/passing needed — declaring them would disable propagation).
         steps:
@@ -157,6 +170,26 @@ spec:
 
               # fetch only clones — read-only.
               GH_TOKEN="$(mint_repo_token "$GH_ORG" "$APP_NAME" '{"contents":"read"}')"
+
+              # The framework repo (private) rides along READ-ONLY: the agent's
+              # conflict rule — "the TEMPLATE wins on CONTRACT: everything in the
+              # framework repo's platform/app-contract.md and standards/" — is
+              # unenforceable if the agent cannot read those documents, and the
+              # app's own CLAUDE.md points at ../framework. Separate least-
+              # privilege token (contents:read on `framework` only); the -c
+              # per-invocation insteadOf runs BEFORE the global config below is
+              # written, so neither token ever appears in any on-disk config the
+              # agent-readable clone carries.
+              rm -rf app demo framework
+              FW_TOKEN="$(mint_repo_token "$GH_ORG" framework '{"contents":"read"}')"
+              git -c credential.helper='' \
+                  -c url."https://x-access-token:${FW_TOKEN}@github.com/".insteadOf="https://github.com/" \
+                  clone --depth 1 "https://github.com/$GH_ORG/framework.git" framework \
+                || { echo "::error:: could not clone the framework repo — the contract rule depends on it"; exit 1; }
+              # Reference material, not a working tree: dropping .git removes the
+              # remote config and any git attack surface from the agent's view.
+              rm -rf framework/.git
+
               # Keep the credential OFF the shared workspace. HOME is the
               # workspace PVC, and `git config --global` would write the
               # installation token in plaintext to <workspace>/.gitconfig — which
@@ -171,20 +204,71 @@ spec:
               git config --global user.email "scaffolder@coreyalan.com"
               git config --global user.name  "app-scaffolder"
 
-              rm -rf app demo
               git clone --depth 1 --branch "$BASE_BRANCH" \
                 "https://github.com/$GH_ORG/$APP_NAME.git" app
 
               # --- the written spec (optional) --------------------------------
+              HAVE_SPEC=false
               if [ -f "app/$SPEC_PATH" ]; then
                 echo "spec: app/$SPEC_PATH ($(wc -c < "app/$SPEC_PATH") bytes)"
+                HAVE_SPEC=true
               else
                 echo "spec: app/$SPEC_PATH not present — demo-only run"
               fi
 
+              # --- resolve the demo slug --------------------------------------
+              # The Port action's demo_slug input is an ENTITY picker on the
+              # brand_kit blueprint, so what arrives is the entity IDENTIFIER.
+              # coreyalan.com mirrors kits with identifier == showcase slug, but
+              # manually-created kits (upsert_brand_kit) use the service name —
+              # the showcase slug lives in the kit's source_slug property. Resolve
+              # via the Port API when creds are mounted; a raw slug POSTed
+              # directly to PaC still works (entity 404 -> use it as-is).
+              SLUG="$DEMO_SLUG"
+              if [ -n "${SLUG}" ] && [ "$(workspaces.port.bound)" = "true" ] && [ -f "$(workspaces.port.path)/client-id" ]; then
+                PORT_TOKEN="$(python3 -c 'import json,sys;print(json.dumps({"clientId":open(sys.argv[1]).read().strip(),"clientSecret":open(sys.argv[2]).read().strip()}))' \
+                    "$(workspaces.port.path)/client-id" "$(workspaces.port.path)/client-secret" \
+                  | curl -q -sf -X POST https://api.port.io/v1/auth/access_token -H 'Content-Type: application/json' -d @- \
+                  | python3 -c 'import sys,json;print(json.load(sys.stdin)["accessToken"])')" \
+                  || { echo "::error:: Port auth failed — cannot resolve brand kit '${SLUG}'"; exit 1; }
+                KIT_JSON="$(curl -q -s -H "Authorization: Bearer ${PORT_TOKEN}" \
+                  "https://api.port.io/v1/blueprints/brand_kit/entities/${SLUG}")"
+                RESOLVED="$(printf '%s' "$KIT_JSON" | python3 -c '
+              import sys, json
+              try:
+                  body = json.load(sys.stdin)
+              except Exception:
+                  print("PORT_ERROR"); raise SystemExit
+              if not body.get("ok", True) and "entity" not in body:
+                  print("NOT_FOUND"); raise SystemExit
+              ent = body.get("entity") or {}
+              slug = (ent.get("properties") or {}).get("source_slug") or ""
+              print(slug if slug else "NO_SOURCE_SLUG")')"
+                case "$RESOLVED" in
+                  PORT_ERROR)
+                    echo "::error:: unreadable Port response resolving brand kit '${SLUG}'"; exit 1 ;;
+                  NOT_FOUND)
+                    echo "brand kit entity '${SLUG}' not found in Port — treating it as a raw showcase slug" ;;
+                  NO_SOURCE_SLUG)
+                    echo "::error:: brand kit '${SLUG}' has no source_slug — it is not backed by a showcase demo. Run spec-only, or set source_slug on the kit."
+                    exit 1 ;;
+                  *)
+                    ok '^[a-z0-9]+(-[a-z0-9]+)*$' "$RESOLVED" || { echo "::error:: brand kit '${SLUG}' source_slug is not a valid slug: ${RESOLVED}"; exit 1; }
+                    echo "brand kit '${SLUG}' -> showcase slug '${RESOLVED}'"
+                    SLUG="$RESOLVED" ;;
+                esac
+              fi
+
+              # A run needs SOMETHING to implement from. Both inputs are
+              # individually optional by design; silently proceeding with neither
+              # would hand the agent an empty brief and bill for a guessing game.
+              if [ "$HAVE_SPEC" = "false" ] && [ -z "${SLUG}" ]; then
+                echo "::error:: neither a spec (app/$SPEC_PATH) nor a demo slug — nothing to implement from"
+                exit 1
+              fi
+
               # --- the approved demo (optional) -------------------------------
               mkdir -p demo
-              SLUG="$DEMO_SLUG"
               if [ -z "${SLUG}" ]; then
                 echo "demo-slug empty — no design source for this run"
                 printf '{"present":false}\n' > demo/MANIFEST.json
@@ -426,6 +510,10 @@ spec:
     # ── implement: the agent. No credentials mounted. ────────────────────────
     - name: implement
       runAfter: [render]
+      when:
+        - input: "$(params.dry-run)"
+          operator: notin
+          values: ["true"]
       workspaces:
         - { name: source, workspace: source }
         - { name: anthropic, workspace: anthropic }
@@ -511,6 +599,8 @@ spec:
                 - ../demo/MANIFEST.json  the approved demo's index (present:false = none)
                 - ../demo/files/         the approved demo's HTML/CSS
                 - ../demo/screens/       SCREENSHOTS of the approved demo
+                - ../framework/          a READ-ONLY clone of the org framework repo —
+                                         the contract documents named below live here
 
               ==> WHICH DEMO SOURCE TO TRUST <==
               Check MANIFEST.json .staticRender.staticRenderable:
@@ -538,11 +628,12 @@ spec:
                 - The DEMO wins on LOOK: layout, sections, visual hierarchy, copy,
                   spacing, imagery placement. Restructure pages and components to
                   match it. Do not settle for the template's default layout.
-                - The TEMPLATE wins on CONTRACT: everything in the framework repo's
-                  platform/app-contract.md and standards/ — auth, the reusable deploy
-                  workflow, telemetry, secret and env wiring, image/build config,
-                  Helm/ArgoCD, naming. These are binding and Kyverno rejects
-                  violations at admission.
+                - The TEMPLATE wins on CONTRACT: everything in
+                  ../framework/platform/app-contract.md and ../framework/standards/
+                  — auth, the reusable deploy workflow, telemetry, secret and env
+                  wiring, image/build config, Helm/ArgoCD, naming. READ those
+                  documents before deciding a conflict; they are binding and
+                  Kyverno rejects violations at admission.
                 If matching the demo would require changing a contract item, DO NOT
                 change it. Implement the closest compliant approximation and record
                 it under "DEVIATIONS".
@@ -587,8 +678,15 @@ spec:
               echo "implement done."
 
     # ── publish: commit + PR. No agent. ──────────────────────────────────────
+    # Skipped-on-dry-run like implement (a task that merely runAfter's a skipped
+    # task still runs — the guard must be repeated here or a dry run would clone,
+    # mint a WRITE token, and "publish" nothing).
     - name: publish
       runAfter: [implement]
+      when:
+        - input: "$(params.dry-run)"
+          operator: notin
+          values: ["true"]
       workspaces:
         - { name: source, workspace: source }
         - { name: github-app, workspace: github-app }
