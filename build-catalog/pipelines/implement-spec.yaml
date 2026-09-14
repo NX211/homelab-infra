@@ -722,9 +722,29 @@ spec:
               if pnpm run 2>/dev/null | grep -qE '^\s*db:generate\b'; then HAS_DB=true; fi
               printf '{"hasDb":%s}\n' "$HAS_DB" > "${WS}/.implement/env.json"
               if [ "$HAS_DB" = "true" ]; then
-                pnpm db:generate || { echo "::error:: db:generate failed — environment bug, not app bug"; exit 1; }
-                pnpm db:deploy || pnpm db:push || { echo "::error:: could not apply the schema to the sidecar database"; exit 1; }
-                pnpm db:seed || echo "no seed (or seed failed) — verifier works against an empty database"
+                # turbo passes only its globalEnv allowlist to tasks, so an
+                # exported DATABASE_URL never reaches the prisma subprocess.
+                # Prisma reads a .env from the schema dir and the task cwd —
+                # write it in both places for every schema in the repo, plus
+                # the repo root for `next build`/`start`.
+                printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> .env
+                for sf in $(find . -name schema.prisma -not -path '*/node_modules/*'); do
+                  sd="$(dirname "$sf")"
+                  printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> "$sd/.env"
+                  printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> "$sd/../.env"
+                done
+                pnpm db:generate || echo "::warning:: db:generate failed — verifier may lack a typed client"
+                # A schema that will not apply degrades to no-DB verification —
+                # it must not abort the whole run (the app may still lint, type-
+                # check, and static-verify). Record the real state for the
+                # verifier's boot expectations.
+                if pnpm db:deploy || pnpm db:push; then
+                  pnpm db:seed || echo "no seed (or seed failed) — verifier works against an empty database"
+                else
+                  echo "::warning:: schema did not apply to the sidecar — verifier runs without a live database"
+                  HAS_DB=false
+                  printf '{"hasDb":false,"dbApplyFailed":true}\n' > "${WS}/.implement/env.json"
+                fi
               else
                 echo "no db:generate script — DB-less app, skipping database setup"
               fi
