@@ -1,0 +1,66 @@
+# Lets the scaffolder-runner SA mint a short-lived, anthropic-audience identity
+# token for ITSELF via the TokenRequest API. The implement-spec verification
+# harness mints a fresh WIF token before each agent session (build-verify's
+# mint_identity_token) instead of relying on a projected-token volume, whose
+# kubelet-driven ~8-min refresh races a long multi-session run and leaves a
+# later session (verifier/rework) presenting a token too old for Anthropic's
+# freshly-issued requirement (401). Scoped to creating a token for exactly this
+# one SA — the least grant that unblocks the mint.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: scaffolder-runner-token-minter
+  namespace: scaffolder
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts/token"]
+    verbs: ["create"]
+    resourceNames: ["scaffolder-runner"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scaffolder-runner-token-minter
+  namespace: scaffolder
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: scaffolder-runner-token-minter
+subjects:
+  - kind: ServiceAccount
+    name: scaffolder-runner
+    namespace: scaffolder
+---
+# Day-2 rerun identity + supersession (implement-spec + heal-rule fetch steps,
+# and both lanes' finally callback). The run PATCHes (app, lane, task) labels
+# onto ITSELF, LISTs sibling PipelineRuns by that label triple, and patches any
+# older in-flight sibling to CancelledRunFinally — annotating superseded-by
+# first, which the sibling's finally reads back (GET) to report "superseded by
+# <run>" to Port instead of a generic failure. patch cannot be resourceName-
+# scoped (run names are dynamic), so this grants patch on every PipelineRun in
+# the namespace — acceptable: this SA already executes every pipeline here, and
+# the supersession block degrades loudly to parallel runs if the grant is ever
+# narrowed.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: scaffolder-runner-run-supersede
+  namespace: scaffolder
+rules:
+  - apiGroups: ["tekton.dev"]
+    resources: ["pipelineruns"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scaffolder-runner-run-supersede
+  namespace: scaffolder
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: scaffolder-runner-run-supersede
+subjects:
+  - kind: ServiceAccount
+    name: scaffolder-runner
+    namespace: scaffolder

@@ -1,0 +1,96 @@
+name: Build harness-runtime
+
+# Node 24 + Chromium image for the implement-spec verification harness. Pushes to
+# GHCR and pins the digest into BOTH the toolchain-image and render-image defaults
+# of build-catalog/pipelines/implement-spec.yaml. Runs on image/workflow changes
+# or on demand.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/harness-runtime/**"
+      - ".github/workflows/build-harness-runtime.yml"
+
+concurrency:
+  group: build-harness-runtime
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/nx211/harness-runtime
+  VERSION: "0.1.0"
+  PIPELINE: build-catalog/pipelines/implement-spec.yaml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # keyless cosign signing (OIDC)
+    steps:
+      - name: Mint app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        id: push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: apps/harness-runtime
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Sign image (keyless)
+        env:
+          IMAGE_DIGEST: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$IMAGE_DIGEST"
+
+      - uses: mikefarah/yq@c14f446382944492701b16c1ddb48bb9dbe683e3 # v4
+
+      - name: Pin digest into the pipeline (toolchain + render image)
+        env:
+          REF: ${{ env.IMAGE }}:${{ env.VERSION }}@${{ steps.push.outputs.digest }}
+        run: |
+          yq -i '(.spec.params[] | select(.name == "toolchain-image") | .default) = strenv(REF)' "$PIPELINE"
+          yq -i '(.spec.params[] | select(.name == "render-image")    | .default) = strenv(REF)' "$PIPELINE"
+
+      - name: Commit pin-back
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- "$PIPELINE"; then
+            echo "No change; digest already pinned."
+            exit 0
+          fi
+          git add "$PIPELINE"
+          git commit -m "chore(harness-runtime): pin image ${{ steps.push.outputs.digest }}"
+          for attempt in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            echo "push rejected (attempt ${attempt}); rebasing onto origin/main"
+            git pull --rebase origin main
+          done
+          echo "::error::pin-back push failed after 5 attempts"; exit 1
