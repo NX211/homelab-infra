@@ -444,6 +444,9 @@ spec:
                   | python3 -c 'import sys,json;cmp=json.load(sys.stdin);print(",".join(sorted({c.get("commit",{}).get("author",{}).get("email","") for c in cmp.get("commits",[])} - {"scaffolder@coreyalan.com"})))' \
                   2>/dev/null || true)"
                 if [ -n "$HUMANS" ]; then
+                  # Marker for the finally callback: record status=parked (a
+                  # decision request), not a generic failure.
+                  printf 'human commits on %s' "$BRANCH" > "${WS}/parked"
                   echo "::error:: parked — human commits on ${BRANCH} (${HUMANS}); the lane never pushes over people. Take the PR forward manually or delete the branch to release it."
                   exit 1
                 fi
@@ -499,6 +502,9 @@ spec:
                   --body-file "${WS}/pr-body.md")"
                 echo "opened: ${PR_URL}"
               fi
+              # Provenance breadcrumb for the finally callback (agentRun): the
+              # PR number keys the relation onto the ocean-synced PR entity.
+              printf '{"pr_url":"%s","pr_number":%s}\n' "$PR_URL" "${PR_URL##*/}" > "${WS}/publish-meta.json"
               printf '%s' "${PR_URL}" > "$(results.pr-url.path)"
 
   finally:
@@ -515,15 +521,23 @@ spec:
         - { name: run-id,  value: "$(params.port-run-id)" }
         - { name: outcome, value: "$(tasks.status)" }
         - { name: image,   value: "$(params.toolchain-image)" }
+        - { name: app-name, value: "$(params.name)" }
+        - { name: task-id,  value: "$(params.task-id)" }
       workspaces:
         - { name: port, workspace: port }
+        # Read-only breadcrumbs for the agentRun provenance entity:
+        # publish-meta.json (PR) and the parked marker.
+        - { name: source, workspace: source }
       taskSpec:
         params:
           - { name: run-id, type: string }
           - { name: outcome, type: string }
           - { name: image, type: string }
+          - { name: app-name, type: string }
+          - { name: task-id, type: string }
         workspaces:
           - { name: port, optional: true }
+          - { name: source, optional: true }
         steps:
           - name: patch
             image: $(params.image)
@@ -562,3 +576,70 @@ spec:
                 -d "{\"status\":\"${STATUS}\",\"statusLabel\":\"${LABEL}\"}" >/dev/null \
                 || { echo "Port run PATCH failed (non-fatal)"; exit 0; }
               echo "Port run $(params.run-id) -> ${STATUS} (${LABEL})"
+
+              # --- agentRun provenance (gate 6, best-effort) -----------------
+              # Same contract as implement-spec's callback: one catalog entity
+              # per run, reusing TOKEN; every failure is a log line. The heal
+              # lane has no verification harness, so no verdict/cost here.
+              WSP=""
+              [ "$(workspaces.source.bound)" = "true" ] && WSP="$(workspaces.source.path)"
+              STATUS_E=failure
+              [ "$STATUS" = "SUCCESS" ] && STATUS_E=success
+              if [ -n "$WSP" ] && [ -f "$WSP/parked" ] && [ ! -L "$WSP/parked" ]; then STATUS_E=parked; fi
+              [ -n "${SUP:-}" ] && STATUS_E=superseded
+              export WSP STATUS_E TOKEN KUBE_SA
+              export APP_NAME="$(params.app-name)" RUN_NAME="$(context.pipelineRun.name)" \
+                PORT_RUN_ID="$(params.run-id)" TASK_ID="$(params.task-id)"
+              python3 - <<'PROV' || echo "agentRun upsert failed (non-fatal)"
+              import datetime, json, os, ssl, urllib.request
+              ws, run = os.environ.get("WSP", ""), os.environ["RUN_NAME"]
+              def load(rel):
+                  p = os.path.join(ws, rel)
+                  try:
+                      if ws and os.path.isfile(p) and not os.path.islink(p):
+                          return json.load(open(p))
+                  except Exception:
+                      pass
+                  return None
+              task = os.environ["TASK_ID"][:63]
+              props = {
+                  "lane": "heal",
+                  "status": os.environ["STATUS_E"],
+                  "task": task,
+                  "branch": "agent/heal/" + task,
+                  "port_run_id": os.environ["PORT_RUN_ID"],
+                  "continuation": False,
+              }
+              try:
+                  sa = os.environ["KUBE_SA"]
+                  ctx = ssl.create_default_context(cafile=sa + "/ca.crt")
+                  req = urllib.request.Request(
+                      "https://kubernetes.default.svc/apis/tekton.dev/v1/namespaces/scaffolder/pipelineruns/" + run,
+                      headers={"Authorization": "Bearer " + open(sa + "/token").read()})
+                  created = json.load(urllib.request.urlopen(req, context=ctx, timeout=10))["metadata"]["creationTimestamp"]
+                  props["started_at"] = created
+                  t0 = datetime.datetime.strptime(created, "%Y-%m-%dT%H:%M:%SZ")
+                  props["duration_minutes"] = round((datetime.datetime.utcnow() - t0).total_seconds() / 60, 1)
+              except Exception as e:
+                  print("no start-time:", e)
+              rels = {"service": os.environ["APP_NAME"]}
+              meta = load("publish-meta.json") or {}
+              try:
+                  rels["pull_request"] = os.environ["APP_NAME"] + "-pr-" + str(int(meta["pr_number"]))
+              except Exception:
+                  pass
+              # create_missing_related_entities: the PR was opened seconds ago
+              # and github-ocean's live event may not have landed yet — a bare
+              # PR entity is created and enriched on sync.
+              body = json.dumps({"identifier": run,
+                                 "title": "heal — " + os.environ["APP_NAME"],
+                                 "properties": props, "relations": rels}).encode()
+              req = urllib.request.Request(
+                  "https://api.port.io/v1/blueprints/agentRun/entities"
+                  "?upsert=true&merge=true&create_missing_related_entities=true",
+                  data=body, method="POST",
+                  headers={"Authorization": "Bearer " + os.environ["TOKEN"],
+                           "Content-Type": "application/json"})
+              urllib.request.urlopen(req, timeout=20)
+              print("agentRun", run, "->", props["status"])
+              PROV

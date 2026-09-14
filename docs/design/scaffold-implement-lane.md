@@ -353,3 +353,18 @@ renumber, never reuse) when operator instructions demand behavior the spec
 lacks, so spec and code merge together — app-template's `check-spec-symmetry`
 PR gate fails agent PRs whose added tests reference no requirement, and the
 existing traceability gate fails referenced-but-undeclared ids.
+
+## 12. Provenance
+
+Every run leaves a catalog record. The `finally` callback — which already
+PATCHes the Port action run — also upserts an `agentRun` entity (Port
+blueprint, platform-infra `port-agent-runs.tf`): lane, day-2 task identity,
+how the run ended (`success`/`failure`/`superseded`/`parked`/`dry-run`),
+the verifier's verdict and summed agent cost from `result.json`, duration,
+and a direct relation to the `githubPullRequest` entity the run produced
+(publish drops `publish-meta.json` with the PR number; park sites drop a
+`parked` marker). The PR relation is what makes "did the agent's work
+actually merge?" queryable — merged/reverted agent PRs, cost per service,
+and pass rates are Port aggregations over these entities, not a second
+system of record. The write is best-effort by contract: provenance must
+never turn a green pipeline red.
