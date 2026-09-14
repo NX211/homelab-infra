@@ -376,3 +376,13 @@ actually merge?" queryable — merged/reverted agent PRs, cost per service,
 and pass rates are Port aggregations over these entities, not a second
 system of record. The write is best-effort by contract: provenance must
 never turn a green pipeline red.
+
+The full evidence survives too: agent session logs live under the pod-local
+HOME and would die with the container, so the agent steps copy them onto the
+workspace on every exit path, and the finally callback tars them (with the
+harness verdicts and run context) into the WORM transcript bucket
+(platform-infra `agent-transcripts.tf`) — keyless, via the same
+homelab-staging WIF pool the onboarding lane already federates through, bound
+as a direct principal with objectCreator: append-only, so the lane cannot
+tamper with its own history. `agentRun.transcript_uri` points at the bundle;
+an upload failure leaves it empty and warns loudly, never fails the run.

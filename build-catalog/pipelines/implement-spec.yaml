@@ -96,6 +96,12 @@ spec:
     # operator note) — written to RUN.md for the builder. Same charset rule
     # as `instructions`.
     - {name: wake-reason, type: string, default: ""}
+    # Keyless GCS upload of the run's evidence bundle (gate 6, SOC2): the
+    # finally callback federates the projected k3s token through this WIF
+    # provider (same value as scaffold-app's) and writes to the append-only
+    # transcript bucket. Empty bucket name disables the upload.
+    - {name: wif-audience, type: string, default: "//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc"}
+    - {name: transcripts-bucket, type: string, default: "platform-infra-prod-agent-transcripts"}
   workspaces:
     - name: source # scratch: app clone, demo payload, agent summary
     - name: github-app # Scaffolder app: app-id + app-private-key (fetch + publish only)
@@ -1323,6 +1329,13 @@ spec:
               export DATABASE_URL=postgresql://postgres@127.0.0.1:5432/app
               export NODE_PATH="${WS}/render-deps/node_modules"
               IMP="${WS}/.implement"
+
+              # Transcript capture (gate 6): every claude session's full log
+              # lives under the pod-local HOME (/tmp/home/.claude) and dies
+              # with this container — copy it onto the workspace on EVERY exit
+              # path so the finally callback can archive it to the WORM
+              # transcript bucket. Best-effort; never changes the outcome.
+              trap 'rm -rf "${IMP}/transcripts"; cp -r /tmp/home/.claude/projects "${IMP}/transcripts" 2>/dev/null || true' EXIT
 
               # Everything run-specific goes in a FILE the agent reads; the prompt
               # itself is a constant. That is what lets every heredoc below be
@@ -2748,10 +2761,14 @@ spec:
         - {name: continuation, value: "$(params.continuation)"}
         - {name: wake-reason, value: "$(params.wake-reason)"}
         - {name: spec-path, value: "$(params.spec-path)"}
+        - {name: wif-audience, value: "$(params.wif-audience)"}
+        - {name: transcripts-bucket, value: "$(params.transcripts-bucket)"}
       workspaces:
         - {name: port, workspace: port}
         # Read-only breadcrumbs for the agentRun provenance entity:
-        # result.json (verdict/cost), publish-meta.json (PR), parked marker.
+        # result.json (verdict/cost), publish-meta.json (PR), parked marker —
+        # plus the transcripts/ capture the build-verify exit trap left, which
+        # this task tars into the WORM evidence bucket.
         - {name: source, workspace: source}
       taskSpec:
         params:
@@ -2763,12 +2780,26 @@ spec:
           - {name: continuation, type: string}
           - {name: wake-reason, type: string}
           - {name: spec-path, type: string}
+          - {name: wif-audience, type: string}
+          - {name: transcripts-bucket, type: string}
         workspaces:
           - {name: port, optional: true}
           - {name: source, optional: true}
+        volumes:
+          # Projected k3s token stamped with the WIF provider audience — the
+          # keyless credential the transcript upload exchanges at STS.
+          - name: gcp-sts-token
+            projected:
+              sources:
+                - serviceAccountToken:
+                    audience: $(params.wif-audience)
+                    expirationSeconds: 3600
+                    path: token
         steps:
           - name: patch
             image: $(params.image)
+            volumeMounts:
+              - {name: gcp-sts-token, mountPath: /var/run/secrets/gcp-sts}
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -2805,14 +2836,56 @@ spec:
                 || { echo "Port run PATCH failed (non-fatal)"; exit 0; }
               echo "Port run $(params.run-id) -> ${STATUS} (${LABEL})"
 
+              # --- transcript archive (gate 6, SOC2): WORM upload ------------
+              # Tar the run's evidence (agent transcripts + harness verdicts +
+              # run context) and push it to the append-only transcript bucket,
+              # keyless: the projected token federates through the
+              # homelab-staging WIF pool (scaffold-app's STS recipe) and the
+              # bucket binds the scaffolder-runner principal with
+              # objectCreator. Best-effort — a failed upload is a loud log
+              # line, never a red pipeline; TRANSCRIPT_URI stays empty and the
+              # provenance entity records the gap honestly.
+              WSP=""
+              [ "$(workspaces.source.bound)" = "true" ] && WSP="$(workspaces.source.path)"
+              TRANSCRIPT_URI=""
+              BUCKET="$(params.transcripts-bucket)"
+              if [ -n "$WSP" ] && [ -n "$BUCKET" ] && [ -f /var/run/secrets/gcp-sts/token ]; then
+                TARBALL=/tmp/evidence.tar.gz
+                tar -C "$WSP" --ignore-failed-read -czf "$TARBALL" \
+                  .implement RUN.md SUMMARY.md pr-context.md 2>/dev/null || true
+                if [ -n "$(tar -tzf "$TARBALL" 2>/dev/null | head -1)" ]; then
+                  SUBJECT_TOKEN="$(cat /var/run/secrets/gcp-sts/token)"
+                  GCP_TOKEN="$(python3 -c 'import json,sys;print(json.dumps({
+                    "audience": sys.argv[1],
+                    "grantType": "urn:ietf:params:oauth:grant-type:token-exchange",
+                    "requestedTokenType": "urn:ietf:params:oauth:token-type:access_token",
+                    "scope": "https://www.googleapis.com/auth/devstorage.read_write",
+                    "subjectTokenType": "urn:ietf:params:oauth:token-type:jwt",
+                    "subjectToken": sys.argv[2]}))' "$(params.wif-audience)" "$SUBJECT_TOKEN" \
+                    | curl -sf -X POST "https://sts.googleapis.com/v1/token" \
+                        -H 'Content-Type: application/json' -d @- \
+                    | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])' || true)"
+                  OBJ="$(params.app-name)%2F$(context.pipelineRun.name).tar.gz"
+                  if [ -n "$GCP_TOKEN" ] && curl -sf -X POST \
+                       -H "Authorization: Bearer ${GCP_TOKEN}" -H 'Content-Type: application/gzip' \
+                       --data-binary @"$TARBALL" \
+                       "https://storage.googleapis.com/upload/storage/v1/b/${BUCKET}/o?uploadType=media&name=${OBJ}" >/dev/null; then
+                    TRANSCRIPT_URI="gs://${BUCKET}/$(params.app-name)/$(context.pipelineRun.name).tar.gz"
+                    echo "evidence archived: ${TRANSCRIPT_URI}"
+                  else
+                    echo "::warning:: transcript upload failed — evidence bundle NOT archived for this run"
+                  fi
+                else
+                  echo "no evidence to archive (dry run / nothing produced)"
+                fi
+              fi
+
               # --- agentRun provenance (gate 6, best-effort) -----------------
               # One catalog entity per run: how it ended, what it cost, which
               # PR it produced. Reuses TOKEN from the PATCH above; every
               # failure is a log line — provenance must never turn a green
               # pipeline red. Workspace files are agent-adjacent, so the same
               # symlink discipline as publish applies: never follow links.
-              WSP=""
-              [ "$(workspaces.source.bound)" = "true" ] && WSP="$(workspaces.source.path)"
               STATUS_E=failure
               [ "$STATUS" = "SUCCESS" ] && STATUS_E=success
               [ "$(params.dry-run)" = "true" ] && STATUS_E=dry-run
@@ -2820,7 +2893,7 @@ spec:
               [ -n "${SUP:-}" ] && STATUS_E=superseded
               TASK_SLUG="$(printf '%s' "$(params.spec-path)" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed -e 's/--*/-/g' -e 's/^-//' -e 's/-*$//')"
               TASK_SLUG="${TASK_SLUG:0:63}"
-              export WSP STATUS_E TASK_SLUG TOKEN KUBE_SA
+              export WSP STATUS_E TASK_SLUG TOKEN KUBE_SA TRANSCRIPT_URI
               export APP_NAME="$(params.app-name)" RUN_NAME="$(context.pipelineRun.name)" \
                 PORT_RUN_ID="$(params.run-id)" CONTINUATION="$(params.continuation)" \
                 WAKE_REASON="$(params.wake-reason)"
@@ -2845,6 +2918,8 @@ spec:
               }
               if os.environ.get("WAKE_REASON"):
                   props["wake_reason"] = os.environ["WAKE_REASON"][:500]
+              if os.environ.get("TRANSCRIPT_URI"):
+                  props["transcript_uri"] = os.environ["TRANSCRIPT_URI"]
               res = load(".implement/result.json") or {}
               if res.get("verdict") in ("pass", "fail"):
                   props["verdict"] = res["verdict"]
