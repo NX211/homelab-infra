@@ -306,3 +306,50 @@ Neither the action nor the lane works until all of these land:
   would pay the cost once per demo rather than once per scaffold, at the price of
   a browser inside a SOC-2-in-scope service plus a backfill. Worth it only if
   demos get scaffolded often.
+
+## 11. Day-2 rerun semantics
+
+A day-2 lane gets re-fired: the operator tweaks instructions and dispatches
+again, CI fails on the PR, a review asks for changes. Without identity a
+re-dispatch is a NEW run that races the old one and opens a second PR — the
+reggiesbbq delta was largely humans cleaning up after exactly that. Three rules
+give reruns meaning:
+
+**Identity.** A run's identity is `(app, lane, task)` — task is the
+`aiAgentTask` id for heal-rule and the slugified spec path for implement-spec.
+The fetch step PATCHes those as labels onto its own PipelineRun, lists
+in-flight siblings with the same triple, and cancels them with
+`CancelledRunFinally` — never plain `Cancelled`, which would skip the
+sibling's `finally` and strand its Port action run IN_PROGRESS forever. The
+superseding run annotates `superseded-by` first, so the cancelled run's
+callback reports "superseded by <run>" instead of a generic failure that reads
+as an agent defect. Best-effort by contract: if the RBAC grant
+(`scaffolder-runner-run-supersede`) is missing, the block warns and degrades
+to the old parallel-runs behavior.
+
+**Stable lane branches.** `agent/<lane>/<task>` replaces the
+run-name-suffixed branches. The branch is lane-owned: a fresh rerun rebuilds
+from base and force-resets it; publish updates the existing open PR (body
+fully re-rendered so the verification verdict never goes stale, draft state
+re-derived from the fresh verdict) and comments what happened. The one hard
+line: **the lane never pushes over people.** Any commit on the branch not
+authored by `scaffolder@coreyalan.com` parks the run with an error — a human
+took the PR forward, and the agent is out of the loop until the branch is
+deleted or the PR closes.
+
+**Park-and-wake continuation.** `continuation=true` resumes ON the lane
+branch instead of rebuilding from base: fetch pre-loads the open PR's review
+comments and failing checks into `pr-context.md`, the builder fixes THOSE
+(minimal diff, no reimplementation), and publish stacks a commit. Two guards
+park the lane permanently: human commits (same rule as above) and an autofix
+cap of 3 continuation commits — past that, iterating without a human decision
+is churn, not progress. The wake is currently the operator re-firing
+`implement_spec` with the continuation flag and a `wake_reason`; an
+automation that fires it from CI-failure events can ride the same input
+later without touching the pipeline.
+
+Spec symmetry rides along: the builder must append new `REQ-NNN` entries (never
+renumber, never reuse) when operator instructions demand behavior the spec
+lacks, so spec and code merge together — app-template's `check-spec-symmetry`
+PR gate fails agent PRs whose added tests reference no requirement, and the
+existing traceability gate fails referenced-but-undeclared ids.
