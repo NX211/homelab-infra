@@ -85,12 +85,14 @@ This is why `spec_url` lives on `scaffold_app` (committing `docs/SPEC.md` into
 the scaffold PR) rather than only on this lane — the doc arrives *with* the
 scaffold request and is already in the repo when this lane runs.
 
-`scaffold-app.sh --spec-url <https-url>` fetches it in a new phase 1.6, between
-branding and onboard. Two guards: the URL must be https, and the GitHub token is
-sent **only** to github.com hosts, so a spec URL on any other host cannot be used
-to exfiltrate it. The Phase 2.5 plumbing agent is explicitly told the spec is
-inert and must not be implemented — building features in the onboarding lane
-would defeat the separation this whole design rests on.
+`scaffold-app.sh --spec-url <https-url>` fetches it in phase 2.7 — deliberately
+**after** the Phase 2.5 plumbing agent, not before it (the script's comments say
+"DO NOT move this call back above phase25_agent"): the spec is arbitrary bytes
+from a URL supplied on a web form, and fetching it after the agent means it can
+never steer a credentialed run. The fetch is **anonymous** (https only, no
+GitHub token sent anywhere), and phase3_pr stages the file so the bytes still
+reach the scaffold PR. Building features in the onboarding lane would defeat
+the separation this whole design rests on — that remains this lane's job.
 
 ## 4. The conflict rule
 
@@ -121,12 +123,12 @@ ADR-0021 is explicit: showcases are arbitrary client-uploaded HTML and JavaScrip
 served under a deliberately loose CSP. Feeding them to a code-writing agent is a
 prompt-injection surface. Two structural mitigations, plus one in the prompt:
 
-**Structural — the agent task holds no credentials.** The pipeline is three
+**Structural — the agent task holds no credentials.** The pipeline is four
 tasks, and Tekton gives each its own pod:
 
 | Task | Workspaces | Runs the agent? | Sandboxed? |
 |---|---|---|---|
-| `fetch` | source, github-app, scaffold-read | no | no |
+| `fetch` | source, github-app, scaffold-read, port (read, optional) | no | no |
 | `render` | source | no | **gVisor, no SA token, no egress** |
 | `implement` | source, anthropic (WIF *identifiers*, not credentials) | **yes** | no |
 | `publish` | source, github-app | no | no |
@@ -279,8 +281,14 @@ Neither the action nor the lane works until all of these land:
    (`tekton/runtimeclasses/gvisor.yaml`, handler `runsc`, installed by
    `node-bootstrap/gvisor/install-runsc.sh` — or, post-ADR-0022, the Talos system
    extension). Without it the render pod does not schedule and the run fails.
-7. Mirror or pull-check the `render-image` (Playwright/Chromium). It is the one
-   image here not already in use by the scaffolder lane.
+   The `fix-tekton-entrypoint-perms-untrusted` ClusterPolicy also carries a
+   scaffolder-scoped rule (keyed on `build.capturly/lane: scaffolder` + the pod's
+   `runtimeClassName: gvisor`) — without it the render container dies at start
+   with exit 126, because gVisor cannot exec Tekton's 0311 entrypoint.
+7. ~~Mirror or pull-check the `render-image`~~ — DONE 2026-09-13: both
+   `toolchain-image` and `render-image` defaults are digest-pinned in the
+   pipeline. Mirroring into ghcr.io stays optional (availability, not integrity)
+   unless the business-plane registry allowlist ever covers this namespace.
 8. `terraform apply` in `platform-infra/terraform/environments/prod` **last** —
    `port-implement-spec.tf` (new) and the `spec_url` input on
    `port-scaffold-app.tf`. Until the PipelineRuns exist, applying first leaves
@@ -298,3 +306,83 @@ Neither the action nor the lane works until all of these land:
   would pay the cost once per demo rather than once per scaffold, at the price of
   a browser inside a SOC-2-in-scope service plus a backfill. Worth it only if
   demos get scaffolded often.
+
+## 11. Day-2 rerun semantics
+
+A day-2 lane gets re-fired: the operator tweaks instructions and dispatches
+again, CI fails on the PR, a review asks for changes. Without identity a
+re-dispatch is a NEW run that races the old one and opens a second PR — the
+reggiesbbq delta was largely humans cleaning up after exactly that. Three rules
+give reruns meaning:
+
+**Identity.** A run's identity is `(app, lane, task)` — task is the
+`aiAgentTask` id for heal-rule and the slugified spec path for implement-spec.
+The fetch step PATCHes those as labels onto its own PipelineRun, lists
+in-flight siblings with the same triple, and cancels them with
+`CancelledRunFinally` — never plain `Cancelled`, which would skip the
+sibling's `finally` and strand its Port action run IN_PROGRESS forever. The
+superseding run annotates `superseded-by` first, so the cancelled run's
+callback reports "superseded by <run>" instead of a generic failure that reads
+as an agent defect. Best-effort by contract: if the RBAC grant
+(`scaffolder-runner-run-supersede`) is missing, the block warns and degrades
+to the old parallel-runs behavior.
+
+**Stable lane branches.** `agent/<lane>/<task>` replaces the
+run-name-suffixed branches. The branch is lane-owned: a fresh rerun rebuilds
+from base and force-resets it; publish updates the existing open PR (body
+fully re-rendered so the verification verdict never goes stale, draft state
+re-derived from the fresh verdict) and comments what happened. The one hard
+line: **the lane never pushes over people.** Any commit on the branch not
+authored by `scaffolder@coreyalan.com` parks the run with an error — a human
+took the PR forward, and the agent is out of the loop until the branch is
+deleted or the PR closes.
+
+**Park-and-wake continuation.** `continuation=true` resumes ON the lane
+branch instead of rebuilding from base: fetch pre-loads the open PR's review
+comments and failing checks into `pr-context.md`, the builder fixes THOSE
+(minimal diff, no reimplementation), and publish stacks a commit. Two guards
+park the lane permanently: human commits (same rule as above) and an autofix
+cap of 3 continuation commits — past that, iterating without a human decision
+is churn, not progress. The wake is currently the operator re-firing
+`implement_spec` with the continuation flag and a `wake_reason`; an
+automation that fires it from CI-failure events can ride the same input
+later without touching the pipeline.
+
+A third park class is the **confidence pre-flight**: before the builder runs,
+a cheap read-only session scores (0-100) whether the spec + demo + operator
+instructions carry enough truth to implement without inventing facts; below
+threshold the run parks with the blocking questions instead of burning the
+full harness cost on work verification would fail anyway. Degrade-open: a
+broken pre-flight never parks real work. Unlike the human-commit park, this
+one clears itself — fix the spec (usually: add the missing Facts) and re-run.
+
+Spec symmetry rides along: the builder must append new `REQ-NNN` entries (never
+renumber, never reuse) when operator instructions demand behavior the spec
+lacks, so spec and code merge together — app-template's `check-spec-symmetry`
+PR gate fails agent PRs whose added tests reference no requirement, and the
+existing traceability gate fails referenced-but-undeclared ids.
+
+## 12. Provenance
+
+Every run leaves a catalog record. The `finally` callback — which already
+PATCHes the Port action run — also upserts an `agentRun` entity (Port
+blueprint, platform-infra `port-agent-runs.tf`): lane, day-2 task identity,
+how the run ended (`success`/`failure`/`superseded`/`parked`/`dry-run`),
+the verifier's verdict and summed agent cost from `result.json`, duration,
+and a direct relation to the `githubPullRequest` entity the run produced
+(publish drops `publish-meta.json` with the PR number; park sites drop a
+`parked` marker). The PR relation is what makes "did the agent's work
+actually merge?" queryable — merged/reverted agent PRs, cost per service,
+and pass rates are Port aggregations over these entities, not a second
+system of record. The write is best-effort by contract: provenance must
+never turn a green pipeline red.
+
+The full evidence survives too: agent session logs live under the pod-local
+HOME and would die with the container, so the agent steps copy them onto the
+workspace on every exit path, and the finally callback tars them (with the
+harness verdicts and run context) into the WORM transcript bucket
+(platform-infra `agent-transcripts.tf`) — keyless, via the same
+homelab-staging WIF pool the onboarding lane already federates through, bound
+as a direct principal with objectCreator: append-only, so the lane cannot
+tamper with its own history. `agentRun.transcript_uri` points at the bundle;
+an upload failure leaves it empty and warns loudly, never fails the run.

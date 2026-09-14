@@ -3,3 +3,4 @@ kind: Kustomization
 namespace: scaffolder
 resources:
   - scaffolder.yaml
+  - rbac.yaml
