@@ -818,7 +818,10 @@ spec:
               # before EACH agent session so no session ever presents a stale
               # token (the projected-volume race, see the volumes note). curl
               # here is the harness shell, not the agent — unaffected by the
-              # agent tool deny-list.
+              # agent tool deny-list. 3600s TTL: fresh at mint AND long enough
+              # to outlast a single long session (600s expired mid-run and
+              # 401'd a 15-min builder); 3600 is under the federation-rule cap
+              # that rejects a too-long (7200) token outright.
               KUBE_API=https://kubernetes.default.svc
               KUBE_SA=/var/run/secrets/kubernetes.io/serviceaccount
               mint_identity_token() {
@@ -828,7 +831,7 @@ spec:
                   -H "Authorization: Bearer $(cat "$KUBE_SA/token")" \
                   -H 'Content-Type: application/json' \
                   -X POST "$KUBE_API/api/v1/namespaces/scaffolder/serviceaccounts/scaffolder-runner/token" \
-                  -d '{"spec":{"audiences":["https://api.anthropic.com"],"expirationSeconds":600}}')" \
+                  -d '{"spec":{"audiences":["https://api.anthropic.com"],"expirationSeconds":3600}}')" \
                   || { echo "::error:: TokenRequest mint failed (RBAC scaffolder-runner-token-minter?)"; return 1; }
                 printf '%s' "$resp" | python3 -c 'import sys,json;print(json.load(sys.stdin)["status"]["token"])' > "$ANTHROPIC_IDENTITY_TOKEN_FILE"
                 [ -s "$ANTHROPIC_IDENTITY_TOKEN_FILE" ] || { echo "::error:: minted token was empty"; return 1; }
@@ -1171,6 +1174,16 @@ spec:
               primary flow to work when the app is live AND no v2 requirement to
               be unmet. Do not pad findings — an empty list with a real "checked"
               inventory is a valid pass.
+
+              FACT AUDIT: for every concrete business claim in the new copy
+              (a price, a date/time, a duration, a guarantee window, an origin
+              story, an address), trace it to a source — the spec's Facts
+              section, a store setting, or an existing page. In "checked", state
+              which claims you traced and to where. Any claim you CANNOT trace is
+              a finding ("unsourced fact: <claim>", severity major) — do NOT
+              report a blanket "nothing invented" without having actually traced
+              each one. This is the dry-ice rule: the pipeline once shipped an
+              invented shipping process as fact.
 
               CRITICAL: writing ../.implement/verify.json is your LAST and
               MOST IMPORTANT action — the run is scored ONLY from that file, and
