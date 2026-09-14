@@ -144,7 +144,17 @@ doubles the builder. Budget walls make the worst case a known number:
 - **GCS evidence upload + Port `agent_run` provenance** — Gate 6.
 - **Spec-conformance auditor with per-REQ verdicts** — needs Gate 3's EARS
   requirement IDs; the verifier's brief gains it then.
-- **Computed-style design-fidelity gate vs the demo tokens** — Gate 4.
+- ~~**Computed-style design-fidelity gate vs the demo tokens** — Gate 4.~~
+  SHIPPED (2026-09-14): the render task distills `demo/tokens.json` /
+  `theme.css` / `style-map.json` / `tree/*.json` from the live DOM (Oklab
+  clustering, inline); `build-verify` runs a deterministic fidelity checker
+  (`fidelity.cjs`: palette coverage, role colors, fonts, type ratio, radii;
+  pass ≥ 80) against the booted app, then up to 5 design-only style rounds —
+  accept-only-if-improved, hard-reverted on any write outside the token
+  surface (`design-scope` param: `tokens` | gated `layout` tier). Surface
+  violations and measured fidelity failures fail the run (draft PR);
+  checker errors degrade open, loudly. Repo-side contract:
+  app-template `docs/DESIGN.md` + `check-style-surface.mjs` CI gate.
 - **Warm per-repo environment images** (Devin snapshots / Cursor Builds) —
   revisit when run frequency justifies the cache infrastructure.
 
