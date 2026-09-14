@@ -407,8 +407,8 @@ spec:
                 # image ships only the BROWSERS (/ms-playwright) — no npm
                 # package — and the render pod has no egress by design, so the
                 # install must happen here, in the task that is allowed to
-                # fetch. Version-locked to the render image tag (1.49.0 <->
-                # v1.49.0-noble) so the module matches the bundled browser
+                # fetch. Version-locked to the render image tag (1.55.0 <->
+                # harness-runtime chromium) so the module matches the bundled browser
                 # build; bump BOTH together. Probed working under gVisor
                 # 2026-09-13. Non-fatal like everything render: a miss degrades
                 # the run to no-screenshots, loudly, and never blocks the PR.
@@ -416,7 +416,7 @@ spec:
                   export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
                   mkdir -p render-deps && ( cd render-deps \
                     && npm init -y >/dev/null 2>&1 \
-                    && npm install --no-audit --no-fund --save-exact playwright@1.49.0 >/dev/null 2>&1 \
+                    && npm install --no-audit --no-fund --save-exact playwright@1.55.0 >/dev/null 2>&1 \
                     && echo "vendored playwright 1.49.0 for render" ) \
                     || echo "::warning:: could not vendor playwright — render will produce no screenshots"
                 fi
@@ -616,26 +616,15 @@ spec:
           - { name: source }
           - { name: anthropic }
           - { name: npm, optional: true }
-        # Per-run projected identity for keyless Claude (WIF). Audience MUST equal
-        # the Anthropic federation rule's audience; sub is
-        # system:serviceaccount:scaffolder:scaffolder-runner (the run SA).
-        # 2h: the harness runs up to two builder + two verifier sessions.
-        volumes:
-          - name: anthropic-oidc-token
-            projected:
-              sources:
-                - serviceAccountToken:
-                    path: token
-                    # 600 (the k8s minimum), NOT 3600: Anthropic's WIF exchange
-                    # requires a freshly-ISSUED identity token, and claude-code
-                    # re-exchanges throughout a session. kubelet refreshes a
-                    # projected token at ~80% of its TTL, so 3600 kept the same
-                    # token on disk for ~48min — a long agent session (a 42-turn
-                    # builder ran 15min) then re-exchanged a stale token and
-                    # 401'd. At 600, kubelet re-issues every ~8min, keeping the
-                    # token fresh enough for every re-exchange across a long run.
-                    expirationSeconds: 600
-                    audience: https://api.anthropic.com
+        # Keyless Claude (WIF) identity is MINTED PER AGENT SESSION via the
+        # TokenRequest API (see mint_identity_token in build-verify), not a
+        # projected-token volume: a projected token is refreshed by kubelet on
+        # its own ~8-min cadence, which races a long multi-session run — a later
+        # session (verifier/rework) would start with a token already too old for
+        # Anthropic's freshly-issued requirement and 401. Minting right before
+        # each claude call guarantees a fresh token every time. Needs the pod's
+        # default kube-API SA token (automounted; not disabled here) + the
+        # scaffolder-runner-token-minter Role (scaffolder/rbac.yaml).
         sidecars:
           # Ephemeral per-run database, alive for every step. Trust auth is
           # fine: it listens only inside this pod's network namespace, holds
@@ -787,7 +776,7 @@ spec:
                 export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
                 mkdir -p "${WS}/render-deps" && ( cd "${WS}/render-deps" \
                   && npm init -y >/dev/null 2>&1 \
-                  && npm install --no-audit --no-fund --save-exact playwright@1.49.0 >/dev/null 2>&1 ) \
+                  && npm install --no-audit --no-fund --save-exact playwright@1.55.0 >/dev/null 2>&1 ) \
                   || echo "::warning:: could not vendor playwright — the verifier will be browserless"
               fi
               echo "setup done."
@@ -796,10 +785,6 @@ spec:
           - name: build-verify
             image: $(params.render-image)
             workingDir: $(workspaces.source.path)
-            volumeMounts:
-              - name: anthropic-oidc-token
-                mountPath: /var/run/anthropic
-                readOnly: true
             env:
               # NOT the workspace: HOME must not resolve to the shared PVC, so a
               # credential a sibling task leaves there is never read implicitly
@@ -824,12 +809,33 @@ spec:
                 echo "::error:: Anthropic WIF not configured — this lane has no non-agent fallback."
                 exit 1
               fi
-              export ANTHROPIC_IDENTITY_TOKEN_FILE=/var/run/anthropic/token
+              export ANTHROPIC_IDENTITY_TOKEN_FILE=/tmp/anthropic/token
               export ANTHROPIC_FEDERATION_RULE_ID="$(cat $(workspaces.anthropic.path)/federation-rule-id)"
               export ANTHROPIC_SERVICE_ACCOUNT_ID="$(cat $(workspaces.anthropic.path)/service-account-id)"
               export ANTHROPIC_ORGANIZATION_ID="$(cat $(workspaces.anthropic.path)/organization-id)"
               export ANTHROPIC_WORKSPACE_ID="$(cat $(workspaces.anthropic.path)/workspace-id)"
-              mkdir -p "${HOME}"
+              mkdir -p "${HOME}" /tmp/anthropic
+
+              # Mint a FRESH anthropic-audience identity token for this SA via
+              # the TokenRequest API, into the file claude reads. Called right
+              # before EACH agent session so no session ever presents a stale
+              # token (the projected-volume race, see the volumes note). curl
+              # here is the harness shell, not the agent — unaffected by the
+              # agent tool deny-list.
+              KUBE_API=https://kubernetes.default.svc
+              KUBE_SA=/var/run/secrets/kubernetes.io/serviceaccount
+              mint_identity_token() {
+                [ -f "$KUBE_SA/token" ] || { echo "::error:: no kube SA token mounted — cannot mint WIF identity"; return 1; }
+                local resp
+                resp="$(curl -sf --cacert "$KUBE_SA/ca.crt" \
+                  -H "Authorization: Bearer $(cat "$KUBE_SA/token")" \
+                  -H 'Content-Type: application/json' \
+                  -X POST "$KUBE_API/api/v1/namespaces/scaffolder/serviceaccounts/scaffolder-runner/token" \
+                  -d '{"spec":{"audiences":["https://api.anthropic.com"],"expirationSeconds":600}}')" \
+                  || { echo "::error:: TokenRequest mint failed (RBAC scaffolder-runner-token-minter?)"; return 1; }
+                printf '%s' "$resp" | python3 -c 'import sys,json;print(json.load(sys.stdin)["status"]["token"])' > "$ANTHROPIC_IDENTITY_TOKEN_FILE"
+                [ -s "$ANTHROPIC_IDENTITY_TOKEN_FILE" ] || { echo "::error:: minted token was empty"; return 1; }
+              }
 
               WS="$(workspaces.source.path)"
               export PATH="${WS}/.tools:${WS}/.tools/bin:${PATH}"
@@ -1114,6 +1120,7 @@ spec:
                 boot_app
                 printf '{"bootOk":%s,"cycle":%s}\n' "$([ "$BOOT_OK" = true ] && echo true || echo false)" "$1" > "${IMP}/boot.json"
                 local pre_hash; pre_hash="$(tree_hash)"
+                mint_identity_token || true
                 claude -p "$(cat <<'VPROMPT'
               You are a VERIFIER, not a builder. You have never seen the builder's
               reasoning — judge only what exists. You must NOT modify the repository;
@@ -1262,6 +1269,7 @@ spec:
 
               # --- cycle 1: builder -> gates -> verifier ---------------------
               rm -f "${IMP}/stop-denials"
+              mint_identity_token || true
               claude -p "$(cat <<'BPROMPT'
               You are implementing features in an existing application repository
               scaffolded from app-template. Your working directory IS that repository,
@@ -1365,6 +1373,7 @@ spec:
               if [ "${VERIFY_VERDICT}" = "fail" ] || [ "${GATES_VERDICT}" = "fail" ]; then
                 echo "rework cycle: feeding findings back to the builder"
                 rm -f "${IMP}/stop-denials"
+                mint_identity_token || true
                 claude -p "$(cat <<'RPROMPT'
               You are continuing work in this application repository. A separate
               verification pass found problems with the current state. Read:
