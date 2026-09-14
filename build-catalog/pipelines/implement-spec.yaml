@@ -674,10 +674,14 @@ spec:
               mkdir -p "${WS}/.implement" "${WS}/.tools"
 
               # Legacy escape hatch must not depend on harness prerequisites
-              # (npm token, seedable DB): install only the agent tooling.
+              # (npm token, seedable DB): install only the agent tooling. pnpm
+              # via npm (corepack keys are broken on node 22.11, see below).
               if [ "${VERIFY}" != "true" ]; then
                 npm config set prefix "${WS}/.tools"
-                npm install -g @anthropic-ai/claude-code >/dev/null 2>&1
+                export PATH="${WS}/.tools/bin:${WS}/.tools:${PATH}"
+                PM_VER="$(node -e 'try{const p=require("'"${WS}"'/app/package.json").packageManager||"";process.stdout.write(p.startsWith("pnpm@")?p.slice(5):"")}catch(e){}')"
+                [ -n "$PM_VER" ] || PM_VER=10
+                npm install -g "pnpm@${PM_VER}" @anthropic-ai/claude-code >/dev/null 2>&1
                 echo "setup done (legacy mode — no env build)."
                 exit 0
               fi
@@ -690,8 +694,18 @@ spec:
                 echo "npm workspace not bound — private-scope installs will fail (see error below if they do)"
               fi
 
-              corepack enable --install-directory "${WS}/.tools" >/dev/null 2>&1 || corepack enable >/dev/null 2>&1 || true
-              export PATH="${WS}/.tools:${WS}/.tools/bin:${PATH}"
+              # Install pnpm via plain npm, NOT corepack: node 22.11's bundled
+              # corepack ships stale package-manager signing keys and dies with
+              # "Cannot find matching keyid" verifying any pnpm tarball from the
+              # registry (even the version pinned in packageManager). npm's own
+              # tarball integrity is unaffected. Pin to the app's packageManager
+              # version so the lockfile format matches exactly.
+              npm config set prefix "${WS}/.tools"
+              export PATH="${WS}/.tools/bin:${WS}/.tools:${PATH}"
+              PM_VER="$(node -e 'try{const p=require("'"${WS}"'/app/package.json").packageManager||"";process.stdout.write(p.startsWith("pnpm@")?p.slice(5):"")}catch(e){}')"
+              [ -n "$PM_VER" ] || { PM_VER=10; echo "no packageManager pin — defaulting to pnpm@${PM_VER}"; }
+              npm install -g "pnpm@${PM_VER}" >/dev/null 2>&1 || { echo "::error:: could not install pnpm@${PM_VER}"; exit 1; }
+              echo "pnpm $(pnpm --version) (pinned ${PM_VER})"
               cd "${WS}/app"
               export DATABASE_URL=postgresql://postgres@127.0.0.1:5432/app
 
@@ -726,8 +740,7 @@ spec:
                 "$LINT" "$TYPES" "$TESTS" "$TF" > "${WS}/.implement/baseline.json"
               echo "baseline: $(cat "${WS}/.implement/baseline.json")"
 
-              # Tools shared across steps via the workspace prefix.
-              npm config set prefix "${WS}/.tools"
+              # claude-code shares the same workspace prefix (set above).
               npm install -g @anthropic-ai/claude-code >/dev/null 2>&1
 
               # The verifier needs the playwright MODULE (browsers are in this
