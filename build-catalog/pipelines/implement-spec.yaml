@@ -237,8 +237,14 @@ spec:
                 MARKERS="$(python3 - "app/$SPEC_PATH" <<'MKPY'
               import re, sys
               raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-              text = re.sub(r"<!--.*?-->", "", raw, flags=re.S)
-              text = re.sub(r"`[^`\n]*`", "", text)
+              def strip_fix(text, pat, flags=0):
+                  # to fixpoint: one pass can leave remnants that recombine
+                  prev = None
+                  while prev != text:
+                      prev, text = text, re.sub(pat, "", text, flags=flags)
+                  return text
+              text = strip_fix(raw, r"<!--.*?-->", re.S)
+              text = strip_fix(text, r"`[^`\n]*`")
               for m in re.findall(r"\[NEEDS (?:CLARIFICATION|FACT):[^\]]*\]", text):
                   print(" ".join(m.split())[:200])
               MKPY
