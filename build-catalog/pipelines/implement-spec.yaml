@@ -2725,22 +2725,53 @@ spec:
               # (rerun/continuation), create otherwise. The body is fully
               # re-rendered each run — the verification verdict must never go
               # stale on an updated head.
-              EXISTING="$(gh pr list --repo "$GH_ORG/$APP_NAME" --head "$BRANCH" --base "$BASE_BRANCH" \
-                --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+              #
+              # The UPDATE path is REST via curl/urllib, NOT `gh pr edit`:
+              # gh's PR lookup still selects Projects-classic fields
+              # (projectCards) that GitHub hard-errors on now — gate-7 P3 hit
+              # it AFTER the push landed, so the branch updated but the PR
+              # body never refreshed and the run failed. Only the draft
+              # toggle needs GraphQL (REST cannot flip draft) and that
+              # mutation touches no deprecated field; it degrades non-fatally.
+              EXISTING="$(curl -q -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                "$gh_api/repos/$GH_ORG/$APP_NAME/pulls?head=$GH_ORG:$BRANCH&base=$BASE_BRANCH&state=open" \
+                | python3 -c 'import sys,json;prs=json.load(sys.stdin);print(prs[0]["number"] if prs else "")' 2>/dev/null || true)"
               if [ -n "$EXISTING" ]; then
-                gh pr edit "$EXISTING" --repo "$GH_ORG/$APP_NAME" --body-file "${WS}/pr-body.md"
-                # Keep draft state in step with the fresh verdict.
-                if [ -n "$DRAFT_FLAG" ]; then
-                  gh pr ready "$EXISTING" --repo "$GH_ORG/$APP_NAME" --undo >/dev/null 2>&1 || true
-                else
-                  gh pr ready "$EXISTING" --repo "$GH_ORG/$APP_NAME" >/dev/null 2>&1 || true
-                fi
                 if [ "$CONTINUATION" = "true" ]; then
                   NOTE="Continuation run \`$RUN_NAME\`: addressed the review/CI findings; verification verdict refreshed in the PR body."
                 else
                   NOTE="Rerun \`$RUN_NAME\`: branch rebuilt from \`$BASE_BRANCH\` (previous head superseded); verification verdict refreshed in the PR body."
                 fi
-                gh pr comment "$EXISTING" --repo "$GH_ORG/$APP_NAME" --body "$NOTE" >/dev/null || true
+                DRAFT_STATE=ready
+                [ -n "$DRAFT_FLAG" ] && DRAFT_STATE=draft
+                GH_ORG="$GH_ORG" APP_NAME="$APP_NAME" GH_TOKEN="$GH_TOKEN" \
+                  python3 - "$EXISTING" "${WS}/pr-body.md" "$DRAFT_STATE" "$NOTE" <<'EDPY'
+              import json, os, sys, urllib.request
+              num, body_path, want, note = sys.argv[1:5]
+              repo = os.environ["GH_ORG"] + "/" + os.environ["APP_NAME"]
+              def call(method, path, payload=None, graphql=False):
+                  url = "https://api.github.com" + ("/graphql" if graphql else path)
+                  data = json.dumps(payload).encode() if payload is not None else None
+                  req = urllib.request.Request(url, data=data, method=method, headers={
+                      "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json"})
+                  return json.load(urllib.request.urlopen(req, timeout=30))
+              pr = call("PATCH", f"/repos/{repo}/pulls/{num}",
+                        {"body": open(body_path, encoding="utf-8").read()})
+              # Keep draft state in step with the fresh verdict (non-fatal).
+              if bool(pr.get("draft")) != (want == "draft"):
+                  mut = "convertPullRequestToDraft" if want == "draft" else "markPullRequestReadyForReview"
+                  try:
+                      call("POST", "", {"query": "mutation($id:ID!){%s(input:{pullRequestId:$id}){clientMutationId}}" % mut,
+                                        "variables": {"id": pr["node_id"]}}, graphql=True)
+                  except Exception as e:
+                      print("draft toggle failed (non-fatal):", e)
+              try:
+                  call("POST", f"/repos/{repo}/issues/{num}/comments", {"body": note})
+              except Exception as e:
+                  print("PR comment failed (non-fatal):", e)
+              EDPY
                 PR_URL="https://github.com/$GH_ORG/$APP_NAME/pull/$EXISTING"
                 echo "updated: ${PR_URL}"
               else

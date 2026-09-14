@@ -497,12 +497,32 @@ spec:
 
               # One PR per lane branch: update the open one when it exists,
               # create otherwise. The body is fully re-rendered each run.
-              EXISTING="$(gh pr list --repo "$GH_ORG/$APP_NAME" --head "$BRANCH" --base "$BASE_BRANCH" \
-                --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+              # REST via curl/urllib, NOT `gh pr edit` — gh's PR lookup still
+              # selects Projects-classic fields GitHub hard-errors on
+              # (gate-7 P3; see implement-spec.yaml publish for the account).
+              EXISTING="$(curl -q -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                "$gh_api/repos/$GH_ORG/$APP_NAME/pulls?head=$GH_ORG:$BRANCH&base=$BASE_BRANCH&state=open" \
+                | python3 -c 'import sys,json;prs=json.load(sys.stdin);print(prs[0]["number"] if prs else "")' 2>/dev/null || true)"
               if [ -n "$EXISTING" ]; then
-                gh pr edit "$EXISTING" --repo "$GH_ORG/$APP_NAME" --body-file "${WS}/pr-body.md"
-                gh pr comment "$EXISTING" --repo "$GH_ORG/$APP_NAME" \
-                  --body "Rerun \`$RUN_NAME\`: branch rebuilt from \`$BASE_BRANCH\` (previous head superseded)." >/dev/null || true
+                GH_ORG="$GH_ORG" APP_NAME="$APP_NAME" GH_TOKEN="$GH_TOKEN" \
+                  python3 - "$EXISTING" "${WS}/pr-body.md" "Rerun \`$RUN_NAME\`: branch rebuilt from \`$BASE_BRANCH\` (previous head superseded)." <<'EDPY'
+              import json, os, sys, urllib.request
+              num, body_path, note = sys.argv[1:4]
+              repo = os.environ["GH_ORG"] + "/" + os.environ["APP_NAME"]
+              def call(method, path, payload):
+                  req = urllib.request.Request("https://api.github.com" + path,
+                      data=json.dumps(payload).encode(), method=method, headers={
+                      "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                      "Accept": "application/vnd.github+json",
+                      "Content-Type": "application/json"})
+                  return json.load(urllib.request.urlopen(req, timeout=30))
+              call("PATCH", f"/repos/{repo}/pulls/{num}",
+                   {"body": open(body_path, encoding="utf-8").read()})
+              try:
+                  call("POST", f"/repos/{repo}/issues/{num}/comments", {"body": note})
+              except Exception as e:
+                  print("PR comment failed (non-fatal):", e)
+              EDPY
                 PR_URL="https://github.com/$GH_ORG/$APP_NAME/pull/$EXISTING"
                 echo "updated: ${PR_URL}"
               else
