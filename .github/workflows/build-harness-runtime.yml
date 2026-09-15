@@ -1,24 +1,25 @@
-name: Build allowlist-reconciler
+name: Build harness-runtime
 
-# Builds the in-cluster staging allowlist reconciler image and pushes it to
-# GHCR, then pins the published digest into the deployment manifest so Argo
-# rolls it out. Runs on changes to the app source or this workflow, or on demand.
+# Node 24 + Chromium image for the implement-spec verification harness. Pushes to
+# GHCR and pins the digest into BOTH the toolchain-image and render-image defaults
+# of build-catalog/pipelines/implement-spec.yaml. Runs on image/workflow changes
+# or on demand.
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "apps/allowlist-reconciler/**"
-      - ".github/workflows/build-allowlist-reconciler.yml"
+      - "apps/harness-runtime/**"
+      - ".github/workflows/build-harness-runtime.yml"
 
 concurrency:
-  group: build-allowlist-reconciler
+  group: build-harness-runtime
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/nx211/allowlist-reconciler
-  VERSION: "0.2.0"
-  MANIFEST: allowlist-reconciler/deployment.yaml
+  IMAGE: ghcr.io/nx211/harness-runtime
+  VERSION: "0.1.0"
+  PIPELINE: build-catalog/pipelines/implement-spec.yaml
 
 jobs:
   build:
@@ -28,8 +29,6 @@ jobs:
       packages: write
       id-token: write # keyless cosign signing (OIDC)
     steps:
-      # Use a GitHub App token so the digest pin-back commit can push to main
-      # (and trigger no protected-branch friction), mirroring gitops-staging-update.
       - name: Mint app token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
@@ -40,17 +39,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           token: ${{ steps.app-token.outputs.token }}
-
-      # Gate the build on the unit tests. They run against the real ack() source
-      # lifted out of src/index.mjs, so a regression fails here rather than
-      # shipping an image that silently stops recording applied versions.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '22'
-
-      - name: Test
-        working-directory: apps/allowlist-reconciler
-        run: node --test
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
@@ -64,11 +52,9 @@ jobs:
         id: push
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
-          context: apps/allowlist-reconciler
+          context: apps/harness-runtime
           platforms: linux/amd64
           push: true
-          # Single-arch, no attestation manifests — keeps a clean manifest the
-          # kubelet pulls by digest without provenance/SBOM side manifests.
           provenance: false
           sbom: false
           tags: |
@@ -76,8 +62,6 @@ jobs:
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:sha-${{ github.sha }}
 
-      # Keyless cosign signature so verify-image-signatures-business can verify
-      # ghcr.io/nx211/* by this workflow's OIDC identity. Sign by digest.
       - name: Install cosign
         uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
       - name: Sign image (keyless)
@@ -87,28 +71,23 @@ jobs:
 
       - uses: mikefarah/yq@c14f446382944492701b16c1ddb48bb9dbe683e3 # v4
 
-      - name: Pin digest into manifest
+      - name: Pin digest into the pipeline (toolchain + render image)
         env:
           REF: ${{ env.IMAGE }}:${{ env.VERSION }}@${{ steps.push.outputs.digest }}
         run: |
-          # Point the deployment at the immutable digest and drop the Artifact
-          # Registry pull secret (the GHCR package is public, so no secret needed).
-          yq -i '.spec.template.spec.containers[0].image = strenv(REF)
-                 | del(.spec.template.spec.imagePullSecrets)' "$MANIFEST"
+          yq -i '(.spec.params[] | select(.name == "toolchain-image") | .default) = strenv(REF)' "$PIPELINE"
+          yq -i '(.spec.params[] | select(.name == "render-image")    | .default) = strenv(REF)' "$PIPELINE"
 
       - name: Commit pin-back
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- "$MANIFEST"; then
-            echo "No manifest change; digest already pinned."
+          if git diff --quiet -- "$PIPELINE"; then
+            echo "No change; digest already pinned."
             exit 0
           fi
-          git add "$MANIFEST"
-          git commit -m "chore(allowlist-reconciler): pin image ${{ steps.push.outputs.digest }}"
-          # Concurrent image builds each push a pin-back to main; rebase + retry
-          # so a non-fast-forward rejection self-heals (each build pins a
-          # different file, so the rebase never conflicts).
+          git add "$PIPELINE"
+          git commit -m "chore(harness-runtime): pin image ${{ steps.push.outputs.digest }}"
           for attempt in 1 2 3 4 5; do
             if git push; then exit 0; fi
             echo "push rejected (attempt ${attempt}); rebasing onto origin/main"
