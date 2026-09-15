@@ -64,6 +64,10 @@ spec:
         - instructions
         - spec_path
         - dry_run
+        - design_scope
+        # day-2 park-and-wake continuation (resume the open agent PR)
+        - continuation
+        - wake_reason
         # heal-rule lane (shares `name`, `base_branch`, `instructions`):
         - task_id
         # both lanes: Port action run id for the finally status callback
