@@ -206,7 +206,7 @@ rtc:
         cpu: "2"
         memory: 1Gi
   lkJwt:
-    image: ghcr.io/element-hq/lk-jwt-service:0.6.0
+    image: ghcr.io/element-hq/lk-jwt-service:0.7.0
     resources:
       requests:
         cpu: 10m
