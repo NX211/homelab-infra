@@ -1925,9 +1925,12 @@ spec:
                 pnpm type-check > /tmp/g-types.log 2>&1 || types=fail
                 pnpm test -- --passWithNoTests > /tmp/g-test.log 2>&1 || tests=fail
                 # REQ-to-test traceability (spec-format v2; self-skips legacy).
+                # SPEC_PATH points the check at THIS RUN's spec — the script
+                # defaults to docs/SPEC.md, which silently skipped proving
+                # specs at other paths (gate-7 observation).
                 if [ -f scripts/check-spec-traceability.mjs ]; then
                   spec=pass
-                  node scripts/check-spec-traceability.mjs > /tmp/g-spec.log 2>&1 || spec=fail
+                  SPEC_PATH="$SPEC_PATH" node scripts/check-spec-traceability.mjs > /tmp/g-spec.log 2>&1 || spec=fail
                 fi
                 local tf; tf="$(git ls-files '*.test.*' '*.spec.*' | wc -l | tr -d ' ')"
                 GATES_VERDICT="$(python3 - "$lint" "$types" "$tests" "$tf" "$spec" "${WS}" <<'GPY'
@@ -2879,6 +2882,16 @@ spec:
               # superseding run patched onto this PipelineRun before cancelling
               # it (CancelledRunFinally is what let this task still fire).
               LABEL="pipeline $(params.outcome)"
+              # A parked run is a decision request, not a defect — say so in
+              # the action run's label (gate-7 polish: it used to show the
+              # generic "pipeline Failed"). The marker content is the lane's
+              # own printf strings; sanitized anyway since it lands inside a
+              # JSON literal. Superseded still wins below.
+              WSP=""
+              [ "$(workspaces.source.bound)" = "true" ] && WSP="$(workspaces.source.path)"
+              if [ -n "$WSP" ] && [ -f "$WSP/parked" ] && [ ! -L "$WSP/parked" ]; then
+                LABEL="parked — $(head -c 100 "$WSP/parked" | tr -cd 'A-Za-z0-9 ./_<>-')"
+              fi
               KUBE_SA=/var/run/secrets/kubernetes.io/serviceaccount
               if [ -f "$KUBE_SA/token" ]; then
                 SUP="$(curl -sf --cacert "$KUBE_SA/ca.crt" -H "Authorization: Bearer $(cat "$KUBE_SA/token")" \
@@ -2904,9 +2917,7 @@ spec:
               # bucket binds the scaffolder-runner principal with
               # objectCreator. Best-effort — a failed upload is a loud log
               # line, never a red pipeline; TRANSCRIPT_URI stays empty and the
-              # provenance entity records the gap honestly.
-              WSP=""
-              [ "$(workspaces.source.bound)" = "true" ] && WSP="$(workspaces.source.path)"
+              # provenance entity records the gap honestly. WSP set above.
               TRANSCRIPT_URI=""
               BUCKET="$(params.transcripts-bucket)"
               if [ -n "$WSP" ] && [ -n "$BUCKET" ] && [ -f /var/run/secrets/gcp-sts/token ]; then
@@ -2986,7 +2997,24 @@ spec:
               try:
                   props["cost_usd"] = round(float(res["costUsd"]), 4)
               except Exception:
-                  pass
+                  # Parked/crashed runs never write result.json, but any agent
+                  # session that RAN still cost money — sum the per-session
+                  # outputs so spent tokens are never invisible (gate-7
+                  # polish: the $0.41 pre-flight on a parked run vanished).
+                  try:
+                      import glob
+                      tot = 0.0
+                      for p in glob.glob(os.path.join(ws, ".implement", "*-out*.json")) if ws else []:
+                          if os.path.islink(p):
+                              continue
+                          try:
+                              tot += float(json.load(open(p)).get("total_cost_usd", 0) or 0)
+                          except Exception:
+                              pass
+                      if tot > 0:
+                          props["cost_usd"] = round(tot, 4)
+                  except Exception:
+                      pass
               try:
                   sa = os.environ["KUBE_SA"]
                   ctx = ssl.create_default_context(cafile=sa + "/ca.crt")

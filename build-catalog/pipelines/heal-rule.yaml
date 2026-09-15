@@ -439,10 +439,13 @@ spec:
 
               cd "${WS}/fresh"
 
+              # A no-change run is only "nothing to publish" when there is no
+              # open PR to refresh — with one, the fresh body still lands
+              # (same rule as implement-spec; gate-7 parity).
+              NO_CHANGES=false
               if [ -z "$(git status --porcelain)" ]; then
-                echo "agent made no changes — nothing to publish"
-                printf '' > "$(results.pr-url.path)"
-                exit 0
+                NO_CHANGES=true
+                echo "agent made no changes — branch already at the desired state"
               fi
 
               # The lane branch is STABLE per task: a re-dispatch of the same
@@ -450,23 +453,27 @@ spec:
               # scattering new ones. Lane-owned and force-reset — but never
               # over human commits.
               BRANCH="agent/heal/${TASK_ID}"
-              if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
-                HUMANS="$(curl -q -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-                  "$gh_api/repos/$GH_ORG/$APP_NAME/compare/${BASE_BRANCH}...${BRANCH}" \
-                  | python3 -c 'import sys,json;cmp=json.load(sys.stdin);print(",".join(sorted({c.get("commit",{}).get("author",{}).get("email","") for c in cmp.get("commits",[])} - {"scaffolder@coreyalan.com"})))' \
-                  2>/dev/null || true)"
-                if [ -n "$HUMANS" ]; then
-                  # Marker for the finally callback: record status=parked (a
-                  # decision request), not a generic failure.
-                  printf 'human commits on %s' "$BRANCH" > "${WS}/parked"
-                  echo "::error:: parked — human commits on ${BRANCH} (${HUMANS}); the lane never pushes over people. Take the PR forward manually or delete the branch to release it."
-                  exit 1
+              if [ "$NO_CHANGES" = "true" ]; then
+                : # nothing to commit; an open PR still gets its body refreshed below
+              else
+                if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
+                  HUMANS="$(curl -q -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                    "$gh_api/repos/$GH_ORG/$APP_NAME/compare/${BASE_BRANCH}...${BRANCH}" \
+                    | python3 -c 'import sys,json;cmp=json.load(sys.stdin);print(",".join(sorted({c.get("commit",{}).get("author",{}).get("email","") for c in cmp.get("commits",[])} - {"scaffolder@coreyalan.com"})))' \
+                    2>/dev/null || true)"
+                  if [ -n "$HUMANS" ]; then
+                    # Marker for the finally callback: record status=parked (a
+                    # decision request), not a generic failure.
+                    printf 'human commits on %s' "$BRANCH" > "${WS}/parked"
+                    echo "::error:: parked — human commits on ${BRANCH} (${HUMANS}); the lane never pushes over people. Take the PR forward manually or delete the branch to release it."
+                    exit 1
+                  fi
                 fi
+                git checkout -q -b "$BRANCH"
+                git add -A
+                git commit -q -m "fix($APP_NAME): scorecard remediation"
+                git push -u --force origin "$BRANCH"
               fi
-              git checkout -q -b "$BRANCH"
-              git add -A
-              git commit -q -m "fix($APP_NAME): scorecard remediation"
-              git push -u --force origin "$BRANCH"
 
               # Assemble the PR body as a FILE. printf '%s' never re-parses a
               # value, the trailing note is a quoted heredoc, and --body-file
@@ -504,8 +511,13 @@ spec:
                 "$gh_api/repos/$GH_ORG/$APP_NAME/pulls?head=$GH_ORG:$BRANCH&base=$BASE_BRANCH&state=open" \
                 | python3 -c 'import sys,json;prs=json.load(sys.stdin);print(prs[0]["number"] if prs else "")' 2>/dev/null || true)"
               if [ -n "$EXISTING" ]; then
+                if [ "$NO_CHANGES" = "true" ]; then
+                  NOTE="Run \`$RUN_NAME\`: no changes needed — branch already at the desired state; PR body refreshed."
+                else
+                  NOTE="Rerun \`$RUN_NAME\`: branch rebuilt from \`$BASE_BRANCH\` (previous head superseded)."
+                fi
                 GH_ORG="$GH_ORG" APP_NAME="$APP_NAME" GH_TOKEN="$GH_TOKEN" \
-                  python3 - "$EXISTING" "${WS}/pr-body.md" "Rerun \`$RUN_NAME\`: branch rebuilt from \`$BASE_BRANCH\` (previous head superseded)." <<'EDPY'
+                  python3 - "$EXISTING" "${WS}/pr-body.md" "$NOTE" <<'EDPY'
               import json, os, sys, urllib.request
               num, body_path, note = sys.argv[1:4]
               repo = os.environ["GH_ORG"] + "/" + os.environ["APP_NAME"]
@@ -526,6 +538,11 @@ spec:
                 PR_URL="https://github.com/$GH_ORG/$APP_NAME/pull/$EXISTING"
                 echo "updated: ${PR_URL}"
               else
+                if [ "$NO_CHANGES" = "true" ]; then
+                  echo "no changes and no open PR — nothing to publish"
+                  printf '' > "$(results.pr-url.path)"
+                  exit 0
+                fi
                 PR_URL="$(gh pr create \
                   --repo "$GH_ORG/$APP_NAME" \
                   --base "$BASE_BRANCH" \
@@ -609,6 +626,14 @@ spec:
               # superseding run patched onto this PipelineRun before cancelling
               # it (CancelledRunFinally is what let this task still fire).
               LABEL="pipeline $(params.outcome)"
+              # A parked run is a decision request, not a defect — say so in
+              # the label (gate-7 polish; implement-spec has the same block).
+              # Superseded still wins below.
+              WSP=""
+              [ "$(workspaces.source.bound)" = "true" ] && WSP="$(workspaces.source.path)"
+              if [ -n "$WSP" ] && [ -f "$WSP/parked" ] && [ ! -L "$WSP/parked" ]; then
+                LABEL="parked — $(head -c 100 "$WSP/parked" | tr -cd 'A-Za-z0-9 ./_<>-')"
+              fi
               KUBE_SA=/var/run/secrets/kubernetes.io/serviceaccount
               if [ -f "$KUBE_SA/token" ]; then
                 SUP="$(curl -sf --cacert "$KUBE_SA/ca.crt" -H "Authorization: Bearer $(cat "$KUBE_SA/token")" \
@@ -631,8 +656,7 @@ spec:
               # evidence and push it keyless to the append-only transcript
               # bucket via the homelab-staging WIF pool. Best-effort — a
               # failed upload is a loud log line, never a red pipeline.
-              WSP=""
-              [ "$(workspaces.source.bound)" = "true" ] && WSP="$(workspaces.source.path)"
+              # WSP set above.
               TRANSCRIPT_URI=""
               BUCKET="$(params.transcripts-bucket)"
               if [ -n "$WSP" ] && [ -n "$BUCKET" ] && [ -f /var/run/secrets/gcp-sts/token ]; then
