@@ -16,12 +16,16 @@ spec:
   # bullseye digest whose 15 criticals were all fix:NONE in-distro.
   # Renovate-tracked so a fixed rebuild lands automatically.
   #
-  # 16.11 -> 16.15 clears the five criticals that actually had fixes published
+  # 16.11 -> 16.15 cleared the five criticals that had fixes published
   # (openssl CVE-2026-31789 x3, gnutls CVE-2026-33845 + CVE-2026-42010).
-  # The 17 that remain are perl (x4 CVEs across 4 packages) and libxml2, all
-  # marked fix:NONE / fix_deferred by Debian trixie — verified identical on the
-  # minimal- and standard- image lines, so there is no variant to switch to.
-  # They clear when Debian ships fixes; nothing to do here until then.
+  # As of 2026-09-15 the report is 1 critical + 25 high, ALL fix:NONE in
+  # trixie: the critical is libxml2 CVE-2026-6653 (UAF, DoS-only; Debian says
+  # minor/no-dsa, fixed only in sid), the highs are perl/gnupg/expat/ncurses/
+  # python3.13. Verified identical on the minimal- and standard- image lines,
+  # and the latest tag rebuild still carries them — no variant or bump to
+  # switch to. They clear when a trixie point release ships fixes; accepted
+  # risk tracked as Port exemption exempt-provisioning-db-perl (expires
+  # 2026-12-15), ref platform-infra#3649.
   # renovate: datasource=docker depName=ghcr.io/cloudnative-pg/postgresql
   imageName: ghcr.io/cloudnative-pg/postgresql:16.15-system-trixie
   storage:
