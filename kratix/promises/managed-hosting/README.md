@@ -16,16 +16,17 @@ No custom image to build — the container uses the public `mikefarah/yq` image
 reconciliation, giving the level-triggered drift re-reconcile Metacontroller
 provided.
 
-## Deploy — during L3.3, NOT now
+## Deploy — LIVE since L3.3 (2026-07-28)
 
-Installing this Promise creates `tenants.platform.coreyalan.com` — the **same**
-CRD the Metacontroller CompositeController already reconciles. Deploying it now
-would **double-drive** every Tenant. Sequence:
+The Metacontroller CompositeController is retired; this Promise, applied by the
+`kratix-promises` ArgoCD app, is the **sole** Tenant driver. Drift coverage
+comes from `kratix/config/drift-reconcile.yaml` — a 15-minute CronJob that
+labels every Tenant for manual reconciliation, replacing Metacontroller's 300s
+resync (that is why `kratix-managed-hosting-<tenant>-reconcile-*` Jobs fire
+continuously in steady state). The onboarding workflow's committed `Tenant`
+CRs apply unchanged (same CRD) and flow through Kratix.
 
-1. Kratix Ready + state-store credential live (L3.1).
-2. **L3.3:** retire the Metacontroller CompositeController + its Tenant CRD
-   ownership, then apply this Promise (via a `kratix-promises` ArgoCD app). Kratix
-   becomes the sole Tenant driver; its reconciliation interval replaces the 300s
-   Metacontroller resync for drift.
-3. The onboarding workflow's committed `Tenant` CRs still apply unchanged (same
-   CRD) — they just flow through Kratix now.
+**Schema duplication warning:** `spec.api` embeds a copy of
+`provisioning/tenant-crd.yaml`. Any schema change must land in BOTH files,
+kept semantically identical, or the two appliers fight (PR #1064 fixed the
+last divergence).

@@ -110,6 +110,19 @@ spec:
                       type: string
                       description: sha256 hex of the tenant-minted API key. Plaintext never exists in the control plane.
                       pattern: '^[a-f0-9]{64}$'
+                    showcaseCredentials:
+                      type: array
+                      description: Rotation-capable credential set (merged with the legacy single pair, deduped by id). A declared set is authoritative - the engine projects absentCredentials=revoke, so removing an entry revokes it service-side. Overlap rotation = add new, cut the app over, remove old.
+                      items:
+                        type: object
+                        required: [id, hash]
+                        properties:
+                          id:
+                            type: string
+                          hash:
+                            type: string
+                            description: sha256 hex of the tenant-minted API key.
+                            pattern: '^[a-f0-9]{64}$'
                     showcaseExtraScopes:
                       type: array
                       description: Scope opt-ins beyond the blueprint defaults; the engine filters to its allowlist (webhooks:read, webhooks:write, privacy:erase, showcases:source).
