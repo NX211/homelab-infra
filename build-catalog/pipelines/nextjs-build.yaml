@@ -34,18 +34,62 @@ spec:
         steps:
           - name: git-clone
             image: alpine/git:2.54.0
+            # Same reasoning as web-ci.yaml's checks step: a zero request is what
+            # makes a pod kubelet's first eviction victim under DiskPressure.
+            computeResources:
+              requests: {cpu: 100m, memory: 256Mi, ephemeral-storage: 1Gi}
+              limits: {cpu: "1", memory: 1Gi, ephemeral-storage: 4Gi}
             script: |
               #!/bin/sh
               set -eu
-              # PaC mounts a .git-credentials/.gitconfig into the basic-auth ws.
+              cd "$(workspaces.output.path)"
+
+              # PaC mounts .git-credentials/.gitconfig into the basic-auth ws.
+              #
+              # The absent case used to fall through and clone anyway. For a
+              # private repo GitHub answers an unauthenticated fetch with
+              # "Invalid username or token", so a MISSING credential reported
+              # itself as a REJECTED one — which is what sent the 2026-09-21
+              # investigation after GitHub App tokens instead of the pipeline.
+              # Say which of the two it actually is.
               if [ -f "$(workspaces.basic-auth.path)/.git-credentials" ]; then
                 cp "$(workspaces.basic-auth.path)/.git-credentials" "$HOME/.git-credentials"
                 cp "$(workspaces.basic-auth.path)/.gitconfig" "$HOME/.gitconfig" 2>/dev/null || true
                 git config --global credential.helper store
+              else
+                echo "ERROR: basic-auth workspace has no .git-credentials." >&2
+                echo "PaC provided no git token, so a private clone cannot" >&2
+                echo "succeed. Check secret-auto-create, the GitHub App" >&2
+                echo "installation, and the basic-auth workspace binding." >&2
+                exit 1
               fi
-              cd "$(workspaces.output.path)"
-              git clone "$(params.repo-url)" .
-              [ -n "$(params.revision)" ] && git checkout "$(params.revision)" || true
+
+              # Shallow, and only the revision under test. A full clone drags
+              # every branch and all history into the `source` workspace, which
+              # is a local-path PVC — a hostPath directory with NO quota
+              # enforcement, so whatever it writes bills straight against the
+              # node's filesystem. That is what walks nodes into DiskPressure.
+              REV="$(params.revision)"
+              if [ -n "$REV" ]; then
+                git init -q .
+                git remote add origin "$(params.repo-url)"
+                if git fetch -q --depth 1 origin "$REV"; then
+                  git checkout -q FETCH_HEAD
+                else
+                  # Not every server allows a by-SHA want. Fall back to full
+                  # history in the same repo rather than failing a build over an
+                  # optimisation.
+                  echo "shallow fetch of $REV refused; fetching full history" >&2
+                  git fetch -q origin
+                  git checkout -q "$REV"
+                fi
+              else
+                git clone -q --depth 1 "$(params.repo-url)" .
+              fi
+              # Deliberately no `|| true` on the checkouts above. It used to be
+              # there, and it meant a failed checkout left the DEFAULT BRANCH in
+              # the workspace while the run reported a passing check — a green
+              # tick for code that was never built.
     - name: checks
       runAfter: [clone]
       taskRef:
