@@ -1,0 +1,72 @@
+---
+# Keep build pods off the edge/proxy node.
+#
+# On 2026-09-21 six pods in capturly-builds-untrusted and one in scaffolder were
+# evicted with "The node was low on resource: ephemeral-storage". Every one of
+# them had been scheduled onto yellowtalon, the smallest node in the cluster:
+# ~105 GB total, ~87 GB of it long-lived local-path volumes belonging to other
+# apps, leaving ~13 GB against kubelet's 5.25 GB eviction threshold. A monorepo
+# build workspace does not fit in that, so a build landing there is lost — and it
+# takes its neighbours with it, because DiskPressure evicts by ranking pods whose
+# ephemeral-storage request is 0.
+#
+# Requests alone cannot fix the placement, which is why this policy exists in
+# addition to the requests added to build-catalog. The disk is consumed by the
+# `source` workspace — a local-path PVC, i.e. a hostPath directory with no quota,
+# whose usage is attributed to the volume and not to any pod's
+# ephemeral-storage request. The scheduler therefore sees ~100 GB of allocatable
+# ephemeral-storage on yellowtalon while 13 GB is actually free, and keeps
+# choosing it. The only thing that reliably keeps builds away is saying so.
+#
+# Stated as "not an edge node" rather than "must be the compute node" on purpose:
+# every node here is untainted, so excluding the one node that cannot work leaves
+# the scheduler free to use the other three (blacktalon ~363 GB free, greytalon,
+# redtalon ~51 GB free) instead of funnelling every build onto redtalon alone.
+#
+# local-path binds WaitForFirstConsumer, so the PVC follows the pod mutated here
+# — including Tekton's affinity-assistant, which these namespaces also match and
+# which was itself one of the evicted pods.
+#
+# `+(affinity)` adds the field only when a pod does not already declare one, so a
+# workload that sets its own affinity is never silently overridden. Nothing in
+# these namespaces sets one today (the PaC podTemplates carry only
+# runtimeClassName), but clobbering scheduling rules is not a failure mode worth
+# leaving available.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: build-pods-off-edge-nodes
+  annotations:
+    policies.kyverno.io/title: Keep build pods off edge nodes
+    policies.kyverno.io/category: Scheduling
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Build and scaffolder pods must not schedule onto nodes labelled
+      node-role.kubernetes.io/edge. The edge node's disk is too small to hold a
+      monorepo build workspace, and a build that lands there is evicted under
+      DiskPressure along with whatever else is running on that node.
+spec:
+  # Mutate on admission only. There is nothing to retrofit: the pods this governs
+  # are created per PipelineRun and are short-lived by construction.
+  background: false
+  rules:
+    - name: require-non-edge-node
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - "*-builds-trusted"
+                - "*-builds-untrusted"
+                - scaffolder
+      mutate:
+        patchStrategicMerge:
+          spec:
+            +(affinity):
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node-role.kubernetes.io/edge
+                          operator: DoesNotExist
