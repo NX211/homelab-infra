@@ -4,6 +4,16 @@ kind: Application
 metadata:
   name: capturly-live
   namespace: argocd
+  # Port's ArgoCD integration derives an application's `service` relation from
+  # this label. Without it the app syncs into the catalog with service=null,
+  # which means total_argo_apps reads 0 for capturly-live, argo_apps_all_healthy
+  # cannot evaluate it, and — most consequentially —
+  # incident_open_from_argo never fires, because that automation guards on
+  # `.diff.after.relations.service != null`. A degradation here would produce
+  # no incident at all. staging-capturly-web in this same directory already
+  # carries the label; this one was missed.
+  labels:
+    app.kubernetes.io/part-of: capturly-live
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
