@@ -58,6 +58,11 @@ spec:
     # docs/design/implement-verification-harness.md). "false" = the legacy
     # blind single-shot agent, kept as the escape hatch.
     - {name: verify, type: string, default: "true"}
+    # Review harness (framework .claude/skills/review-harness). Independent
+    # passes, aggregated by discarding, classified, mechanical findings
+    # applied, the rest escalated into the PR. Costs several sessions —
+    # "false" runs the lane exactly as before.
+    - {name: review, type: string, default: "true"}
     - name: toolchain-image
       type: string
       # node 24 + npm + git + curl + openssl + python3. gh + claude installed at
@@ -1295,6 +1300,7 @@ spec:
               - {name: SPEC_PATH, value: $(params.spec-path)}
               - {name: INSTRUCTIONS, value: $(params.instructions)}
               - {name: VERIFY, value: $(params.verify)}
+              - {name: REVIEW, value: $(params.review)}
               - {name: DESIGN_SCOPE, value: $(params.design-scope)}
               - {name: CONTINUATION, value: $(params.continuation)}
               - {name: WAKE_REASON, value: $(params.wake-reason)}
@@ -1371,6 +1377,48 @@ spec:
               } > "${WS}/RUN.md"
 
               cd "${WS}/app"
+
+              # --- repo-local gate baseline (framework standards/spec-format.md)
+              # The app's own scripts/check-*.mjs are the gate catalog:
+              # reachability, query-in-loop, label-not-id, single-definition,
+              # style-surface, symmetry. They ran only in GitHub CI, AFTER this
+              # pipeline opened the PR — so the agent never got the chance to
+              # fix what they catch, and the PR landed red on gates the run
+              # could have satisfied.
+              #
+              # Recorded here against the UNMODIFIED tree, before any agent
+              # session, for the same reason lint and tests are: an app that
+              # gains a gate mid-life is already red on it, and a fix run must
+              # still land. run_gates then requires no-worse-than-baseline.
+              # check-spec-traceability is excluded — it stays absolute, and
+              # run_gates already owns it.
+              CHECKS_BASE='{}'
+              if ls scripts/check-*.mjs >/dev/null 2>&1; then
+                CHECKS_BASE="$(
+                  for f in scripts/check-*.mjs; do
+                    n="$(basename "$f" .mjs)"
+                    # No `case` here: an unescaped ) in a pattern ends the
+                    # enclosing $( ) on some bash builds.
+                    [ "$n" = check-spec-traceability ] && continue
+                    if SPEC_PATH="$SPEC_PATH" node "$f" >"/tmp/base-$n.log" 2>&1; then
+                      printf '%s pass\n' "$n"
+                    else
+                      printf '%s fail\n' "$n"
+                    fi
+                  done | python3 -c 'import sys,json; print(json.dumps(dict(l.split() for l in sys.stdin if l.strip())))'
+                )"
+                python3 - "${WS}/.implement/baseline.json" "$CHECKS_BASE" <<'CBPY'
+              import json, sys
+              path, checks = sys.argv[1], json.loads(sys.argv[2])
+              base = json.load(open(path))
+              base["checks"] = checks
+              json.dump(base, open(path, "w"))
+              CBPY
+                echo "gate baseline: ${CHECKS_BASE}"
+                for n in $(printf '%s' "$CHECKS_BASE" | python3 -c 'import sys,json;print(" ".join(k for k,v in json.load(sys.stdin).items() if v=="fail"))'); do
+                  echo "  baseline ${n} failed:"; tail -n 6 "/tmp/base-${n}.log" | sed 's/^/    /'
+                done
+              fi
 
               summary_guard() {
                 # `[ -f ]` is TRUE for a symlink to a regular file, so it cannot be
@@ -1574,6 +1622,11 @@ spec:
                 }
               }
               VSET
+
+              # Reviewers: the verifier recipe exactly. A reviewer that can edit
+              # is a builder with an opinion, and its findings stop being
+              # evidence about the tree it read.
+              cp "${IMP}/verifier-settings.json" "${IMP}/reviewer-settings.json"
 
               # --- helpers ---------------------------------------------------
               tree_hash() {
@@ -1932,10 +1985,30 @@ spec:
                   spec=pass
                   SPEC_PATH="$SPEC_PATH" node scripts/check-spec-traceability.mjs > /tmp/g-spec.log 2>&1 || spec=fail
                 fi
+                # The rest of the app's gate catalog, run here so the agent can
+                # fix what they catch instead of the PR landing red on them.
+                # Each self-skips where it does not apply (a legacy spec, a
+                # non-agent branch), so this is a no-op in a repo without them.
+                local checks='{}'
+                if ls scripts/check-*.mjs >/dev/null 2>&1; then
+                  checks="$(
+                    for f in scripts/check-*.mjs; do
+                      n="$(basename "$f" .mjs)"
+                      # No `case` here: an unescaped ) in a pattern ends the
+                      # enclosing $( ) on some bash builds.
+                      [ "$n" = check-spec-traceability ] && continue
+                      if SPEC_PATH="$SPEC_PATH" node "$f" >"/tmp/g-$n.log" 2>&1; then
+                        printf '%s pass\n' "$n"
+                      else
+                        printf '%s fail\n' "$n"
+                      fi
+                    done | python3 -c 'import sys,json; print(json.dumps(dict(l.split() for l in sys.stdin if l.strip())))'
+                  )"
+                fi
                 local tf; tf="$(git ls-files '*.test.*' '*.spec.*' | wc -l | tr -d ' ')"
-                GATES_VERDICT="$(python3 - "$lint" "$types" "$tests" "$tf" "$spec" "${WS}" <<'GPY'
+                GATES_VERDICT="$(python3 - "$lint" "$types" "$tests" "$tf" "$spec" "${WS}" "$checks" <<'GPY'
               import json, sys
-              lint, types, tests, tf, spec, ws = sys.argv[1:7]
+              lint, types, tests, tf, spec, ws, checks = sys.argv[1:8]
               base = json.load(open(f"{ws}/.implement/baseline.json"))
               ok = True
               # No worse than baseline: a gate may fail only if it already
@@ -1950,8 +2023,17 @@ spec:
               # writing REQ-referencing tests for whatever it implements.
               if spec == "fail":
                   ok = False
+              # Repo-local gates: no worse than baseline, same rule as lint and
+              # tests. A gate the app was already failing before this run does
+              # not block it; one this run broke does.
+              now = json.loads(checks)
+              was = base.get("checks", {})
+              regressed = [k for k, v in now.items() if v == "fail" and was.get(k, "fail") == "pass"]
+              if regressed:
+                  ok = False
               json.dump({"lint": lint, "typeCheck": types, "tests": tests,
-                         "specTraceability": spec,
+                         "specTraceability": spec, "checks": now,
+                         "checksRegressed": regressed,
                          "testFiles": int(tf), "verdict": "pass" if ok else "fail"},
                         open(f"{ws}/.implement/gates.json", "w"))
               print("pass" if ok else "fail")
@@ -2428,6 +2510,182 @@ spec:
 
               summary_guard
 
+              # --- review harness (framework .claude/skills/review-harness) ---
+              # Gates enforce; this discovers what no gate can see yet. It runs
+              # only on an otherwise-good run: reviewing around a red gate
+              # spends the pass re-finding what run_gates already said.
+              #
+              # Shape is from the evidence, not intuition. Independent passes,
+              # blind to each other, into an aggregator whose job is
+              # SUBTRACTION. Never reflexion ("what did I miss?") — measured at
+              # +6pp recall for -60% signal-to-noise, and the noise is what
+              # makes a reviewer ignorable.
+              REVIEW_VERDICT=skip
+              REVIEW_APPLIED=0
+              REVIEW_ESCALATED=0
+              if [ "${REVIEW}" = "true" ] && [ "${GATES_VERDICT}" = "pass" ] && [ "${VERIFY_VERDICT}" = "pass" ]; then
+                echo "review: three independent passes"
+                # Same backstop as the verifier: the reviewers are denied the
+                # edit tools but keep Bash, so the tree hash is what actually
+                # holds them read-only. A reviewer that edits is no longer
+                # reporting on the tree the builder produced.
+                REVIEW_PRE_HASH="$(tree_hash)"
+                for angle in reuse altitude simplification; do
+                  mint_identity_token || true
+                  printf '%s' "$angle" > "${IMP}/review-angle"
+                  claude -p "$(cat <<'REVPROMPT'
+              You are reviewing this repository's working tree for ONE quality
+              angle. Which angle is in ../.implement/review-angle — read it first.
+
+                reuse           new code that re-implements something the repo
+                                already has. Name the existing helper and its path.
+                altitude        a change made at the wrong depth: a special case
+                                layered on shared infrastructure, domain rules
+                                living in components, a fix at the call site when
+                                the shared helper is the right place.
+                simplification  complexity this change ADDS: state derivable from
+                                other state, copy-paste differing by a label, dead
+                                scaffolding left behind.
+
+              Read ../RUN.md and the spec it names for what the app must do.
+
+              Do NOT report anything the repo's own gates already cover — run
+              `ls scripts/check-*.mjs` and read any that look relevant. Unwired
+              exports, a query per row, a label holding an id, an invariant with
+              two definitions and colour literals are all gated already;
+              reporting them wastes the pass.
+
+              You cannot edit. Verify every claim by reading the code — a finding
+              you have not traced is worse than no finding, because it spends the
+              reader's willingness to look.
+
+              Write ../.implement/review-<angle>.json and nothing else:
+              {"findings":[{"kind":"<lowercase-slug>","file":"<path>","line":<n>,
+                "summary":"<one sentence>","evidence":"<what you read that proves it>",
+                "fix":"<the concrete change>"}]}
+
+              `kind` names the SHAPE of the defect so it can be counted across
+              runs — "duplicate-helper", not "text() is defined twice here".
+              An empty findings list is a good answer.
+              REVPROMPT
+              )" --permission-mode acceptEdits --settings "${IMP}/reviewer-settings.json" \
+                     --add-dir "${WS}" --max-turns 60 --output-format json \
+                     > "${IMP}/review-out-${angle}.json" 2>>/tmp/review-err.log || true
+                  agent_diag "review-${angle}" "${IMP}/review-out-${angle}.json" /tmp/review-err.log
+                done
+
+                # Aggregate by discarding, then classify. One session, because a
+                # single calibrated judge outperformed several specialised ones.
+                mint_identity_token || true
+                claude -p "$(cat <<'AGGPROMPT'
+              Three independent review passes wrote ../.implement/review-reuse.json,
+              review-altitude.json and review-simplification.json. Some of those
+              files may be missing or malformed; that is fine.
+
+              Your job is SUBTRACTION. Keep a finding only if you can confirm it
+              by reading the code it names. Drop:
+                - anything you cannot trace to real code
+                - anything the repo's gates already cover (ls scripts/check-*.mjs)
+                - style preference with no defect behind it
+
+              Then classify what survives:
+                mechanical     one obvious correct edit, behaviour identical
+                behavioral     changes what someone sees or when
+                decision       delete vs wire, which layer owns this — a judgement
+                spec-conflict  touches code carrying a REQ id
+
+              Classify as `decision` when unsure. A wrong `mechanical` gets
+              applied automatically; a wrong `decision` costs a person one read.
+
+              Be careful with anything that looks like dead code. On the run this
+              harness came from, a pass called ~750 lines dead and recommended
+              deleting them; they were three required features with tests, and
+              deleting them would have left the PR smaller, cleaner and greener.
+              Unused-looking code that carries a REQ id is `spec-conflict`.
+
+              Write ../.implement/review-findings.json and nothing else:
+              {"run":{"repo":"<app>","sha":"<HEAD sha>"},
+               "dropped":<how many you discarded>,
+               "findings":[{"kind":"<slug>","class":"mechanical|behavioral|decision|spec-conflict",
+                 "file":"<path>","line":<n>,"summary":"...","evidence":"...","fix":"..."}]}
+              AGGPROMPT
+              )" --permission-mode acceptEdits --settings "${IMP}/reviewer-settings.json" \
+                   --add-dir "${WS}" --max-turns 60 --output-format json \
+                   > "${IMP}/review-agg.json" 2>>/tmp/review-err.log || true
+                agent_diag "review-aggregate" "${IMP}/review-agg.json" /tmp/review-err.log
+
+                if [ "$(tree_hash)" != "${REVIEW_PRE_HASH}" ]; then
+                  echo "::error:: a review pass modified the working tree — findings void"
+                  rm -f "${IMP}/review-findings.json"
+                  REVIEW_VERDICT=tampered
+                fi
+
+                REVIEW_APPLIED="$(python3 -c 'import json,sys
+              try: f = json.load(open(sys.argv[1]))["findings"]
+              except Exception: f = []
+              print(sum(1 for x in f if x.get("class") == "mechanical"))' "${IMP}/review-findings.json" 2>/dev/null || echo 0)"
+                REVIEW_ESCALATED="$(python3 -c 'import json,sys
+              try: f = json.load(open(sys.argv[1]))["findings"]
+              except Exception: f = []
+              print(sum(1 for x in f if x.get("class") != "mechanical"))' "${IMP}/review-findings.json" 2>/dev/null || echo 0)"
+                echo "review: ${REVIEW_APPLIED} mechanical, ${REVIEW_ESCALATED} escalated"
+
+                # Apply the mechanical ones only. The grader is out of reach:
+                # check-grader-untouched runs in run_gates below, so an attempt
+                # to quiet a gate instead of fixing it fails the run.
+                if [ "${REVIEW_APPLIED}" -gt 0 ]; then
+                  mint_identity_token || true
+                  claude -p "$(cat <<'FIXPROMPT'
+              ../.implement/review-findings.json lists reviewed findings. Apply
+              ONLY the ones whose "class" is exactly "mechanical", using the "fix"
+              field. Every one of them is meant to leave behaviour identical.
+
+              Do not touch any other finding — the rest are a person's to decide.
+              Do not edit gate scripts, allowlists, baselines, workflows, or
+              delete tests; that fails the run rather than passing it.
+
+              Run pnpm lint, pnpm type-check and pnpm test when you are done.
+              Append an "AUTOMATED CLEANUP" section to ../SUMMARY.md listing what
+              you changed and for which finding.
+              FIXPROMPT
+              )" --permission-mode acceptEdits --settings "${IMP}/builder-settings.json" \
+                     --add-dir "${WS}" --max-turns 80 --output-format json \
+                     > "${IMP}/review-fix.json" 2>>/tmp/review-err.log || true
+                  agent_diag "review-fix" "${IMP}/review-fix.json" /tmp/review-err.log
+                  run_gates
+                fi
+
+                # Escalations reach the human through SUMMARY.md, which publish
+                # puts in the PR body. Written by the harness, not the agent, so
+                # a session that ended badly cannot drop them silently.
+                python3 - "${IMP}/review-findings.json" "${WS}/SUMMARY.md" <<'ESCPY' || true
+              import json, sys
+              src, summary = sys.argv[1], sys.argv[2]
+              try:
+                  findings = json.load(open(src)).get("findings", [])
+              except Exception:
+                  findings = []
+              rest = [f for f in findings if f.get("class") != "mechanical"]
+              if not rest:
+                  sys.exit(0)
+              order = {"spec-conflict": 0, "decision": 1, "behavioral": 2}
+              rest.sort(key=lambda f: order.get(f.get("class"), 9))
+              with open(summary, "a", encoding="utf-8") as out:
+                  out.write("\n\n## Review findings for a human\n\n")
+                  out.write("Reviewed and confirmed, deliberately NOT applied — each needs a decision.\n\n")
+                  for f in rest:
+                      where = f.get("file") or "(no file)"
+                      line = f.get("line")
+                      out.write(f"- **{f.get('class','?')}** `{where}{':' + str(line) if line else ''}` — {f.get('summary','')}\n")
+                      if f.get("fix"):
+                          out.write(f"  - suggested: {f['fix']}\n")
+              ESCPY
+                summary_guard
+                REVIEW_VERDICT=done
+              elif [ "${REVIEW}" = "true" ]; then
+                echo "review: skipped — the run is not otherwise green (gates=${GATES_VERDICT} verify=${VERIFY_VERDICT})"
+              fi
+
               # --- final result for publish ----------------------------------
               PF="$(cost_of "${IMP}/preflight-out.json")"
               C1="$(cost_of "${IMP}/builder-out-1.json")"
@@ -2455,6 +2713,7 @@ spec:
                   "harness": "gate2-v1",
                   "verdict": "pass" if (gates == "pass" and verify == "pass" and design_ok) else "fail",
                   "gates": load("gates.json", {}),
+                  "review": load("review-findings.json", {"findings": []}),
                   "verify": load("verify.json", {}),
                   "boot": load("boot.json", {}),
                   "baseline": load("baseline.json", {}),
@@ -2677,6 +2936,11 @@ spec:
               lines.append(f"| test files | {g.get('testFiles','?')} (baseline {r.get('baseline',{}).get('testFiles','?')}) |")
               lines.append(f"| app boot | {'healthy' if b.get('bootOk') else 'did not boot'} |")
               lines.append(f"| spec traceability | {g.get('specTraceability','skip')} |")
+              checks = g.get("checks") or {}
+              if checks:
+                  red = [k.replace("check-", "") for k, val in checks.items() if val == "fail"]
+                  lines.append(f"| gate catalog | {len(checks) - len(red)}/{len(checks)} passing"
+                               + (f" (red: {', '.join(red)})" if red else "") + " |")
               d = r.get("design", {})
               fid = d.get("fidelity", {})
               if fid.get("verdict") not in (None, "skip"):
@@ -2703,6 +2967,30 @@ spec:
                   for f in fs[:25]:
                       lines.append(f"- **{f.get('severity','?')}** — {f.get('claim','?')}")
                       lines.append(f"  - evidence: `{str(f.get('evidence',''))[:300]}`")
+                  lines.append("")
+              rv = r.get("review") or {}
+              rfs = rv.get("findings") or []
+              if rfs or rv.get("dropped"):
+                  applied = [f for f in rfs if f.get("class") == "mechanical"]
+                  rest = [f for f in rfs if f.get("class") != "mechanical"]
+                  lines.append("### Review")
+                  lines.append("")
+                  lines.append(f"{len(applied)} mechanical finding(s) applied, {len(rest)} escalated"
+                               + (f", {rv['dropped']} discarded as unconfirmed" if rv.get("dropped") else "")
+                               + ". Escalations are listed in the summary above.")
+                  lines.append("")
+                  # The ledger reads this block: kinds recurring across runs are
+                  # what earns a new gate (framework scripts/review-ledger.mjs).
+                  lines.append("<details><summary>review findings (JSON, for the harvest ledger)</summary>")
+                  lines.append("")
+                  lines.append("```json")
+                  lines.append(json.dumps({"run": rv.get("run", {}), "findings": [
+                      {"kind": f.get("kind"), "class": f.get("class"),
+                       "action": "applied" if f.get("class") == "mechanical" else "escalated",
+                       "file": f.get("file"), "summary": f.get("summary")} for f in rfs]}, indent=2))
+                  lines.append("```")
+                  lines.append("")
+                  lines.append("</details>")
                   lines.append("")
               print("\n".join(lines))
               VMD
