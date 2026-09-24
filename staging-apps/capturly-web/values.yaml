@@ -71,6 +71,14 @@ staging-app:
   env:
     - name: NODE_ENV
       value: production
+    # Matches prod (platform-infra/helm-charts/capturly-web). Without it V8 falls
+    # back to its default ceiling — ~384 MB — and this app does not fit: staging
+    # OOMed at 376-378 MB twice with "Reached heap limit", exiting 139 and, at one
+    # replica, taking the service down. Keep this and the memory limit below in
+    # step: a heap larger than the container limit trades a V8 OOM for a kernel
+    # OOMKill, which is worse because it lands mid-request with no stack.
+    - name: NODE_OPTIONS
+      value: --max-old-space-size=1024
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.capturly.app
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
@@ -218,7 +226,9 @@ staging-app:
       memory: 256Mi
     limits:
       cpu: 500m
-      memory: 768Mi
+      # 1.5Gi to match prod: a 1024 MB V8 heap plus the non-heap footprint
+      # (native, buffers, sharp) does not fit in 768Mi.
+      memory: 1.5Gi
   # Liveness must not touch the DB — probing `/` ran a DB query, so a Postgres
   # blip killed the pod. /api/health/live is a dependency-free process check.
   livenessProbe:
