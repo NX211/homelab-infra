@@ -23,6 +23,14 @@ staging-app:
     userKey: 90d030c0-ebc6-482c-8695-b436011e5bbc # Populated by scripts/populate-capturly-web-staging-secrets.sh
     passwordKey: eaa72afe-14ce-4216-800d-b436011e5e4f # Populated by scripts/populate-capturly-web-staging-secrets.sh
     nameKey: b4ed1940-2f15-4585-8d2d-b436011e60fe # Populated by scripts/populate-capturly-web-staging-secrets.sh
+  # Monorepo standalone build: Next's output is /app/apps/web/.next, so the
+  # writable cache volume has to mount there. At the chart default it mounted
+  # beside the real directory, leaving the one Next actually writes to on the
+  # read-only root filesystem: every image request re-encoded and logged
+  # "ENOENT: mkdir /app/apps/web/.next/cache/images/...", and the images that
+  # could not be persisted accumulated in heap until V8 OOMed and the single
+  # replica exited 139 — which the staging smoke gate saw as a 503.
+  nextCachePath: /app/apps/web/.next/cache
   # Migration image (built by CI alongside the app image)
   migration:
     enabled: true
