@@ -29,9 +29,22 @@ spec:
       # busy node under gVisor, tests hit their 15s wall-clock timeout. 4 cores
       # reserved (burst to 8) gives the parallel test/build workers real time;
       # well within the 32-core build nodes.
+      #
+      # ephemeral-storage is declared for a different reason than cpu/memory:
+      # not to get capacity, but to stop being the first thing killed. With no
+      # request, ANY usage exceeds it, which is precisely how kubelet ranks
+      # eviction victims under DiskPressure — on 2026-09-21 six build pods here
+      # died with "was using 35628Ki, request is 0, has larger consumption of
+      # ephemeral-storage" while using ~35 MiB each. A request makes the step
+      # protected up to it, and the limit caps a genuine runaway (a step writing
+      # to its own filesystem instead of the workspace) so the NODE survives.
+      #
+      # Container ephemeral-storage counts the writable layer, emptyDirs and
+      # logs — NOT the `source` PVC, which is where the real tens of gigabytes
+      # live. See nextjs-build.yaml for that side of the problem.
       computeResources:
-        requests: {cpu: "4", memory: 4Gi}
-        limits: {cpu: "8", memory: 8Gi}
+        requests: {cpu: "4", memory: 4Gi, ephemeral-storage: 2Gi}
+        limits: {cpu: "8", memory: 8Gi, ephemeral-storage: 8Gi}
       env:
         # A neutral, writable home — NOT the source workspace. With HOME at the
         # repo root, ESLint's eslintrc mode treats the repo's root .eslintrc.*
