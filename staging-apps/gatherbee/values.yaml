@@ -1,0 +1,111 @@
+# gatherbee.org - Staging Values
+# Build once, deploy many: the same image as prod, different config.
+
+staging-app:
+  appName: gatherbee
+  appLabel: GatherBee
+  fullnameOverride: gatherbee-staging
+  replicaCount: 1
+  deploymentAnnotations:
+    reloader.stakater.com/auto: "true"
+  bitwarden:
+    projectID: "4b2a6e06-1311-47e4-932a-b4cc012e5347" # Staging - GatherBee
+    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+    # One-time bootstrap: a BWS machine account scoped to the staging project,
+    # stored as this K8s secret in external-secrets-system (Bitwarden web
+    # console) — same as every other staging app.
+    credentialsSecret: bitwarden-staging-gatherbee-credentials
+  database:
+    enabled: true
+    superuser:
+      create: false # shares the postgres-superuser-staging secret
+    userKey: 47ef3b6f-2bf9-4336-93cf-b4d0016082e2 # DB_USER      gatherbee_staging
+    passwordKey: 91221247-5290-4ac2-8799-b4d00160835b # DB_PASSWORD
+    nameKey: c7026440-351c-429e-bb02-b4d001608321 # DB_NAME      gatherbee_staging
+  # Monorepo standalone build: Next's output is /app/apps/web/.next, so the
+  # writable cache volume has to mount there. At the chart default it lands
+  # beside the real directory and every image request re-encodes.
+  nextCachePath: /app/apps/web/.next/cache
+  migration:
+    enabled: true
+    repository: us-central1-docker.pkg.dev/coreyalan-gatherbee/gatherbee/gatherbee-web-migrate
+    digest: "" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
+  image:
+    repository: us-central1-docker.pkg.dev/coreyalan-gatherbee/gatherbee/gatherbee-web
+    pullPolicy: IfNotPresent
+    digest: "" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
+  imagePullSecrets:
+    - name: gcr-pull-secret-gatherbee
+  gcrPullSecret:
+    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO does not manage this pull secret
+    secretName: gcr-pull-secret-gatherbee
+  service:
+    type: ClusterIP
+    port: 3000
+  ingress:
+    enabled: true
+    host: staging.gatherbee.org
+    clusterIssuer: letsencrypt-prod
+    # On-LAN/in-cluster by default; the allowlist-reconciler unions reviewer IPs
+    # at runtime from Bitwarden. GatherBee has no inbound webhooks — payments
+    # are behind a provider-agnostic interface with no provider wired yet — so
+    # there is nothing to exempt and publicPaths stays empty.
+    ipAllowList:
+      enabled: true
+      sourceRange:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+      reconcilerManaged: true
+      # MUST equal the StagingSite.infraAppName entered in the admin UI for
+      # review-access to resolve.
+      appName: gatherbee
+  env:
+    - name: NODE_ENV
+      value: production
+    - name: APP_ENV
+      value: staging
+    - name: APP_URL
+      value: https://staging.gatherbee.org
+    - name: NEXT_PUBLIC_APP_URL
+      value: https://staging.gatherbee.org
+  envFrom:
+    - secretRef:
+        name: gatherbee-staging-secrets
+  # Mirrors platform-infra secrets/gatherbee.json, with the STAGING project's
+  # UUIDs. DATABASE_URL is staging-only: prod reaches Cloud SQL keylessly over
+  # PSC with IAM auth, while staging talks to the in-cluster postgres.
+  externalSecrets:
+    enabled: true
+    secretName: gatherbee-staging-secrets
+    refreshInterval: 1h
+    secrets:
+      - name: DATABASE_URL
+        key: de09d5ed-44d4-482f-a829-b4d00160839d
+      - name: ADMIN_API_KEY
+        key: c020798d-cb0b-40b3-9d52-b4cc012eff5f
+      - name: AUTH_SECRET
+        key: 08089b0d-db74-4305-8b35-b4cc012efef3
+      - name: NEXTAUTH_SECRET
+        key: 4aacb49a-5d3b-49e9-8eb4-b4cc012efeb3
+      - name: NEXTAUTH_URL
+        key: 2599666f-3288-4ea6-ba3f-b4cc012f0078
+      - name: NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
+        key: baf48be1-633c-4cc8-9038-b4cc012eff27
+      - name: GCP_PROJECT_ID
+        key: 0b732cdf-3f62-425f-bad9-b4cc012f00b1
+      - name: SENTRY_DSN
+        key: ae91eebf-e035-40dd-babf-b4cc012eff96
+      - name: SENTRY_ENVIRONMENT
+        key: 8baecae6-6914-4628-8ec4-b4cc012efff5
+      - name: NEXT_PUBLIC_SENTRY_DSN
+        key: 26517760-f549-42da-bb9e-b4cc012f091c
+      - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
+        key: b8a42915-d157-4680-8c70-b4cc012f0030
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi

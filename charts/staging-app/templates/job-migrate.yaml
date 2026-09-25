@@ -1,5 +1,15 @@
 ---
-{{- if .Values.migration.enabled }}
+{{- /*
+  A migrate Job needs a real digest. A freshly emitted staging chart carries
+  `digest: ""` until the first prod build dispatches staging-image-push, and
+  interpolating that produced `repo@` — an invalid image reference, which
+  Kubernetes rejects as InvalidImageName rather than as a missing image. The
+  Job runs at sync-wave -1, so a brand-new app's very first sync failed on a
+  placeholder rather than simply waiting for its first image.
+
+  Mirrors the same guard deployment.yaml already applies to image.digest.
+*/}}
+{{- if and .Values.migration.enabled .Values.migration.digest }}
 apiVersion: batch/v1
 kind: Job
 metadata:

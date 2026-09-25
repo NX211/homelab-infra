@@ -24,4 +24,4 @@ type: application
 # 0.8.2 — security-context gaps: seccompProfile on the http/worker CronJob
 # pods (the Deployment and Jobs already had one) and resource bounds on the
 # db-init container. No behaviour change; see docs/runbooks.
-version: 0.8.4
+version: 0.8.5

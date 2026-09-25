@@ -1,0 +1,16 @@
+apiVersion: v2
+name: gatherbee-staging
+description: gatherbee.org - Staging Environment
+type: application
+version: 1.0.0
+appVersion: "0.2.0"
+keywords:
+  - gatherbee
+  - nextjs
+  - staging
+maintainers:
+  - name: Homelab Admin
+dependencies:
+  - name: staging-app
+    version: "0.8.5"
+    repository: "file://../../charts/staging-app"
