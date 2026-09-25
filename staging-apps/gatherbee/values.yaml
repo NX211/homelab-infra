@@ -47,9 +47,16 @@ staging-app:
     host: staging.gatherbee.org
     clusterIssuer: letsencrypt-prod
     # On-LAN/in-cluster by default; the allowlist-reconciler unions reviewer IPs
-    # at runtime from Bitwarden. GatherBee has no inbound webhooks — payments
-    # are behind a provider-agnostic interface with no provider wired yet — so
-    # there is nothing to exempt and publicPaths stays empty.
+    # at runtime from Bitwarden.
+    #
+    # Stripe now IS wired, and Stripe publishes no fixed egress range, so the
+    # allowlist would reject legitimate callers and a test payment would sit
+    # unrecorded. The route authenticates itself instead: it verifies the
+    # signature against STRIPE_WEBHOOK_SECRET before doing any work, 400s an
+    # absent or bad signature, and 503s when unconfigured. Same reasoning as
+    # reggiesbbq's Stripe exemption; nothing else is exempted.
+    publicPaths:
+      - /api/webhooks/stripe
     ipAllowList:
       enabled: true
       sourceRange:
@@ -102,6 +109,41 @@ staging-app:
         key: 26517760-f549-42da-bb9e-b4cc012f091c
       - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
         key: b8a42915-d157-4680-8c70-b4cc012f0030
+      # Email. The staging key is a Mailgun SANDBOX sending key, deliberately
+      # not mail.gatherbee.org — a sandbox only delivers to authorised
+      # recipients, so a review environment cannot email real co-op families.
+      - name: MAILGUN_API_KEY
+        key: c965c083-c305-4bd3-83fe-b4d0016c81e0
+      - name: MAILGUN_DOMAIN
+        key: e861c923-8cfa-4b87-af8c-b4d0016c827e
+      # A sending key cannot manage webhooks; the reconciler needs an
+      # account-level key, and falls back silently without one.
+      - name: MAILGUN_ADMIN_API_KEY
+        key: 4ea2e55e-8143-43dc-81e1-b4d0016c82fd
+      - name: MAILGUN_WEBHOOK_SIGNING_KEY
+        key: 89194b6e-6feb-462a-8223-b4d0016c8375
+      # Object storage. Same Cloudflare account as production, SEPARATE
+      # bucket: staging writes real objects and must not land them among a
+      # co-op's live files. The app is gated on all four together.
+      - name: R2_ACCOUNT_ID
+        key: afe8f899-3300-4f46-ae4f-b4d0016c83eb
+      - name: R2_BUCKET
+        key: 4b384173-4530-444b-a7c6-b4d0016c8460
+      - name: R2_ACCESS_KEY_ID
+        key: c7340908-27d6-4348-867d-b4d0016c84d4
+      - name: R2_SECRET_ACCESS_KEY
+        key: 5d4532be-bce0-41d7-ac05-b4d0016c8553
+      # Billing. TEST keys — a live key in a review environment takes real
+      # money from real co-ops.
+      - name: STRIPE_SECRET_KEY
+        key: 7a250df9-44bb-4dae-8ec7-b4d00166438a
+      - name: STRIPE_WEBHOOK_SECRET
+        key: ac829bc0-bca5-4048-b332-b4d0016643bd
+      # OAuth. Separate client from production — the redirect URI differs.
+      - name: GOOGLE_CLIENT_ID
+        key: 19c699d4-39a5-4bc4-89d1-b4d0016c85e8
+      - name: GOOGLE_CLIENT_SECRET
+        key: 220ed92c-91e5-4411-a3a5-b4d0016c8685
   resources:
     requests:
       cpu: 100m
