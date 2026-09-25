@@ -23,15 +23,23 @@ staging-app:
     userKey: 90d030c0-ebc6-482c-8695-b436011e5bbc # Populated by scripts/populate-capturly-web-staging-secrets.sh
     passwordKey: eaa72afe-14ce-4216-800d-b436011e5e4f # Populated by scripts/populate-capturly-web-staging-secrets.sh
     nameKey: b4ed1940-2f15-4585-8d2d-b436011e60fe # Populated by scripts/populate-capturly-web-staging-secrets.sh
+  # Monorepo standalone build: Next's output is /app/apps/web/.next, so the
+  # writable cache volume has to mount there. At the chart default it mounted
+  # beside the real directory, leaving the one Next actually writes to on the
+  # read-only root filesystem: every image request re-encoded and logged
+  # "ENOENT: mkdir /app/apps/web/.next/cache/images/...", and the images that
+  # could not be persisted accumulated in heap until V8 OOMed and the single
+  # replica exited 139 — which the staging smoke gate saw as a 503.
+  nextCachePath: /app/apps/web/.next/cache
   # Migration image (built by CI alongside the app image)
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web-migrate
-    digest: "sha256:7e0fc47b6c0ee7c84fc2bd5771e009f02e0281a382f2f30eb77cad94f3268ba7" # Updated by CI/CD
+    digest: "sha256:5f975d3b2922667cca8ad8bed379096184ad34773d9e601de84fe031a0186aac" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-web
     pullPolicy: IfNotPresent
-    digest: "sha256:15d843f3d918b575abce4e849f02076f4572363cbc0d0809d293b996a47b6131" # Updated by CI/CD
+    digest: "sha256:c8ca6a8d856cddf8643016ebab5ee9fb17581c885d12cd3811d8da81885de035" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-capturly-web
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
@@ -63,6 +71,14 @@ staging-app:
   env:
     - name: NODE_ENV
       value: production
+    # Matches prod (platform-infra/helm-charts/capturly-web). Without it V8 falls
+    # back to its default ceiling — ~384 MB — and this app does not fit: staging
+    # OOMed at 376-378 MB twice with "Reached heap limit", exiting 139 and, at one
+    # replica, taking the service down. Keep this and the memory limit below in
+    # step: a heap larger than the container limit trades a V8 OOM for a kernel
+    # OOMKill, which is worse because it lands mid-request with no stack.
+    - name: NODE_OPTIONS
+      value: --max-old-space-size=1024
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.capturly.app
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
@@ -210,7 +226,9 @@ staging-app:
       memory: 256Mi
     limits:
       cpu: 500m
-      memory: 768Mi
+      # 1.5Gi to match prod: a 1024 MB V8 heap plus the non-heap footprint
+      # (native, buffers, sharp) does not fit in 768Mi.
+      memory: 1.5Gi
   # Liveness must not touch the DB — probing `/` ran a DB query, so a Postgres
   # blip killed the pod. /api/health/live is a dependency-free process check.
   livenessProbe:
