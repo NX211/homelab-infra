@@ -150,6 +150,14 @@ staging-app:
         key: f60e20a8-beed-449d-9281-b4d1011eea25
       - name: AUTH_APPLE_SECRET
         key: 52abcb36-6830-439c-96be-b4d1011eea65
+      # SignWell e-signatures. TEST_MODE is a real value ("true" on staging);
+      # the app parses it strictly so a typo can never mean live signatures.
+      - name: SIGNWELL_API_KEY
+        key: b0ececdb-64c3-4949-8f4d-b4d10149ffb6
+      - name: SIGNWELL_WEBHOOK_ID
+        key: 8611cebf-9869-4067-bba5-b4d1014a0025
+      - name: SIGNWELL_TEST_MODE
+        key: 017dd51b-241e-44af-8bbf-b4d1014a0025
   resources:
     requests:
       cpu: 100m
