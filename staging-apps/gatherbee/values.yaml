@@ -144,6 +144,12 @@ staging-app:
         key: 19c699d4-39a5-4bc4-89d1-b4d0016c85e8
       - name: GOOGLE_CLIENT_SECRET
         key: 220ed92c-91e5-4411-a3a5-b4d0016c8685
+      # Sign in with Apple. AUTH_APPLE_SECRET is a pre-minted ES256 JWT with a
+      # ~6-month cap — rotation is a Bitwarden update, no chart change.
+      - name: AUTH_APPLE_ID
+        key: f60e20a8-beed-449d-9281-b4d1011eea25
+      - name: AUTH_APPLE_SECRET
+        key: 52abcb36-6830-439c-96be-b4d1011eea65
   resources:
     requests:
       cpu: 100m
