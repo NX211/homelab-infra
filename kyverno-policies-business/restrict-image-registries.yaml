@@ -11,6 +11,12 @@
 #                                   dispatchr-social, jl-shaw-486618, reggiesbbq)
 #   curlimages/curl               — staging-app http-cronjob default
 #   postgres                      — staging-app job-db-init
+#   quay.io/jetstack/cert-manager-acmesolver — cert-manager HTTP-01 solver pods,
+#                                   which cert-manager creates IN the app's
+#                                   namespace. Without this every issuance and
+#                                   renewal in `staging` is denied at admission
+#                                   (gatherbee first issuance + blue-sky renewal
+#                                   both sat pending on it, 2026-09).
 # Both Docker Hub entries are pinned to the specific repository rather than
 # allowing docker.io wholesale.
 apiVersion: kyverno.io/v1
@@ -37,14 +43,15 @@ spec:
       validate:
         message: >-
           Business-plane images must come from ghcr.io/nx211/*, ghcr.io/actions/*
-          (ARC), us-central1-docker.pkg.dev/* (staging app images), or the two
+          (ARC), us-central1-docker.pkg.dev/* (staging app images), the two
           Docker Hub images the staging-app chart uses directly
-          (curlimages/curl, postgres). Found a disallowed registry.
+          (curlimages/curl, postgres), or the cert-manager ACME solver
+          (quay.io/jetstack/cert-manager-acmesolver). Found a disallowed registry.
         pattern:
           spec:
             =(ephemeralContainers):
-              - image: "ghcr.io/nx211/* | ghcr.io/actions/* | us-central1-docker.pkg.dev/* | curlimages/curl:* | docker.io/curlimages/curl:* | postgres:* | docker.io/library/postgres:*"
+              - image: "ghcr.io/nx211/* | ghcr.io/actions/* | us-central1-docker.pkg.dev/* | curlimages/curl:* | docker.io/curlimages/curl:* | postgres:* | docker.io/library/postgres:* | quay.io/jetstack/cert-manager-acmesolver:*"
             =(initContainers):
-              - image: "ghcr.io/nx211/* | ghcr.io/actions/* | us-central1-docker.pkg.dev/* | curlimages/curl:* | docker.io/curlimages/curl:* | postgres:* | docker.io/library/postgres:*"
+              - image: "ghcr.io/nx211/* | ghcr.io/actions/* | us-central1-docker.pkg.dev/* | curlimages/curl:* | docker.io/curlimages/curl:* | postgres:* | docker.io/library/postgres:* | quay.io/jetstack/cert-manager-acmesolver:*"
             containers:
-              - image: "ghcr.io/nx211/* | ghcr.io/actions/* | us-central1-docker.pkg.dev/* | curlimages/curl:* | docker.io/curlimages/curl:* | postgres:* | docker.io/library/postgres:*"
+              - image: "ghcr.io/nx211/* | ghcr.io/actions/* | us-central1-docker.pkg.dev/* | curlimages/curl:* | docker.io/curlimages/curl:* | postgres:* | docker.io/library/postgres:* | quay.io/jetstack/cert-manager-acmesolver:*"
