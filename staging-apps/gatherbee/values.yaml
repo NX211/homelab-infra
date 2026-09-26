@@ -155,7 +155,7 @@ staging-app:
       - name: SIGNWELL_API_KEY
         key: b0ececdb-64c3-4949-8f4d-b4d10149ffb6
       - name: SIGNWELL_WEBHOOK_ID
-        key: 8611cebf-9869-4067-bba5-b4d1014a0025
+        key: 8611cebf-9869-4067-bba5-b4d10149fff2
       - name: SIGNWELL_TEST_MODE
         key: 017dd51b-241e-44af-8bbf-b4d1014a0025
   resources:
