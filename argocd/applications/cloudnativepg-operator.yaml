@@ -18,7 +18,7 @@ spec:
     # /33816, grpc CVE-2026-33186, Go stdlib CVE-2025-68121, counted once per
     # arch binary). 0.29.0 (appVersion 1.30.0) scans clean.
     # Requires k8s >=1.29.0 — homelab runs k3s v1.32.x.
-    targetRevision: 0.29.0
+    targetRevision: 0.29.1
     helm:
       valuesObject:
         # Monitoring enabled for Prometheus integration
