@@ -6,7 +6,7 @@
 # node:22-bookworm (full, not slim) includes git + python3/make/g++ for any deps
 # with native (node-gyp) builds. pnpm is installed globally and is world-readable,
 # so an arbitrary non-root uid can run it.
-FROM node:22-bookworm
+FROM node:24-bookworm
 
 # keytar (native) links against libsecret at build time; node:bookworm ships
 # pkg-config but not the libsecret dev headers, so the offline node-gyp build
