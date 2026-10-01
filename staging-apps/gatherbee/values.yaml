@@ -158,6 +158,33 @@ staging-app:
         key: 8611cebf-9869-4067-bba5-b4d10149fff2
       - name: SIGNWELL_TEST_MODE
         key: 017dd51b-241e-44af-8bbf-b4d1014a0025
+  # Probes hit /api/health, NOT the chart default of `/`.
+  #
+  # `/` is the marketing homepage: Next server-renders it on every kubelet tick,
+  # and at these periods that is 18 renders/minute/pod (readiness every 5s +
+  # liveness every 10s), forever, for a response nothing reads. /api/health is
+  # deliberately dependency-free in the app (no DB, no Redis — see
+  # platform/app-contract.md), so it is safe for liveness as well as readiness:
+  # a database blip cannot restart the pod through it.
+  #
+  # gatherbee has no /api/health/live; the single route already plays the
+  # dependency-free role that capturly-web and coreyalan-com split out.
+  livenessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
   resources:
     requests:
       cpu: 100m
