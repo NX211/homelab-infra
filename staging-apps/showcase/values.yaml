@@ -98,6 +98,32 @@ staging-app:
         key: dd3fcf80-f300-4f31-ac25-b4b1017f6870
       - name: S3_SECRET_ACCESS_KEY
         key: 028457b6-c74b-46aa-b843-b4b1017f68b0
+  # Probes hit /api/health, NOT `/`. `/` is the marketing homepage, which Next
+  # server-renders on every kubelet tick — 18 renders/minute/pod at these
+  # periods (readiness 5s + liveness 10s), forever, for a response nothing
+  # reads. /api/health is dependency-free in the app (no DB, no Redis, per
+  # platform/app-contract.md), so it is safe for liveness too: a database blip
+  # cannot restart the pod through it.
+  #
+  # Set explicitly rather than relying on the chart default: this app pins
+  # staging-app 0.8.2 and vendors that tarball, so a newer chart default would
+  # not reach it without a pin bump.
+  livenessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
   resources:
     requests:
       cpu: 100m
