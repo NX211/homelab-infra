@@ -3,7 +3,7 @@ name: gatherbee-staging
 description: gatherbee.org - Staging Environment
 type: application
 version: 1.0.0
-appVersion: "0.5.0"
+appVersion: "0.5.2"
 keywords:
   - gatherbee
   - nextjs
