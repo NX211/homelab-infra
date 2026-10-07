@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: ghcr.io/seerr-team/seerr
-  tag: "v3.4.1"
+  tag: "v3.5.0"
   pullPolicy: IfNotPresent
 
 # Service configuration
