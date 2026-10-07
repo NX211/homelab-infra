@@ -53,6 +53,77 @@ spec:
               the WIF subject allowlist still contains
               system:serviceaccount:tekton-pipelines:chains-token-refresher.
               Runbook: tekton/chains/README.md
+        # Kyverno reports a credentials failure and a genuinely unsigned image
+        # IDENTICALLY — both land as "unverified image" in a PolicyReport. That
+        # ambiguity cost a multi-hour investigation on 2026-10-07: the Chains
+        # signature and SLSA attestation were both perfectly valid (verified
+        # independently with cosign), but the admission controller had been up 29
+        # days holding a dead credential context and failed every STS exchange
+        # with "context canceled" in ~400ms. A rollout restart fixed it. Nothing
+        # alerted, because there were no Kyverno rules at all.
+        #
+        # Worse, `failurePolicy: Ignore` means that failure mode fails OPEN. Once
+        # these policies move to Enforce, a credential fault does not block
+        # deploys — it silently stops enforcing, and the only visible symptom is
+        # a PolicyReport nobody is watching. These two rules are the prerequisite
+        # for that flip.
+        - alert: KyvernoImageVerificationFailing
+          expr: |
+            sum by (policy_name) (
+              increase(kyverno_policy_results_total{rule_type="imageVerify", rule_result="fail"}[15m])
+            ) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: >-
+              Kyverno image verification is failing for policy
+              {{ $labels.policy_name }}.
+            description: >-
+              This fires for BOTH causes and cannot distinguish them, because
+              Kyverno does not: a genuinely unsigned or mis-signed image, and
+              Kyverno being unable to reach the registry, both report as
+              "unverified image".
+              To tell them apart, read the controller log rather than the report:
+              `kubectl logs -n kyverno deploy/kyverno-admission-controller | grep -i "image verification failed"`.
+              A credentials fault names oauth2/google, STS or iamcredentials — in
+              which case the image is probably fine and the controller is not.
+              A real signature failure names the attestor or the digest.
+              Confirm independently before touching the build:
+              `cosign verify --certificate-identity <signer> --certificate-oidc-issuer <issuer> <image@digest>`.
+              Runbook: kyverno-policies-business/verify-tekton-provenance.yaml
+        # The discriminator the metric CAN give us. One bad image fails while
+        # others still pass; a broken verifier fails everything. If no imageVerify
+        # check has passed in the window and some have failed, the verifier itself
+        # is the suspect, not the artifact.
+        - alert: KyvernoImageVerificationSystemicallyFailing
+          expr: |
+            (
+              sum(increase(kyverno_policy_results_total{rule_type="imageVerify", rule_result="fail"}[30m])) > 0
+            )
+            and
+            (
+              sum(increase(kyverno_policy_results_total{rule_type="imageVerify", rule_result="pass"}[30m])) == 0
+            )
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: >-
+              Every Kyverno image verification is failing — the verifier is
+              broken, not the images.
+            description: >-
+              No imageVerify check has passed in 30 minutes while at least one has
+              failed. A single unsigned image cannot produce this shape; a
+              credentials or registry fault can, and did on 2026-10-07.
+              First action is to restart the admission controller — the known
+              failure is a long-lived pod holding a dead credential context:
+              `kubectl rollout restart deploy/kyverno-admission-controller -n kyverno`.
+              The rollout surges before terminating (maxUnavailable rounds to 0 at
+              1 replica) so it opens no admission gap, even with Fail webhooks.
+              If that does not clear it, verify the credential chain end to end
+              before suspecting any image — see the sibling alert's description.
+              Runbook: kyverno-policies-business/verify-tekton-provenance.yaml
         - alert: ArtifactRegistryPullCredentialStale
           # Same failure shape, different blast radius: image pulls, not signing.
           # This job had already failed twice unnoticed before alerts were
