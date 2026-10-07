@@ -69,7 +69,7 @@ jobs:
           IMAGE_DIGEST: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
         run: cosign sign --yes "$IMAGE_DIGEST"
 
-      - uses: mikefarah/yq@c14f446382944492701b16c1ddb48bb9dbe683e3 # v4
+      - uses: mikefarah/yq@504fc38780cc46be8444ea1b72fb55919fc0bfb0 # v4
 
       - name: Pin digest into the pipeline (toolchain + render image)
         env:
