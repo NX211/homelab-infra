@@ -151,9 +151,20 @@ resources:
     memory: 768Mi
 
 # Probes
+# Default to the app's health endpoint, never `/`.
+#
+# `/` is the marketing homepage: Next server-renders it on every kubelet tick,
+# which at these periods is 18 full renders/minute/pod (readiness every 5s plus
+# liveness every 10s), indefinitely, for a response nothing reads. Three apps
+# were doing exactly that because they never overrode this default.
+#
+# /api/health is part of the app contract (platform/app-contract.md) and is
+# required to be dependency-free — no DB, no Redis — so it is safe for liveness
+# as well as readiness: a database blip cannot restart the pod through it. An app
+# that also exposes /api/health/live should point liveness there instead.
 livenessProbe:
   enabled: true
-  path: /
+  path: /api/health
   port: 3000
   initialDelaySeconds: 30
   periodSeconds: 10
@@ -162,7 +173,7 @@ livenessProbe:
 
 readinessProbe:
   enabled: true
-  path: /
+  path: /api/health
   port: 3000
   initialDelaySeconds: 10
   periodSeconds: 5

@@ -29,11 +29,11 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/coreyalan-gatherbee/gatherbee/gatherbee-web-migrate
-    digest: "sha256:d73b070e6a81ae38efa73a4b102c7c71c82942d8be0f5656d88d7738106c85fc" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
+    digest: "sha256:4de707a161653fb4cee04a1007bc94feda196e0cc9d7356c9311fa8193106ff1" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
   image:
     repository: us-central1-docker.pkg.dev/coreyalan-gatherbee/gatherbee/gatherbee-web
     pullPolicy: IfNotPresent
-    digest: "sha256:e58fd117d8069d83e7739b26969d61bc270dee547f0e8cb8a986f9314be3526b" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
+    digest: "sha256:e4b6e3526722c82de71712f5e1b970549cd130eba75bc5360bb66c37a6e3ecf3" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
   imagePullSecrets:
     - name: gcr-pull-secret-gatherbee
   gcrPullSecret:
@@ -158,6 +158,33 @@ staging-app:
         key: 8611cebf-9869-4067-bba5-b4d10149fff2
       - name: SIGNWELL_TEST_MODE
         key: 017dd51b-241e-44af-8bbf-b4d1014a0025
+  # Probes hit /api/health, NOT the chart default of `/`.
+  #
+  # `/` is the marketing homepage: Next server-renders it on every kubelet tick,
+  # and at these periods that is 18 renders/minute/pod (readiness every 5s +
+  # liveness every 10s), forever, for a response nothing reads. /api/health is
+  # deliberately dependency-free in the app (no DB, no Redis — see
+  # platform/app-contract.md), so it is safe for liveness as well as readiness:
+  # a database blip cannot restart the pod through it.
+  #
+  # gatherbee has no /api/health/live; the single route already plays the
+  # dependency-free role that capturly-web and coreyalan-com split out.
+  livenessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    enabled: true
+    path: /api/health
+    port: 3000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
   resources:
     requests:
       cpu: 100m
