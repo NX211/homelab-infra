@@ -2,6 +2,13 @@ apiVersion: v2
 name: staging-app
 description: Shared base chart for staging applications
 type: application
+# 0.8.6 — probe defaults move from `/` to /api/health. `/` server-rendered the
+# marketing homepage on every kubelet tick (18 renders/min/pod at the default
+# periods) for a response nothing reads; gatherbee, reggiesbbq and showcase were
+# all doing that because they never overrode it. /api/health is contractually
+# dependency-free, so it is safe for liveness too. Apps pin and vendor this
+# chart, so existing apps are unaffected until they bump — the three affected
+# were fixed with explicit overrides instead.
 # 0.8.4 — nextCachePath makes the writable Next cache mount configurable, for
 # monorepo standalone builds whose output is not at /app/.next. Default is
 # unchanged, so single-app releases are unaffected.
@@ -24,4 +31,4 @@ type: application
 # 0.8.2 — security-context gaps: seccompProfile on the http/worker CronJob
 # pods (the Deployment and Jobs already had one) and resource bounds on the
 # db-init container. No behaviour change; see docs/runbooks.
-version: 0.8.5
+version: 0.8.6
