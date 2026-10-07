@@ -82,6 +82,53 @@ spec:
           replicas: 1
         reportsController:
           replicas: 1
+          # The SAME Artifact Registry auth the admission controller has above,
+          # and for the same reason — but this controller is the one whose
+          # verdict is durable.
+          #
+          # Kyverno verifies images in two places. The admission controller
+          # checks the Pod as it is admitted; the reports controller checks the
+          # owning Deployment and writes the PolicyReport that Port's
+          # `no_failing_policy_checks` scorecard reads. Only the admission
+          # controller was wired, so every Deployment-scoped check on a private
+          # AR image failed on credentials — and Kyverno reports a credentials
+          # failure as an unverified image, which reads as "unsigned".
+          #
+          # provisioning-engine showed the split exactly:
+          #   pass  Pod/provisioning-engine-...-rlspw   admission, wired
+          #   fail  Deployment/provisioning-engine      reports, not wired
+          #
+          # verify-image-signatures-business looked healthy throughout only
+          # because it covers ghcr.io/nx211/*, a public registry needing no
+          # credentials, so its Deployment check never exercised this path.
+          extraVolumes:
+            - name: gcp-sts-token
+              projected:
+                sources:
+                  - serviceAccountToken:
+                      audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+                      expirationSeconds: 3600
+                      path: token
+            - name: gcp-adc
+              configMap:
+                name: kyverno-registry-adc
+                optional: true
+          extraVolumeMounts:
+            - name: gcp-sts-token
+              mountPath: /var/run/secrets/gcp-sts
+              readOnly: true
+            - name: gcp-adc
+              mountPath: /etc/gcp
+              readOnly: true
+          # `reportsController.extraEnvVars`, NOT `.container.extraEnvVars`. The
+          # reports controller has no `container:` level in this chart, unlike
+          # the admission controller above — a `container.extraEnvVars` here is
+          # accepted by Helm and silently dropped, which renders the volumes
+          # without the variable that tells ADC to use them. Verified by
+          # rendering chart 3.9.0 and reading the Deployment back.
+          extraEnvVars:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /etc/gcp/credential-config.json
         cleanupController:
           replicas: 1
 
