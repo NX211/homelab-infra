@@ -126,6 +126,16 @@ staging-app:
         key: 14f82414-0735-45fd-9e8e-b4b701854756
       - name: NEXTAUTH_URL
         key: 37b94bb7-b2f4-4758-97cf-b4b70185594f
+      # Optional sign-in provider: auth.ts registers Google only when both are
+      # present, and treats a REPLACE_ME_* placeholder as absent, so the
+      # sign-in page shows no Google button until the real client lands rather
+      # than one that fails at the OAuth round trip. Staging needs its own
+      # client — Google matches redirect URIs exactly, and this host's is
+      # https://staging.reggiesbbqonline.com/api/auth/callback/google
+      - name: GOOGLE_CLIENT_ID
+        key: 0632d0b8-e5aa-4734-86dc-b4de01617224
+      - name: GOOGLE_CLIENT_SECRET
+        key: 3b7129c7-c573-4ee8-974e-b4de01617260
       - name: STRIPE_SECRET_KEY
         key: 254e08f9-6711-46f0-a707-b4b701855c41
       - name: STRIPE_WEBHOOK_SECRET
