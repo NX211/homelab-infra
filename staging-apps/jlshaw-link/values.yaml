@@ -27,11 +27,11 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web-migrate
-    digest: "sha256:df28209f160c46a120d9646f4eff30d49f0ae9de5a2c4677bb692e99a9c51eca" # Updated by CI/CD
+    digest: "sha256:c7c113d924b569f583aa27595d1439307258059e50a8991ccb587b970544a0cb" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web
     pullPolicy: IfNotPresent
-    digest: "sha256:2873c4f0fc4fba13ffec57f22a8e4b03f6354d08e005683ecb5468ea5368daa0" # Updated by CI/CD
+    digest: "sha256:1e93478dc50c8e7e99af9bef82ff231586c207672bf17a6be87d1b125effdb1b" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-jlshaw
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
