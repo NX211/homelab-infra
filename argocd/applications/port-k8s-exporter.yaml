@@ -31,6 +31,28 @@ spec:
         portBaseUrl: https://api.port.io
         stateKey: homelab-k8s
         createDefaultResources: false
+        # Periodic full resync, which is also the only thing that deletes an
+        # entity whose source CR is gone. The chart default is 0 — no resync at
+        # all — so this exporter ran purely on watch events, and every DELETE it
+        # missed while restarting orphaned its Port entity permanently.
+        #
+        # trivyVulnerabilityReport entities are keyed on .metadata.uid, so a
+        # replacement scan is a NEW entity and never overwrites the old one,
+        # and service.fixable_critical_vulnerabilities SUMS over them. The count
+        # could only ever rise. Measured 2026-10-10: 20 Port entities for this
+        # cluster against 15 live CRs — 5 orphans carrying 16 phantom fixable
+        # criticals, all of them provisioning-engine/status-writer.
+        #
+        # That was 100% of provisioning-engine's red `no_critical_vulnerabilities`
+        # Gold rule: the two entities holding it red were created 2026-09-30 with
+        # critical=8 each, while every status-writer CR actually on this cluster
+        # reports 0. trivy-operator had already deleted them (scannerReportTTL
+        # 168h, they were ~240h old) — the staleness was only ever Port-side.
+        #
+        # platform-infra#3959 made the same fix for the GKE exporter, which now
+        # holds 98 entities against 98 CRs with zero orphans. See
+        # platform-infra#3954.
+        resyncInterval: 60
         secret:
           useExistingSecret: true
           name: port-k8s-exporter # ESO-managed (Workbench Port creds)
