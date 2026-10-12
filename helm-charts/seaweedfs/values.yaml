@@ -6,7 +6,7 @@
 
 image:
   repository: chrislusf/seaweedfs
-  tag: "4.47"
+  tag: "4.48"
   pullPolicy: IfNotPresent
 
 # ---------------------------------------------------------------------------
