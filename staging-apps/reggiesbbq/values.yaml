@@ -32,7 +32,7 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
-    digest: sha256:7cb6a0a0635bd3906954ce8b85ba1a34aeaa24ac5f41c02dbc968723e5d21d53
+    digest: sha256:b85337a6874730c680bd8554816448bee760bbc00b9f05b8475f7194fa02cec9
   # Demo dataset for review: every order status, both gift shapes, loyalty
   # coupons, campaign outcomes, support threads. Idempotent, and the script
   # refuses to run unless APP_ENV=staging. Bump runId to re-seed in place.
@@ -45,7 +45,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
-    digest: "sha256:48dff0c92d241aa253b74056da226c997316e1f100d59e2b1598352f0c5e02ec" # Seeded empty; CI's gitops-staging-update.yml fills it from the first prod build
+    digest: "sha256:bbc920cd92db2f68bc1677561786f2738b3e8baaec5136bd6890d6483501b68c" # Seeded empty; CI's gitops-staging-update.yml fills it from the first prod build
   imagePullSecrets:
     - name: gcr-pull-secret-reggiesbbq
   gcrPullSecret:
@@ -126,6 +126,16 @@ staging-app:
         key: 14f82414-0735-45fd-9e8e-b4b701854756
       - name: NEXTAUTH_URL
         key: 37b94bb7-b2f4-4758-97cf-b4b70185594f
+      # Optional sign-in provider: auth.ts registers Google only when both are
+      # present, and treats a REPLACE_ME_* placeholder as absent, so the
+      # sign-in page shows no Google button until the real client lands rather
+      # than one that fails at the OAuth round trip. Staging needs its own
+      # client — Google matches redirect URIs exactly, and this host's is
+      # https://staging.reggiesbbqonline.com/api/auth/callback/google
+      - name: GOOGLE_CLIENT_ID
+        key: 0632d0b8-e5aa-4734-86dc-b4de01617224
+      - name: GOOGLE_CLIENT_SECRET
+        key: 3b7129c7-c573-4ee8-974e-b4de01617260
       - name: STRIPE_SECRET_KEY
         key: 254e08f9-6711-46f0-a707-b4b701855c41
       - name: STRIPE_WEBHOOK_SECRET
