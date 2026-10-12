@@ -29,11 +29,11 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/coreyalan-gatherbee/gatherbee/gatherbee-web-migrate
-    digest: "sha256:4de707a161653fb4cee04a1007bc94feda196e0cc9d7356c9311fa8193106ff1" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
+    digest: "sha256:fbfb7a853e93ccf85dd892a1a97fba48a58461da077a4e3e64c8f67c8d226e23" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
   image:
     repository: us-central1-docker.pkg.dev/coreyalan-gatherbee/gatherbee/gatherbee-web
     pullPolicy: IfNotPresent
-    digest: "sha256:e4b6e3526722c82de71712f5e1b970549cd130eba75bc5360bb66c37a6e3ecf3" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
+    digest: "sha256:392fe486d22073774e1c8d612656c42ad26f59572bdd5577022f378ba5fb0486" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
   imagePullSecrets:
     - name: gcr-pull-secret-gatherbee
   gcrPullSecret:

@@ -22,11 +22,11 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/coreyalan-showcase/showcase/showcase-web-migrate
-    digest: "sha256:09119bb599c4bdf061996cf31b99e9fcf3d6ad98ebfeda0b8fc7d8394110cf58" # Updated by CI/CD
+    digest: "sha256:1d37047a5c1f944895d524488e5f9b2c509b20c06f51a150fae52375aedf4f4a" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/coreyalan-showcase/showcase/showcase-web
     pullPolicy: IfNotPresent
-    digest: "sha256:50a0096a35d373010efbc6f53414ad88a59230b1ab89277f5264ca8480009744" # Updated by CI/CD
+    digest: "sha256:40500f219ea955329bbd23e9dbe506bfa151b31c2cd7a794b0f07b817d45599f" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-showcase
   gcrPullSecret:
