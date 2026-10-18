@@ -1627,6 +1627,16 @@ spec:
               GATESH
               chmod +x "${IMP}/stop-gate.sh"
 
+              # A repo that ships its own stop gate (.claude/hooks/stop-gate.sh,
+              # synced from framework/agents/hooks) wires the same gates through
+              # its project settings; injecting ours too would run lint,
+              # type-check and test twice per stop. Legacy repos keep ours.
+              if [ -f "${WS}/app/.claude/hooks/stop-gate.sh" ]; then
+                BUILDER_HOOKS='{}'
+              else
+                BUILDER_HOOKS='{ "Stop": [ { "hooks": [ { "type": "command", "command": "bash '"${IMP}"'/stop-gate.sh", "timeout": 900 } ] } ] }'
+              fi
+
               # Builder settings: Bash for the repo's own scripts, nothing
               # host-shaped; deny the token mount and outbound fetch tools.
               # Unquoted heredoc ONLY to expand ${IMP} — the body is ours, no
@@ -1651,11 +1661,7 @@ spec:
                     "WebFetch", "WebSearch"
                   ]
                 },
-                "hooks": {
-                  "Stop": [
-                    { "hooks": [ { "type": "command", "command": "bash ${IMP}/stop-gate.sh", "timeout": 900 } ] }
-                  ]
-                }
+                "hooks": ${BUILDER_HOOKS}
               }
               BSET
 
