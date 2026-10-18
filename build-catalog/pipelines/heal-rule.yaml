@@ -375,6 +375,7 @@ spec:
               - { name: BASE_BRANCH, value: $(params.base-branch) }
               - { name: TASK_ID,     value: $(params.task-id) }
               - { name: RUN_NAME,    value: $(context.pipelineRun.name) }
+              - { name: IMAGE,    value: $(params.image) }
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -387,6 +388,61 @@ spec:
 
               gh_api="https://api.github.com"
               b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
+              # ── Agent provenance on the PR itself (F-15) ───────────────────
+              # A machine-readable comment the github-ocean PR mapping reads
+              # (agent_authored, agent_run) plus one line for the reviewer: run,
+              # lane, harness image, model(s) the sessions used, and the
+              # framework rules commit the repo carried. The finally callback
+              # puts the same values on the agentRun/codingAgent entities.
+              # printf '%s' only — none of these values is re-parsed by a shell.
+              agent_rules_commit() { # from the synced block's stamp in CLAUDE.md
+                local f
+                for f in "${WS}/app/CLAUDE.md" "${WS}/fresh/CLAUDE.md"; do
+                  if [ -f "$f" ] && [ ! -L "$f" ]; then
+                    grep -oE 'base\.md @ [0-9a-f]{7,40}' "$f" | head -1 | awk '{print $3}'
+                    return 0
+                  fi
+                done
+              }
+              agent_models() { # model ids from the claude -p JSON results, comma-joined
+                python3 - "$@" <<'PY'
+              import glob, json, os, sys
+              seen = []
+              for pat in sys.argv[1:]:
+                  for p in sorted(glob.glob(pat)):
+                      if os.path.islink(p):
+                          continue
+                      try:
+                          for m in (json.load(open(p)).get("modelUsage") or {}):
+                              if m not in seen:
+                                  seen.append(m)
+                      except Exception:
+                          pass
+              print(",".join(seen))
+              PY
+              }
+              provenance_footer() { # <lane> <claude-json-glob>...
+                local lane="$1"; shift
+                local rules model
+                rules="$(agent_rules_commit || true)"
+                model="$(agent_models "$@" || true)"
+                printf '\n<!-- agent-provenance: lane=%s agentRun=%s harness=%s model=%s rules=%s -->\n' \
+                  "$lane" "$RUN_NAME" "${IMAGE:-}" "${model:-unknown}" "${rules:-unknown}"
+                printf 'Agent provenance: run `%s` · lane `%s` · harness `%s` · model `%s` · rules `framework/agents/base.md@%s`\n' \
+                  "$RUN_NAME" "$lane" "${IMAGE:-unknown}" "${model:-unknown}" "${rules:-unknown}"
+              }
+              label_pr() { # <pr-number> — best-effort, never fails the publish
+                # The label is created per repo at scaffold (phase 2.9) and was
+                # added to the existing apps by hand; adding it to a PR goes
+                # through the issues API, which this token reaches with
+                # pull_requests:write (the rerun comments prove it). Port keys
+                # on the footer, not the label — the label is for humans and
+                # GitHub-side filters.
+                curl -q -sf -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                  "$gh_api/repos/$GH_ORG/$APP_NAME/issues/$1/labels" -d '{"labels":["agent-authored"]}' >/dev/null \
+                  || echo "::warning:: could not add the agent-authored label to PR #$1 (label missing in the repo, or the App token lacks issues:write)"
+              }
               # Repo-scoped, LEAST-PRIVILEGE installation token (see fetch).
               mint_repo_token() { # mint_repo_token <owner> <repo> <permissions-json>
                 local owner="$1" repo="$2" perms="$3" now hdr pld sig jwt inst
@@ -509,6 +565,7 @@ spec:
               task. Review the diff against the failing rules named above; merging
               should flip them back to passing on the next resync.
               BODY
+                provenance_footer heal-rule "${WS}/agent-out.json"
               } > "${WS}/pr-body.md"
 
               # One PR per lane branch: update the open one when it exists,
@@ -546,6 +603,7 @@ spec:
               EDPY
                 PR_URL="https://github.com/$GH_ORG/$APP_NAME/pull/$EXISTING"
                 echo "updated: ${PR_URL}"
+                label_pr "$EXISTING"
               else
                 if [ "$NO_CHANGES" = "true" ]; then
                   echo "no changes and no open PR — nothing to publish"
@@ -559,6 +617,7 @@ spec:
                   --title "fix: scorecard remediation" \
                   --body-file "${WS}/pr-body.md")"
                 echo "opened: ${PR_URL}"
+                label_pr "${PR_URL##*/}"
               fi
               # Provenance breadcrumb for the finally callback (agentRun): the
               # PR number keys the relation onto the ocean-synced PR entity.
@@ -779,7 +838,7 @@ spec:
                   "lane": AGENT_LANE,
                   "runtime": "tekton/scaffolder (homelab)",
                   "harness_image": os.environ.get("IMAGE", ""),
-                  "model": "default",
+                  "model": ",".join(out.get("modelUsage") or {}) or "default",
                   "rules_commit": rules_commit(),
                   "tool_policy": AGENT_TOOL_POLICY,
                   "lifecycle": "production",
