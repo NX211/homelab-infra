@@ -85,6 +85,21 @@
       "groupName": "linuxserver images"
     },
     {
+      "description": "LinuxServer tags end in a per-build `-lsNNN` counter (plus `-r0` on transmission). Docker versioning reads that suffix as a compatibility marker and only offers tags with the identical suffix, so no LSIO update was ever proposed and the group above never opened. Parse the counter as a version component instead. Regex versioning ignores `revision` unless `build` is captured, so on these three-part tags the counter goes in `build`. Prefixed tags (develop-, nightly-, version-, amd64-) don't match and are skipped.",
+      "matchPackageNames": [
+        "/^ghcr\\.io/linuxserver/",
+        "/^lscr\\.io/linuxserver/"
+      ],
+      "versioning": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:-r\\d+)?-ls(?<build>\\d+)$"
+    },
+    {
+      "description": "The Servarr apps and plex carry a four-part upstream version (plex adds a commit hash), so the upstream build number is `build` and the LSIO counter is `revision`. The counter alone does not order these: it has gone backwards between upstream builds of the same patch release.",
+      "matchPackageNames": [
+        "/^(ghcr|lscr)\\.io/linuxserver/(sonarr|radarr|lidarr|prowlarr|readarr|plex)$/"
+      ],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\.(?<build>\\d+)(?:-[0-9a-f]+)?-ls(?<revision>\\d+)$"
+    },
+    {
       "description": "Element/Matrix components are released together and are version-coupled at runtime.",
       "matchPackageNames": [
         "/^ghcr\\.io/element-hq/"
