@@ -252,6 +252,9 @@ spec:
               EMAIL_FLAG=""; [ "$EFF_EMAIL" = "true" ] && EMAIL_FLAG="--enable-email"
 
               # rebrand + branding (app-repo PR) + onboard --yes (platform-infra PR)
+              # The standards agent's session summary lands in the workspace so
+              # the finally callback can record it as an agentRun (F-08).
+              export SCAFFOLD_RESULT_DIR="$(workspaces.source.path)"
               bash scripts/scaffold-app.sh \
                 --name "$APP_NAME" --domain "$EFF_DOMAIN" --company "$COMPANY" \
                 --github-org "$GH_ORG" "${DESC_ARGS[@]}" "${SPEC_ARGS[@]}" $DB_FLAG "${BRAND_ARGS[@]}" $EMAIL_FLAG \
@@ -476,15 +479,20 @@ spec:
         - { name: run-id,  value: "$(params.port-run-id)" }
         - { name: outcome, value: "$(tasks.status)" }
         - { name: image,   value: "$(params.toolchain-image)" }
+        - { name: app-name, value: "$(params.name)" }
       workspaces:
         - { name: port, workspace: port }
+        # Read-only: agent-result.json from the Phase 2.5 standards agent.
+        - { name: source, workspace: source }
       taskSpec:
         params:
           - { name: run-id, type: string }
           - { name: outcome, type: string }
           - { name: image, type: string }
+          - { name: app-name, type: string }
         workspaces:
           - { name: port, optional: true }
+          - { name: source, optional: true }
         steps:
           - name: patch
             image: $(params.image)
@@ -504,3 +512,48 @@ spec:
               TOKEN="$(python3 -c 'import json,sys;print(json.dumps({"clientId":sys.argv[1],"clientSecret":sys.argv[2]}))' "$CID" "$CSEC"                 | curl -sf -X POST https://api.port.io/v1/auth/access_token -H 'Content-Type: application/json' -d @-                 | python3 -c 'import json,sys;print(json.load(sys.stdin)["accessToken"])')" || { echo "Port auth failed — skipping"; exit 0; }
               curl -sf -X PATCH "https://api.port.io/v1/actions/runs/$(params.run-id)"                 -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json'                 -d "{\"status\":\"${STATUS}\",\"statusLabel\":\"pipeline $(params.outcome)\"}" >/dev/null                 || { echo "Port run PATCH failed (non-fatal)"; exit 0; }
               echo "Port run $(params.run-id) -> ${STATUS}"
+
+              # --- agentRun + codingAgent for the Phase 2.5 standards agent (F-08)
+              # scaffold-app.sh writes agent-result.json (cost, turns, outcome)
+              # into the source workspace when the agent ran. Best-effort: a
+              # Port failure never turns the pipeline red.
+              WSP=""
+              [ "$(workspaces.source.bound)" = "true" ] && WSP="$(workspaces.source.path)"
+              export WSP TOKEN STATUS APP_NAME="$(params.app-name)" RUN_NAME="$(context.pipelineRun.name)" \
+                PORT_RUN_ID="$(params.run-id)" IMAGE="$(params.image)"
+              python3 - <<'PROV' || echo "agentRun upsert failed (non-fatal)"
+              import json, os, urllib.request
+              ws = os.environ.get("WSP", "")
+              p = os.path.join(ws, "agent-result.json")
+              if not (ws and os.path.isfile(p) and not os.path.islink(p)):
+                  print("no agent-result.json — standards agent did not run; nothing to record")
+                  raise SystemExit(0)
+              res = json.load(open(p))
+              AGENT_LANE = "scaffold-standards"
+              AGENT_TOOL_POLICY = "acceptEdits over the freshly scaffolded repo; holds the scaffolder GitHub App token plus Bitwarden and Cloudflare tokens for onboarding"
+              tok = os.environ["TOKEN"]
+              def post(bp, body):
+                  req = urllib.request.Request(
+                      "https://api.port.io/v1/blueprints/" + bp + "/entities?upsert=true&merge=true&create_missing_related_entities=true",
+                      data=json.dumps(body).encode(), method="POST",
+                      headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"})
+                  urllib.request.urlopen(req, timeout=20)
+              try:
+                  post("codingAgent", {"identifier": AGENT_LANE, "title": "Coding agent — " + AGENT_LANE, "team": ["platform"],
+                       "properties": {"lane": AGENT_LANE, "runtime": "scaffold-app.sh (Tekton scaffold lane)",
+                                      "harness_image": os.environ.get("IMAGE", ""), "model": "default",
+                                      "rules_commit": "", "tool_policy": AGENT_TOOL_POLICY, "lifecycle": "production",
+                                      "evals_gated": False, "max_turns": res.get("max_turns"), "max_budget_usd": res.get("max_budget_usd")}})
+                  print("codingAgent", AGENT_LANE, "refreshed")
+              except Exception as e:
+                  print("codingAgent upsert failed (non-fatal):", e)
+              props = {"lane": AGENT_LANE, "task": "scaffold", "port_run_id": os.environ["PORT_RUN_ID"], "continuation": False,
+                       "status": "failure" if res.get("is_error") else ("success" if os.environ["STATUS"] == "SUCCESS" else "failure")}
+              try:
+                  props["cost_usd"] = round(float(res.get("cost_usd") or 0), 4)
+              except Exception:
+                  pass
+              post("agentRun", {"identifier": os.environ["RUN_NAME"] + "-standards", "title": "scaffold-standards — " + os.environ["APP_NAME"],
+                                "properties": props, "relations": {"service": os.environ["APP_NAME"], "agent": AGENT_LANE}})
+              print("agentRun", os.environ["RUN_NAME"] + "-standards", "->", props["status"], "cost", props.get("cost_usd"))
+              PROV

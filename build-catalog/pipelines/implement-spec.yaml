@@ -107,6 +107,14 @@ spec:
     # transcript bucket. Empty bucket name disables the upload.
     - {name: wif-audience, type: string, default: "//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc"}
     - {name: transcripts-bucket, type: string, default: "platform-infra-prod-agent-transcripts"}
+    # Dollar walls per agent session (F-08). --max-turns bounds the number of
+    # steps; these bound the SPEND, so the worst case is a known number instead
+    # of "turns × whatever the model did per turn". The builder runs twice
+    # (build + rework); "small" covers preflight, style rounds, reviewers and
+    # the review fix. Worst case ≈ 2×builder + 2×verifier + ~9×small.
+    - {name: budget-builder, type: string, default: "12"}
+    - {name: budget-verifier, type: string, default: "4"}
+    - {name: budget-small, type: string, default: "3"}
   workspaces:
     - name: source # scratch: app clone, demo payload, agent summary
     - name: github-app # Scaffolder app: app-id + app-private-key (fetch + publish only)
@@ -1935,7 +1943,7 @@ spec:
               ../SUMMARY.md saying what you changed.
               SPROMPT
               )" --permission-mode acceptEdits --settings "${IMP}/builder-settings.json" \
-                     --add-dir "${WS}" --max-turns 60 --output-format json \
+                     --add-dir "${WS}" --max-turns 60 --max-budget-usd $(params.budget-small) --output-format json \
                      > "${IMP}/style-out-$n.json" 2>>/tmp/builder-err.log || true
                   agent_diag "style-$n" "${IMP}/style-out-$n.json" /tmp/builder-err.log
                   # HARD surface enforcement: any out-of-surface write reverts the whole
@@ -2157,7 +2165,7 @@ spec:
               requirements[] entry per active REQ id.
               VPROMPT
               )" --permission-mode acceptEdits --settings "${IMP}/verifier-settings.json" \
-                  --add-dir "${WS}" --max-turns 80 --output-format json \
+                  --add-dir "${WS}" --max-turns 80 --max-budget-usd $(params.budget-verifier) --output-format json \
                   > "${IMP}/verifier-out-$1.json" 2>/tmp/verifier-err.log || true
                 agent_diag "verifier-$1" "${IMP}/verifier-out-$1.json" /tmp/verifier-err.log
                 stop_app
@@ -2309,7 +2317,7 @@ spec:
               {"confidence": <0-100>, "blockers": ["<what makes this unimplementable>"], "questions": ["<what to ask the operator>"]}
               PFPROMPT
               )" --permission-mode acceptEdits --settings "${IMP}/preflight-settings.json" \
-                 --add-dir "${WS}" --max-turns 25 --output-format json \
+                 --add-dir "${WS}" --max-turns 25 --max-budget-usd $(params.budget-small) --output-format json \
                  > "${IMP}/preflight-out.json" 2>/tmp/preflight-err.log || true
                 agent_diag "preflight" "${IMP}/preflight-out.json" /tmp/preflight-err.log
                 PF_VERDICT="$(python3 - "${IMP}/preflight-out.json" <<'PFPY' || echo open
@@ -2468,7 +2476,7 @@ spec:
               Keep the diff focused; do not reformat files you did not change.
               BPROMPT
               )" --permission-mode acceptEdits --settings "${IMP}/builder-settings.json" \
-                 --add-dir "${WS}" --max-turns 200 --output-format json \
+                 --add-dir "${WS}" --max-turns 200 --max-budget-usd $(params.budget-builder) --output-format json \
                  > "${IMP}/builder-out-1.json" 2>/tmp/builder-err.log || true
               agent_diag "builder-1" "${IMP}/builder-out-1.json" /tmp/builder-err.log
 
@@ -2500,7 +2508,7 @@ spec:
               listing each finding and what you changed for it.
               RPROMPT
               )" --permission-mode acceptEdits --settings "${IMP}/builder-settings.json" \
-                 --add-dir "${WS}" --max-turns 120 --output-format json \
+                 --add-dir "${WS}" --max-turns 120 --max-budget-usd $(params.budget-builder) --output-format json \
                  > "${IMP}/builder-out-2.json" 2>>/tmp/builder-err.log || true
                 agent_diag "builder-2" "${IMP}/builder-out-2.json" /tmp/builder-err.log
                 run_gates
@@ -2569,7 +2577,7 @@ spec:
               An empty findings list is a good answer.
               REVPROMPT
               )" --permission-mode acceptEdits --settings "${IMP}/reviewer-settings.json" \
-                     --add-dir "${WS}" --max-turns 60 --output-format json \
+                     --add-dir "${WS}" --max-turns 60 --max-budget-usd $(params.budget-small) --output-format json \
                      > "${IMP}/review-out-${angle}.json" 2>>/tmp/review-err.log || true
                   agent_diag "review-${angle}" "${IMP}/review-out-${angle}.json" /tmp/review-err.log
                 done
@@ -2610,7 +2618,7 @@ spec:
                  "file":"<path>","line":<n>,"summary":"...","evidence":"...","fix":"..."}]}
               AGGPROMPT
               )" --permission-mode acceptEdits --settings "${IMP}/reviewer-settings.json" \
-                   --add-dir "${WS}" --max-turns 60 --output-format json \
+                   --add-dir "${WS}" --max-turns 60 --max-budget-usd $(params.budget-small) --output-format json \
                    > "${IMP}/review-agg.json" 2>>/tmp/review-err.log || true
                 agent_diag "review-aggregate" "${IMP}/review-agg.json" /tmp/review-err.log
 
@@ -2649,7 +2657,7 @@ spec:
               you changed and for which finding.
               FIXPROMPT
               )" --permission-mode acceptEdits --settings "${IMP}/builder-settings.json" \
-                     --add-dir "${WS}" --max-turns 80 --output-format json \
+                     --add-dir "${WS}" --max-turns 80 --max-budget-usd $(params.budget-small) --output-format json \
                      > "${IMP}/review-fix.json" 2>>/tmp/review-err.log || true
                   agent_diag "review-fix" "${IMP}/review-fix.json" /tmp/review-err.log
                   run_gates
@@ -3114,6 +3122,7 @@ spec:
         - {name: spec-path, value: "$(params.spec-path)"}
         - {name: wif-audience, value: "$(params.wif-audience)"}
         - {name: transcripts-bucket, value: "$(params.transcripts-bucket)"}
+        - {name: budget-builder, value: "$(params.budget-builder)"}
       workspaces:
         - {name: port, workspace: port}
         # Read-only breadcrumbs for the agentRun provenance entity:
@@ -3133,6 +3142,7 @@ spec:
           - {name: spec-path, type: string}
           - {name: wif-audience, type: string}
           - {name: transcripts-bucket, type: string}
+          - {name: budget-builder, type: string}
         workspaces:
           - {name: port, optional: true}
           - {name: source, optional: true}
@@ -3255,10 +3265,13 @@ spec:
               export WSP STATUS_E TASK_SLUG TOKEN KUBE_SA TRANSCRIPT_URI
               export APP_NAME="$(params.app-name)" RUN_NAME="$(context.pipelineRun.name)" \
                 PORT_RUN_ID="$(params.run-id)" CONTINUATION="$(params.continuation)" \
-                WAKE_REASON="$(params.wake-reason)"
+                WAKE_REASON="$(params.wake-reason)" IMAGE="$(params.image)" \
+                AGENT_MAX_TURNS=200 AGENT_BUDGET_USD="$(params.budget-builder)"
               python3 - <<'PROV' || echo "agentRun upsert failed (non-fatal)"
-              import datetime, json, os, ssl, urllib.request
+              import datetime, json, os, re, ssl, urllib.request
               ws, run = os.environ.get("WSP", ""), os.environ["RUN_NAME"]
+              AGENT_LANE = "implement-spec"
+              AGENT_TOOL_POLICY = "acceptEdits; builder deny: token mounts + outbound fetch; verifier read-only (deny mutation tools); stop hook refuses done while CI-parity gates fail"
               def load(rel):
                   p = os.path.join(ws, rel)
                   try:
@@ -3315,7 +3328,50 @@ spec:
                   props["duration_minutes"] = round((datetime.datetime.utcnow() - t0).total_seconds() / 60, 1)
               except Exception as e:
                   print("no start-time:", e)
-              rels = {"service": os.environ["APP_NAME"]}
+
+              # --- codingAgent registry entry (F-08) --------------------------
+              # The lane upserts its OWN registry entry with the values this run
+              # used (image, model, rules, caps), so the registry can never
+              # describe a configuration no run has executed. Best-effort like
+              # the agentRun write; the relation below points at it.
+              def rules_commit():
+                  for rel in ("CLAUDE.md", "app/CLAUDE.md"):
+                      p = os.path.join(ws, rel)
+                      try:
+                          if ws and os.path.isfile(p) and not os.path.islink(p):
+                              m = re.search(r"base\.md @ ([0-9a-f]{7,40})", open(p, encoding="utf-8", errors="replace").read())
+                              if m:
+                                  return m.group(1)
+                      except Exception:
+                          pass
+                  return ""
+              agent_props = {
+                  "lane": AGENT_LANE,
+                  "runtime": "tekton/scaffolder (homelab)",
+                  "harness_image": os.environ.get("IMAGE", ""),
+                  "model": "default",
+                  "rules_commit": rules_commit(),
+                  "tool_policy": AGENT_TOOL_POLICY,
+                  "lifecycle": "production",
+                  "evals_gated": False,
+              }
+              try:
+                  agent_props["max_turns"] = int(os.environ.get("AGENT_MAX_TURNS", "0"))
+                  agent_props["max_budget_usd"] = float(os.environ.get("AGENT_BUDGET_USD", "0"))
+              except Exception:
+                  pass
+              try:
+                  abody = json.dumps({"identifier": AGENT_LANE, "title": "Coding agent — " + AGENT_LANE,
+                                      "team": ["platform"], "properties": agent_props}).encode()
+                  areq = urllib.request.Request(
+                      "https://api.port.io/v1/blueprints/codingAgent/entities?upsert=true&merge=true",
+                      data=abody, method="POST",
+                      headers={"Authorization": "Bearer " + os.environ["TOKEN"], "Content-Type": "application/json"})
+                  urllib.request.urlopen(areq, timeout=20)
+                  print("codingAgent", AGENT_LANE, "refreshed")
+              except Exception as e:
+                  print("codingAgent upsert failed (non-fatal):", e)
+              rels = {"service": os.environ["APP_NAME"], "agent": AGENT_LANE}
               meta = load("publish-meta.json") or {}
               try:
                   rels["pull_request"] = os.environ["APP_NAME"] + "-pr-" + str(int(meta["pr_number"]))
