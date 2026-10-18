@@ -333,8 +333,18 @@ spec:
                   *) echo "::error:: eval-spec-url must be a raw platform-infra file"; exit 1;;
                 esac
                 mkdir -p "app/$(dirname "$SPEC_PATH")"
-                curl -sfL --max-filesize 200000 -o "app/$SPEC_PATH" "$EVAL_SPEC_URL" \
+                # platform-infra is an internal repo, so the raw URL needs a
+                # token. Mint a platform-infra-scoped contents:read token (same
+                # least-privilege path as the app clone) and read the file
+                # through the contents API with the raw media type.
+                rest="${EVAL_SPEC_URL#https://raw.githubusercontent.com/${GH_ORG}/platform-infra/}"
+                spec_ref="${rest%%/*}"; spec_file="${rest#*/}"
+                PI_TOKEN="$(mint_repo_token "$GH_ORG" platform-infra '{"contents":"read"}')"
+                curl -sfL --max-filesize 200000 -o "app/$SPEC_PATH" \
+                  -H "Authorization: Bearer $PI_TOKEN" -H "Accept: application/vnd.github.raw+json" \
+                  "$gh_api/repos/$GH_ORG/platform-infra/contents/${spec_file}?ref=${spec_ref}" \
                   || { echo "::error:: could not fetch the eval spec"; exit 1; }
+                unset PI_TOKEN
                 echo "eval ${EVAL_CASE}: spec replaced from ${EVAL_SPEC_URL}"
               fi
 
