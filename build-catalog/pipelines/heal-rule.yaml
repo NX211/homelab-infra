@@ -44,6 +44,10 @@ spec:
     # transcript bucket. Empty bucket name disables the upload.
     - { name: wif-audience, type: string, default: "//iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc" }
     - { name: transcripts-bucket, type: string, default: "platform-infra-prod-agent-transcripts" }
+    # Caps for the single heal session (F-08): the lane had no turn cap and no
+    # dollar wall, and recorded no cost on its agentRun.
+    - { name: max-turns, type: string, default: "120" }
+    - { name: budget, type: string, default: "6" }
     - name: toolchain-image
       type: string
       # node + npm + git + curl + openssl + python3. gh + claude installed at run time.
@@ -316,7 +320,9 @@ spec:
               SKIPPED, DEVIATIONS. Under WHAT CHANGED name each rule the change
               addresses.
               PROMPT
-              )" --permission-mode acceptEdits --add-dir "${WS}"
+              )" --permission-mode acceptEdits --add-dir "${WS}" \
+                --max-turns "$(params.max-turns)" --max-budget-usd "$(params.budget)" \
+                --output-format json > "${WS}/agent-out.json"
 
               # `[ -f ]` is TRUE for a symlink to a regular file, so it cannot be
               # the only guard: the agent could point SUMMARY.md at another file
@@ -574,6 +580,8 @@ spec:
         - { name: task-id,  value: "$(params.task-id)" }
         - { name: wif-audience, value: "$(params.wif-audience)" }
         - { name: transcripts-bucket, value: "$(params.transcripts-bucket)" }
+        - { name: max-turns, value: "$(params.max-turns)" }
+        - { name: budget, value: "$(params.budget)" }
       workspaces:
         - { name: port, workspace: port }
         # Read-only breadcrumbs for the agentRun provenance entity:
@@ -589,6 +597,8 @@ spec:
           - { name: task-id, type: string }
           - { name: wif-audience, type: string }
           - { name: transcripts-bucket, type: string }
+          - { name: max-turns, type: string }
+          - { name: budget, type: string }
         workspaces:
           - { name: port, optional: true }
           - { name: source, optional: true }
@@ -700,10 +710,13 @@ spec:
               [ -n "${SUP:-}" ] && STATUS_E=superseded
               export WSP STATUS_E TOKEN KUBE_SA TRANSCRIPT_URI
               export APP_NAME="$(params.app-name)" RUN_NAME="$(context.pipelineRun.name)" \
-                PORT_RUN_ID="$(params.run-id)" TASK_ID="$(params.task-id)"
+                PORT_RUN_ID="$(params.run-id)" TASK_ID="$(params.task-id)" IMAGE="$(params.image)" \
+                AGENT_MAX_TURNS="$(params.max-turns)" AGENT_BUDGET_USD="$(params.budget)"
               python3 - <<'PROV' || echo "agentRun upsert failed (non-fatal)"
-              import datetime, json, os, ssl, urllib.request
+              import datetime, json, os, re, ssl, urllib.request
               ws, run = os.environ.get("WSP", ""), os.environ["RUN_NAME"]
+              AGENT_LANE = "heal"
+              AGENT_TOOL_POLICY = "acceptEdits; single session scoped to the aiAgentTask brief; cross-repo changes out of scope; PR-gated"
               def load(rel):
                   p = os.path.join(ws, rel)
                   try:
@@ -723,6 +736,13 @@ spec:
               }
               if os.environ.get("TRANSCRIPT_URI"):
                   props["transcript_uri"] = os.environ["TRANSCRIPT_URI"]
+              # Session cost from the claude -p JSON result (F-08): the heal
+              # lane's spend was invisible before this.
+              out = load("agent-out.json") or {}
+              try:
+                  props["cost_usd"] = round(float(out["total_cost_usd"]), 4)
+              except Exception:
+                  pass
               try:
                   sa = os.environ["KUBE_SA"]
                   ctx = ssl.create_default_context(cafile=sa + "/ca.crt")
@@ -735,7 +755,50 @@ spec:
                   props["duration_minutes"] = round((datetime.datetime.utcnow() - t0).total_seconds() / 60, 1)
               except Exception as e:
                   print("no start-time:", e)
-              rels = {"service": os.environ["APP_NAME"]}
+
+              # --- codingAgent registry entry (F-08) --------------------------
+              # The lane upserts its OWN registry entry with the values this run
+              # used (image, model, rules, caps), so the registry can never
+              # describe a configuration no run has executed. Best-effort like
+              # the agentRun write; the relation below points at it.
+              def rules_commit():
+                  for rel in ("CLAUDE.md", "app/CLAUDE.md"):
+                      p = os.path.join(ws, rel)
+                      try:
+                          if ws and os.path.isfile(p) and not os.path.islink(p):
+                              m = re.search(r"base\.md @ ([0-9a-f]{7,40})", open(p, encoding="utf-8", errors="replace").read())
+                              if m:
+                                  return m.group(1)
+                      except Exception:
+                          pass
+                  return ""
+              agent_props = {
+                  "lane": AGENT_LANE,
+                  "runtime": "tekton/scaffolder (homelab)",
+                  "harness_image": os.environ.get("IMAGE", ""),
+                  "model": "default",
+                  "rules_commit": rules_commit(),
+                  "tool_policy": AGENT_TOOL_POLICY,
+                  "lifecycle": "production",
+                  "evals_gated": False,
+              }
+              try:
+                  agent_props["max_turns"] = int(os.environ.get("AGENT_MAX_TURNS", "0"))
+                  agent_props["max_budget_usd"] = float(os.environ.get("AGENT_BUDGET_USD", "0"))
+              except Exception:
+                  pass
+              try:
+                  abody = json.dumps({"identifier": AGENT_LANE, "title": "Coding agent — " + AGENT_LANE,
+                                      "team": ["platform"], "properties": agent_props}).encode()
+                  areq = urllib.request.Request(
+                      "https://api.port.io/v1/blueprints/codingAgent/entities?upsert=true&merge=true",
+                      data=abody, method="POST",
+                      headers={"Authorization": "Bearer " + os.environ["TOKEN"], "Content-Type": "application/json"})
+                  urllib.request.urlopen(areq, timeout=20)
+                  print("codingAgent", AGENT_LANE, "refreshed")
+              except Exception as e:
+                  print("codingAgent upsert failed (non-fatal):", e)
+              rels = {"service": os.environ["APP_NAME"], "agent": AGENT_LANE}
               meta = load("publish-meta.json") or {}
               try:
                   rels["pull_request"] = os.environ["APP_NAME"] + "-pr-" + str(int(meta["pr_number"]))
