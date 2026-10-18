@@ -3,7 +3,10 @@
 # Image configuration
 image:
   repository: lscr.io/linuxserver/sonarr
-  tag: "4.0.19.2979-ls322"
+  # Sonarr v5 beta canary (LSIO develop branch). v5 migrates the database and
+  # cannot be downgraded: rolling back means restoring a v4 backup taken before
+  # the upgrade. sonarr and sonarr-uhd stay on v4 until this one has run clean.
+  tag: "develop-5.0.0.2668-ls197"
   pullPolicy: IfNotPresent
 
 # Service configuration
