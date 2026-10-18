@@ -3147,8 +3147,12 @@ spec:
     # every dispatch lingers in limbo). No-ops when the run id wasn't passed
     # or the scaffolder-port secret isn't mounted.
     - name: report-port-status
+      # Runs for a Port-triggered run (run id set) OR an eval-sweep run (case
+      # id set, no Port run). Tekton ANDs when-expressions, so the OR is the
+      # concatenation: the input is empty only when both are empty. Without
+      # this, eval runs never wrote their agentRun and the sweep waited blind.
       when:
-        - input: "$(params.port-run-id)"
+        - input: "$(params.port-run-id)$(params.eval-case)"
           operator: notin
           values: [""]
       params:
@@ -3243,11 +3247,15 @@ spec:
               TOKEN="$(python3 -c 'import json,sys;print(json.dumps({"clientId":sys.argv[1],"clientSecret":sys.argv[2]}))' "$CID" "$CSEC" \
                 | curl -sf -X POST https://api.port.io/v1/auth/access_token -H 'Content-Type: application/json' -d @- \
                 | python3 -c 'import json,sys;print(json.load(sys.stdin)["accessToken"])')" || { echo "Port auth failed — skipping"; exit 0; }
-              curl -sf -X PATCH "https://api.port.io/v1/actions/runs/$(params.run-id)" \
-                -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-                -d "{\"status\":\"${STATUS}\",\"statusLabel\":\"${LABEL}\"}" >/dev/null \
-                || { echo "Port run PATCH failed (non-fatal)"; exit 0; }
-              echo "Port run $(params.run-id) -> ${STATUS} (${LABEL})"
+              if [ -n "$(params.run-id)" ]; then
+                curl -sf -X PATCH "https://api.port.io/v1/actions/runs/$(params.run-id)" \
+                  -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+                  -d "{\"status\":\"${STATUS}\",\"statusLabel\":\"${LABEL}\"}" >/dev/null \
+                  || { echo "Port run PATCH failed (non-fatal)"; exit 0; }
+                echo "Port run $(params.run-id) -> ${STATUS} (${LABEL})"
+              else
+                echo "no Port run to update (eval sweep): ${STATUS} (${LABEL}); recording provenance only"
+              fi
 
               # --- transcript archive (gate 6, SOC2): WORM upload ------------
               # Tar the run's evidence (agent transcripts + harness verdicts +
