@@ -63,6 +63,12 @@ spec:
           value: {{ .Values.env.PUID | quote }}
         - name: PGID
           value: {{ .Values.env.PGID | quote }}
+        {{- if .Values.auth.external }}
+        - name: PROWLARR__AUTH__METHOD
+          value: External
+        - name: PROWLARR__SERVER__ALLOWEDHOSTS
+          value: "{{ .Values.ingress.host }},{{ include "prowlarr.fullname" . }},{{ include "prowlarr.fullname" . }}.{{ .Release.Namespace }}.svc,{{ include "prowlarr.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local"
+        {{- end }}
         {{- if .Values.externalSecrets.enabled }}
         envFrom:
         - secretRef:

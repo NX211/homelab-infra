@@ -40,6 +40,17 @@ persistence:
       hostPath: /blacktalon/media/downloads/anime
       mountPath: /media/downloads/anime
 
+# The UI sits behind Authelia forward-auth (IngressRoute middleware), so the app
+# trusts it instead of showing its own login form. Current releases refuse the
+# local-address bypass for any request carrying X-Forwarded-For, which Traefik
+# always adds, so "Forms + disabled for local addresses" now means a second
+# login after Authelia. API routes still require the API key either way, so the
+# Authelia /api bypass stays key-protected. Allowed Hosts is the ingress host plus
+# the in-cluster service names that Prowlarr/Seerr/Bazarr use; loopback and the pod
+# hostname are always accepted.
+auth:
+  external: true
+
 # Environment variables
 env:
   TZ: America/New_York
@@ -47,10 +58,12 @@ env:
   PGID: "8675309"
 
 # Resource limits
+# v5 (.NET 10) needs more headroom than v4: at 512Mi/500m it hit OutOfMemoryException
+# during an interactive search across ~13 indexers and stopped serving HTTP.
 resources:
   requests:
     cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: 500m
     memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
