@@ -142,6 +142,84 @@ spec:
       value: $(tasks.publish.results.pr-url)
   tasks:
     # ── fetch: clone the app + download the approved demo ────────────────────
+    # ── announce: the run exists in Port from its first second ─────────────
+    # Writes the agentRun as status=running; the finally overwrites it with
+    # how the run ended. Without this a run that dies in fetch, or never
+    # starts, is silence: the eval collector waited 90 minutes blind for
+    # exactly that on 2026-10-18. Same identifier, lane, task, branch and
+    # relations as the finally, so the two writes merge into one entity.
+    # Best-effort: never blocks the lane, no-op without the Port workspace.
+    - name: announce
+      workspaces:
+        - {name: port, workspace: port}
+      params:
+        - {name: app-name, value: "$(params.name)"}
+        - {name: spec-path, value: "$(params.spec-path)"}
+        - {name: eval-case, value: "$(params.eval-case)"}
+        - {name: port-run-id, value: "$(params.port-run-id)"}
+        - {name: continuation, value: "$(params.continuation)"}
+        - {name: image, value: "$(params.toolchain-image)"}
+      taskSpec:
+        params:
+          - {name: app-name, type: string}
+          - {name: spec-path, type: string}
+          - {name: eval-case, type: string}
+          - {name: port-run-id, type: string}
+          - {name: continuation, type: string}
+          - {name: image, type: string}
+        workspaces:
+          - {name: port, optional: true}
+        steps:
+          - name: announce
+            image: $(params.image)
+            env:
+              # Bound here, never referenced inside the script (see the
+              # publish task for why).
+              - {name: APP_NAME, value: $(params.app-name)}
+              - {name: SPEC_PATH, value: $(params.spec-path)}
+              - {name: EVAL_CASE, value: $(params.eval-case)}
+              - {name: PORT_RUN_ID, value: $(params.port-run-id)}
+              - {name: CONTINUATION, value: $(params.continuation)}
+              - {name: RUN_NAME, value: $(context.pipelineRun.name)}
+              - {name: PORT_BOUND, value: $(workspaces.port.bound)}
+              - {name: PORT_PATH, value: $(workspaces.port.path)}
+            script: |
+              #!/usr/bin/env bash
+              set -uo pipefail
+              if [ "${PORT_BOUND}" != "true" ] || [ ! -f "${PORT_PATH}/client-id" ]; then
+                echo "no Port credentials bound — run not announced"; exit 0
+              fi
+              python3 - <<'PY' || echo "announce failed (non-fatal)"
+              import json, os, re, urllib.request
+              base = "https://api.port.io/v1"
+              cid = open(os.environ["PORT_PATH"] + "/client-id").read().strip()
+              csec = open(os.environ["PORT_PATH"] + "/client-secret").read().strip()
+              tok = json.load(urllib.request.urlopen(urllib.request.Request(
+                  base + "/auth/access_token", data=json.dumps({"clientId": cid, "clientSecret": csec}).encode(),
+                  headers={"Content-Type": "application/json"}), timeout=20))["accessToken"]
+              app, run = os.environ["APP_NAME"], os.environ["RUN_NAME"]
+              eval_case = os.environ.get("EVAL_CASE", "")
+              slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", os.environ["SPEC_PATH"].lower())).strip("-")[:63]
+              task = eval_case or slug
+              body = json.dumps({
+                  "identifier": run,
+                  "title": "implement-spec — " + app,
+                  "properties": {
+                      "lane": "eval" if eval_case else "implement-spec",
+                      "status": "running",
+                      "task": task,
+                      "branch": "agent/implement-spec/" + (("eval-" + eval_case) if eval_case else slug),
+                      "port_run_id": os.environ.get("PORT_RUN_ID", ""),
+                      "continuation": os.environ.get("CONTINUATION", "") == "true",
+                  },
+                  "relations": {"service": app, "agent": "implement-spec"},
+              }).encode()
+              req = urllib.request.Request(
+                  base + "/blueprints/agentRun/entities?upsert=true&merge=true&create_missing_related_entities=true",
+                  data=body, method="POST", headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"})
+              urllib.request.urlopen(req, timeout=20)
+              print("agentRun", run, "-> running")
+              PY
     - name: fetch
       workspaces:
         - {name: source, workspace: source}
