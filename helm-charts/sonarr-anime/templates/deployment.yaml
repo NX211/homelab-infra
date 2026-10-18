@@ -63,6 +63,12 @@ spec:
           value: {{ .Values.env.PUID | quote }}
         - name: PGID
           value: {{ .Values.env.PGID | quote }}
+        {{- if .Values.auth.external }}
+        - name: SONARR__AUTH__METHOD
+          value: External
+        - name: SONARR__SERVER__ALLOWEDHOSTS
+          value: "{{ .Values.ingress.host }},{{ include "sonarr-anime.fullname" . }},{{ include "sonarr-anime.fullname" . }}.{{ .Release.Namespace }}.svc,{{ include "sonarr-anime.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local"
+        {{- end }}
         volumeMounts:
         - name: config
           mountPath: /config

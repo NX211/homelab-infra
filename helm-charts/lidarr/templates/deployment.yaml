@@ -63,6 +63,12 @@ spec:
           value: {{ .Values.env.PUID | quote }}
         - name: PGID
           value: {{ .Values.env.PGID | quote }}
+        {{- if .Values.auth.external }}
+        - name: LIDARR__AUTH__METHOD
+          value: External
+        - name: LIDARR__SERVER__ALLOWEDHOSTS
+          value: "{{ .Values.ingress.host }},{{ include "lidarr.fullname" . }},{{ include "lidarr.fullname" . }}.{{ .Release.Namespace }}.svc,{{ include "lidarr.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local"
+        {{- end }}
         {{- if .Values.externalSecrets.enabled }}
         envFrom:
         - secretRef:
