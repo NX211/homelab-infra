@@ -81,6 +81,11 @@ spec:
           httpGet:
             path: /ping
             port: http
+            # kubelet sends the pod IP as Host, which Allowed Hosts rejects with
+            # 400; localhost is always accepted.
+            httpHeaders:
+            - name: Host
+              value: localhost
           initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 10
@@ -89,6 +94,11 @@ spec:
           httpGet:
             path: /ping
             port: http
+            # kubelet sends the pod IP as Host, which Allowed Hosts rejects with
+            # 400; localhost is always accepted.
+            httpHeaders:
+            - name: Host
+              value: localhost
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
