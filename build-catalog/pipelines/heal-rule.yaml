@@ -275,7 +275,10 @@ spec:
               # The prompt is a CONSTANT quoted heredoc — bash performs no
               # expansion on it, so nothing run-specific can inject into it.
               # Everything run-specific is in ../RUN.md and ../TASK.md.
-              claude -p "$(cat <<'PROMPT'
+              # AGENT_GUARD_ALLOW: the repo's guard-paths hook (framework/agents/
+              # hooks) refuses .github/ edits in headless sessions; workflow
+              # fixes are this lane's job, so lift that one class here.
+              AGENT_GUARD_ALLOW=github claude -p "$(cat <<'PROMPT'
               You are remediating failing engineering-standard checks in an existing
               application repository. Your working directory IS that repository.
 
