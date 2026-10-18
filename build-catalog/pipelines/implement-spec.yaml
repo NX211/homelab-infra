@@ -198,8 +198,16 @@ spec:
               # first line and smuggles the rest through.
               ok() { [[ $2 =~ $1 ]]; }
               ok '^[a-z0-9]+(-[a-z0-9]+)*$' "$APP_NAME"    || { echo "::error:: invalid app name"; exit 1; }
-              ok '^[A-Za-z0-9._/-]{1,255}$' "$BASE_BRANCH" || { echo "::error:: invalid base branch"; exit 1; }
               [ -z "$EVAL_CASE" ] || ok '^[a-z0-9][a-z0-9-]{0,62}$' "$EVAL_CASE" || { echo "::error:: invalid eval case id"; exit 1; }
+              # Eval cases pin a changesets-style tag (app-template@0.4.6), so
+              # '@' is allowed there; git clone --branch takes tags and the
+              # publish step that would need a real branch is skipped in eval
+              # mode. The normal lane keeps branches only. '@{' is never a ref.
+              if [ -n "$EVAL_CASE" ]; then
+                ok '^[A-Za-z0-9._/@-]{1,255}$' "$BASE_BRANCH" && [[ $BASE_BRANCH != *@\{* ]] || { echo "::error:: invalid base ref"; exit 1; }
+              else
+                ok '^[A-Za-z0-9._/-]{1,255}$' "$BASE_BRANCH" || { echo "::error:: invalid base branch"; exit 1; }
+              fi
               ok '^[A-Za-z0-9._/-]+$'       "$SPEC_PATH"   || { echo "::error:: invalid spec path"; exit 1; }
               case "$SPEC_PATH" in /*|*..*) echo "::error:: spec-path must be relative, with no '..'"; exit 1;; esac
               if [ -n "$DEMO_SLUG" ]; then
