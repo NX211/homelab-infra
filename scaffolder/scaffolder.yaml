@@ -72,6 +72,8 @@ spec:
         - task_id
         # both lanes: Port action run id for the finally status callback
         - port_run_id
+        - eval_case
+        - eval_spec_url
 ---
 # Shared PaC /incoming secret — the SAME value the Port scaffold_app action sends
 # as {{ .secrets.PAC_INCOMING_SECRET }} (BWS CAPTURLY_PAC_INCOMING_SECRET, also
