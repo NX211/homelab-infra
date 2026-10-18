@@ -94,3 +94,16 @@ jobs:
             git pull --rebase origin main
           done
           echo "::error::pin-back push failed after 5 attempts"; exit 1
+
+      # A new harness image is a configuration change to the agent: run the
+      # regression sweep in platform-infra (scaffolder/evals) against it. The
+      # sweep reads the pinned case list there; a pass-rate drop fails it.
+      - name: Trigger the harness eval sweep
+        if: steps.push.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh api -X POST repos/Corey-Alan-Consulting/platform-infra/dispatches \
+            -f event_type=harness-eval \
+            -f 'client_payload[image]='"${IMAGE}@${{ steps.push.outputs.digest }}" \
+            || echo "::warning::could not dispatch the harness eval sweep"
