@@ -1712,6 +1712,7 @@ spec:
                   if installed via one
                 type: string
             type: object
+            x-kubernetes-preserve-unknown-fields: true
         type: object
     served: true
     storage: true
@@ -2587,7 +2588,7 @@ subjects:
 ---
 apiVersion: v1
 data:
-  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:41d133d4f9208cafa92f8b3d60535cd90a22045b7a93ef52fd2cd4b443aec099
+  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:e63ac3133b394e47b96b06b8ff4f3774a5bc540d936c172f2a938676c03867b0
 kind: ConfigMap
 metadata:
   labels:
@@ -2679,7 +2680,7 @@ spec:
             configMapKeyRef:
               key: PIPELINE_ADAPTER_IMG
               name: kratix-platform-pipeline-adapter-config
-        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:41d133d4f9208cafa92f8b3d60535cd90a22045b7a93ef52fd2cd4b443aec099
+        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:e63ac3133b394e47b96b06b8ff4f3774a5bc540d936c172f2a938676c03867b0
         livenessProbe:
           httpGet:
             path: /healthz
