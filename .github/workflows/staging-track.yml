@@ -14,10 +14,11 @@ jobs:
   track:
     name: Track staging health and smoke
     runs-on: ubuntu-latest
-    # ArgoCD wait ≤ 10 min + smoke ≤ 5 min + slack. If the job exceeds this,
-    # the finalize step (if: always()) still runs and patches the check_run
-    # to failure so the PR never sits in_progress forever.
-    timeout-minutes: 20
+    # Staging commit lookup ≤ 6 min + ArgoCD wait ≤ 10 min + smoke ≤ 7 min +
+    # slack. If the job exceeds this, the finalize step (if: always()) still
+    # runs and patches the check_run to failure so the PR never sits
+    # in_progress forever.
+    timeout-minutes: 26
     permissions:
       contents: read
     steps:
@@ -33,6 +34,7 @@ jobs:
         env:
           APP_NAME: ${{ github.event.client_payload.app_name }}
           IMAGE_SHORT: ${{ github.event.client_payload.image_short }}
+          DIGEST: ${{ github.event.client_payload.digest }}
           PR_NUMBER: ${{ github.event.client_payload.pr_number }}
           HEAD_SHA: ${{ github.event.client_payload.head_sha }}
           CHECK_RUN_ID: ${{ github.event.client_payload.check_run_id }}
@@ -43,6 +45,7 @@ jobs:
 
           [ -n "$APP_NAME" ]     || fail "missing app_name"
           [ -n "$IMAGE_SHORT" ]  || fail "missing image_short"
+          [ -n "$DIGEST" ]       || fail "missing digest (platform-infra gitops-update must send the image digest under test)"
           [ -n "$PR_NUMBER" ]    || fail "missing pr_number"
           [ -n "$HEAD_SHA" ]     || fail "missing head_sha"
           [ -n "$CHECK_RUN_ID" ] || fail "missing check_run_id"
@@ -50,6 +53,7 @@ jobs:
 
           printf '%s' "$APP_NAME"     | grep -qE '^[a-zA-Z0-9_-]+$'  || fail "bad app_name: $APP_NAME"
           printf '%s' "$IMAGE_SHORT"  | grep -qE '^[a-zA-Z0-9_-]+$'  || fail "bad image_short: $IMAGE_SHORT"
+          printf '%s' "$DIGEST"       | grep -qE '^sha256:[a-f0-9]{64}$' || fail "bad digest: $DIGEST"
           printf '%s' "$PR_NUMBER"    | grep -qE '^[0-9]+$'          || fail "bad pr_number: $PR_NUMBER"
           printf '%s' "$HEAD_SHA"     | grep -qE '^[a-f0-9]{40}$'    || fail "bad head_sha: $HEAD_SHA"
           printf '%s' "$CHECK_RUN_ID" | grep -qE '^[0-9]+$'          || fail "bad check_run_id: $CHECK_RUN_ID"
@@ -65,6 +69,7 @@ jobs:
           {
             echo "app_name=${APP_NAME}"
             echo "image_short=${IMAGE_SHORT}"
+            echo "digest=${DIGEST}"
             echo "pr_number=${PR_NUMBER}"
             echo "head_sha=${HEAD_SHA}"
             echo "check_run_id=${CHECK_RUN_ID}"
@@ -100,19 +105,58 @@ jobs:
             -f "output[title]=Waiting for ArgoCD: ${ARGO_APP}" \
             -f "output[summary]=$SUMMARY"
 
+      # The tracker must judge THIS release, not whatever staging happened to
+      # be running when the dispatch arrived. On 2026-10-06 it reported
+      # coreyalan-com v0.13.2 Healthy + Synced at 15:58:02Z; ArgoCD's history
+      # shows the staging rollout of that digest started at 15:59:53Z. The
+      # verdict described the previous release, and the new one crash-looped
+      # in both clusters. So: first find the staging-apps commit that carries
+      # the digest (gitops-staging-update writes it from the same registry
+      # push, racing this dispatch), then require ArgoCD to have compared
+      # against that commit or a later one AND to list the image as live
+      # before Healthy means anything.
+      - name: Resolve the staging commit that carries this digest
+        id: bump
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_NAME: ${{ steps.validate.outputs.app_name }}
+          DIGEST: ${{ steps.validate.outputs.digest }}
+        run: |
+          VALUES_PATH="staging-apps/${APP_NAME}/values.yaml"
+          MAX_ATTEMPTS=18   # 6 min: gitops-staging-update normally lands within one
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            for sha in $(gh api "repos/${GITHUB_REPOSITORY}/commits?path=${VALUES_PATH}&per_page=5" --jq '.[].sha'); do
+              if gh api "repos/${GITHUB_REPOSITORY}/contents/${VALUES_PATH}?ref=${sha}" \
+                   -H 'Accept: application/vnd.github.raw+json' | grep -qF "$DIGEST"; then
+                echo "bump_sha=${sha}" >> "$GITHUB_OUTPUT"
+                echo "Staging commit ${sha} carries ${DIGEST}"
+                exit 0
+              fi
+            done
+            echo "Attempt ${i}/${MAX_ATTEMPTS}: no commit on ${VALUES_PATH} carries ${DIGEST} yet"
+            sleep 20
+          done
+          echo "ERROR: no staging commit carries ${DIGEST} after ${MAX_ATTEMPTS} attempts (did gitops-staging-update run?)"
+          exit 1
+
       - name: Wait for ArgoCD sync and health
         id: health
         env:
+          GH_TOKEN: ${{ github.token }}
           ARGOCD_TOKEN: ${{ secrets.ARGOCD_API_TOKEN }}
           ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER_URL }}
           ARGO_APP: ${{ steps.validate.outputs.argo_app }}
+          DIGEST: ${{ steps.validate.outputs.digest }}
+          BUMP_SHA: ${{ steps.bump.outputs.bump_sha }}
         run: |
           MAX_ATTEMPTS=30
           ATTEMPT=0
           HEALTH=""
           SYNC=""
+          AT_BUMP="no"
+          IMAGE_LIVE="false"
 
-          echo "Waiting for ArgoCD app ${ARGO_APP} to be Healthy and Synced..."
+          echo "Waiting for ArgoCD app ${ARGO_APP} to be Synced at/after ${BUMP_SHA:0:8} with ${DIGEST:0:19}… live, then Healthy..."
 
           # Pre-flight: 404 fast instead of burning the polling budget on
           # a mistyped app name.
@@ -138,11 +182,27 @@ jobs:
 
             HEALTH=$(echo "$RESPONSE" | jq -r '.status.health.status // "Unknown"')
             SYNC=$(echo "$RESPONSE"   | jq -r '.status.sync.status   // "Unknown"')
+            # The git revision ArgoCD last compared against. "Synced" is only
+            # meaningful relative to this.
+            REVISION=$(echo "$RESPONSE" | jq -r '.status.sync.revision // ""')
+            # Images in the live resource tree. Retained ReplicaSets keep old
+            # digests listed, so this alone proves nothing — combined with
+            # Healthy on a revision at/after the bump it proves the new
+            # Deployment template is what became available.
+            IMAGE_LIVE=$(echo "$RESPONSE" | jq -r --arg d "@${DIGEST}" '[.status.summary.images[]? | endswith($d)] | any')
 
-            echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: health=${HEALTH} sync=${SYNC}"
+            AT_BUMP="no"
+            if [ "$REVISION" = "$BUMP_SHA" ]; then
+              AT_BUMP="yes"
+            elif [ -n "$REVISION" ]; then
+              CMP=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BUMP_SHA}...${REVISION}" --jq '.status' 2>/dev/null || echo "unknown")
+              [ "$CMP" = "ahead" ] && AT_BUMP="yes"
+            fi
 
-            if [ "$HEALTH" = "Healthy" ] && [ "$SYNC" = "Synced" ]; then
-              echo "Staging app is Healthy and Synced!"
+            echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS}: health=${HEALTH} sync=${SYNC} revision=${REVISION:0:8} at_or_after_bump=${AT_BUMP} image_live=${IMAGE_LIVE}"
+
+            if [ "$AT_BUMP" = "yes" ] && [ "$IMAGE_LIVE" = "true" ] && [ "$HEALTH" = "Healthy" ] && [ "$SYNC" = "Synced" ]; then
+              echo "Staging app is Healthy and Synced on ${REVISION:0:8} with the image under test live."
               break
             fi
 
@@ -154,8 +214,8 @@ jobs:
             sleep 20
           done
 
-          if [ "$HEALTH" != "Healthy" ] || [ "$SYNC" != "Synced" ]; then
-            echo "ERROR: Timed out waiting for staging app (last: health=${HEALTH}, sync=${SYNC})"
+          if [ "$AT_BUMP" != "yes" ] || [ "$IMAGE_LIVE" != "true" ] || [ "$HEALTH" != "Healthy" ] || [ "$SYNC" != "Synced" ]; then
+            echo "ERROR: Timed out waiting for staging app (last: health=${HEALTH}, sync=${SYNC}, revision=${REVISION:0:8}, at_or_after_bump=${AT_BUMP}, image_live=${IMAGE_LIVE})"
             exit 1
           fi
 
@@ -185,6 +245,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_NAME: ${{ steps.validate.outputs.app_name }}
+          DISPATCH_ID: ${{ steps.validate.outputs.dispatch_id }}
         run: |
           # Smoke test repos are keyed by app_name. Apps without an entry
           # are treated as "no smoke tests" — emit `skipped=true` so the
@@ -225,18 +286,31 @@ jobs:
           # from here always fails. Rollout-timing is handled inside the smoke
           # suite itself, which now runs on the in-cluster homelab-staging runner
           # (allowlisted) with Playwright retries.
-          echo "Dispatching smoke tests to ${REPO}..."
+          # Only a run created after THIS dispatch counts. The previous poll
+          # took `--limit 1` of all runs: on 2026-10-06 it reported a run from
+          # 2026-08-11 as the passing smoke test for a release whose real smoke
+          # run had not registered yet. One minute of skew is allowed because
+          # created_at is GitHub's clock, not the runner's.
+          DISPATCHED_AT=$(date -u -d '-60 seconds' +%Y-%m-%dT%H:%M:%S+00:00)
+          echo "Dispatching smoke tests to ${REPO} (accepting runs created >= ${DISPATCHED_AT})..."
           gh api "repos/${REPO}/dispatches" \
             -f event_type=staging-smoke-test \
-            -f "client_payload[staging_url]=${SMOKE_URLS[$APP_NAME]}"
+            -f "client_payload[staging_url]=${SMOKE_URLS[$APP_NAME]}" \
+            -f "client_payload[dispatch_id]=${DISPATCH_ID:-}"
 
           sleep 15
 
-          MAX_ATTEMPTS=30
+          MAX_ATTEMPTS=42   # 7 min: ≤ 2 min for the run to register + ≤ 5 min to finish
           for i in $(seq 1 $MAX_ATTEMPTS); do
             RUN_JSON=$(gh run list --repo "$REPO" --event repository_dispatch \
-              --workflow "staging-smoke.yml" --limit 1 \
-              --json status,conclusion,url 2>/dev/null || echo "[]")
+              --workflow "staging-smoke.yml" --created ">=${DISPATCHED_AT}" --limit 5 \
+              --json status,conclusion,url,createdAt 2>/dev/null || echo "[]")
+
+            if [ "$(echo "$RUN_JSON" | jq 'length')" = "0" ]; then
+              echo "Attempt ${i}/${MAX_ATTEMPTS}: no smoke run created since ${DISPATCHED_AT} yet..."
+              sleep 10
+              continue
+            fi
 
             STATUS=$(echo "$RUN_JSON"     | jq -r '.[0].status // "unknown"')
             CONCLUSION=$(echo "$RUN_JSON" | jq -r '.[0].conclusion // ""')
@@ -273,6 +347,10 @@ jobs:
           ARGO_APP: ${{ steps.validate.outputs.argo_app }}
           APP_NAME: ${{ steps.validate.outputs.app_name }}
           DISPATCH_ID: ${{ steps.validate.outputs.dispatch_id }}
+          BUMP_OUTCOME: ${{ steps.bump.outcome }}
+          BUMP_SHA: ${{ steps.bump.outputs.bump_sha }}
+          DIGEST: ${{ steps.validate.outputs.digest }}
+          IMAGE_SHORT: ${{ steps.validate.outputs.image_short }}
           HEALTH_OUTCOME: ${{ steps.health.outcome }}
           SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
           SMOKE_SKIPPED: ${{ steps.smoke.outputs.skipped }}
@@ -283,22 +361,27 @@ jobs:
           # the step (health failed); we distinguish that from SMOKE_SKIPPED=true
           # which is the in-step decision (no smoke test configured).
 
+          JUDGED="\`${IMAGE_SHORT}@${DIGEST:0:19}…\` on staging commit \`${BUMP_SHA:0:8}\`"
           if [ "$HEALTH_OUTCOME" = "success" ] && \
              { [ "$SMOKE_OUTCOME" = "success" ] || [ "$SMOKE_SKIPPED" = "true" ]; }; then
             CONCLUSION="success"
             TITLE="Staging is healthy"
             if [ "$SMOKE_SKIPPED" = "true" ]; then
-              SUMMARY="ArgoCD app \`${ARGO_APP}\` is **Healthy** + **Synced**. No smoke tests configured for \`${APP_NAME}\`."
+              SUMMARY="ArgoCD app \`${ARGO_APP}\` is **Healthy** + **Synced** with ${JUDGED} live. No smoke tests configured for \`${APP_NAME}\`."
             else
-              SUMMARY="ArgoCD app \`${ARGO_APP}\` is **Healthy** + **Synced**. Smoke tests passed."
+              SUMMARY="ArgoCD app \`${ARGO_APP}\` is **Healthy** + **Synced** with ${JUDGED} live. Smoke tests passed."
               if [ -n "$SMOKE_RUN_URL" ]; then
                 SUMMARY="${SUMMARY}"$'\n\n'"Smoke run: ${SMOKE_RUN_URL}"
               fi
             fi
+          elif [ "$BUMP_OUTCOME" != "success" ]; then
+            CONCLUSION="failure"
+            TITLE="Staging never received this release"
+            SUMMARY="No commit on \`staging-apps/${APP_NAME}/values.yaml\` carries \`${DIGEST}\`, so there was nothing to judge. See the staging-track workflow run."
           elif [ "$HEALTH_OUTCOME" != "success" ]; then
             CONCLUSION="failure"
             TITLE="Staging health check failed"
-            SUMMARY="ArgoCD app \`${ARGO_APP}\` did not reach Healthy + Synced (outcome: \`${HEALTH_OUTCOME}\`). Smoke tests skipped. See the staging-track workflow run for the polling log."
+            SUMMARY="ArgoCD app \`${ARGO_APP}\` did not reach Healthy + Synced with ${JUDGED} live (outcome: \`${HEALTH_OUTCOME}\`). Smoke tests skipped. See the staging-track workflow run for the polling log."
           else
             CONCLUSION="failure"
             TITLE="Staging smoke tests failed"
