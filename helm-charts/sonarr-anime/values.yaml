@@ -58,12 +58,15 @@ env:
   PGID: "8675309"
 
 # Resource limits
-# v5 (.NET 10) needs more headroom than v4: at 512Mi/500m it hit OutOfMemoryException
-# during an interactive search across ~13 indexers and stopped serving HTTP.
+# v5 (.NET 10) needs far more headroom than v4. Evaluating search results for a long
+# absolute-numbered series (e.g. My Hero Academia) throws OutOfMemoryException in
+# DownloadDecisionMaker/RemoteEpisodeAggregationService and wedges the app: it did at
+# 512Mi and again at 2Gi (.NET caps the heap at ~75% of the limit). 4Gi is a trial;
+# if it still wedges, roll back to v4 from the pre-v5 backup.
 resources:
   requests:
     cpu: 100m
     memory: 512Mi
   limits:
     cpu: 2000m
-    memory: 2Gi
+    memory: 4Gi
