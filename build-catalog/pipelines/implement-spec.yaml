@@ -142,6 +142,84 @@ spec:
       value: $(tasks.publish.results.pr-url)
   tasks:
     # ── fetch: clone the app + download the approved demo ────────────────────
+    # ── announce: the run exists in Port from its first second ─────────────
+    # Writes the agentRun as status=running; the finally overwrites it with
+    # how the run ended. Without this a run that dies in fetch, or never
+    # starts, is silence: the eval collector waited 90 minutes blind for
+    # exactly that on 2026-10-18. Same identifier, lane, task, branch and
+    # relations as the finally, so the two writes merge into one entity.
+    # Best-effort: never blocks the lane, no-op without the Port workspace.
+    - name: announce
+      workspaces:
+        - {name: port, workspace: port}
+      params:
+        - {name: app-name, value: "$(params.name)"}
+        - {name: spec-path, value: "$(params.spec-path)"}
+        - {name: eval-case, value: "$(params.eval-case)"}
+        - {name: port-run-id, value: "$(params.port-run-id)"}
+        - {name: continuation, value: "$(params.continuation)"}
+        - {name: image, value: "$(params.toolchain-image)"}
+      taskSpec:
+        params:
+          - {name: app-name, type: string}
+          - {name: spec-path, type: string}
+          - {name: eval-case, type: string}
+          - {name: port-run-id, type: string}
+          - {name: continuation, type: string}
+          - {name: image, type: string}
+        workspaces:
+          - {name: port, optional: true}
+        steps:
+          - name: announce
+            image: $(params.image)
+            env:
+              # Bound here, never referenced inside the script (see the
+              # publish task for why).
+              - {name: APP_NAME, value: $(params.app-name)}
+              - {name: SPEC_PATH, value: $(params.spec-path)}
+              - {name: EVAL_CASE, value: $(params.eval-case)}
+              - {name: PORT_RUN_ID, value: $(params.port-run-id)}
+              - {name: CONTINUATION, value: $(params.continuation)}
+              - {name: RUN_NAME, value: $(context.pipelineRun.name)}
+              - {name: PORT_BOUND, value: $(workspaces.port.bound)}
+              - {name: PORT_PATH, value: $(workspaces.port.path)}
+            script: |
+              #!/usr/bin/env bash
+              set -uo pipefail
+              if [ "${PORT_BOUND}" != "true" ] || [ ! -f "${PORT_PATH}/client-id" ]; then
+                echo "no Port credentials bound — run not announced"; exit 0
+              fi
+              python3 - <<'PY' || echo "announce failed (non-fatal)"
+              import json, os, re, urllib.request
+              base = "https://api.port.io/v1"
+              cid = open(os.environ["PORT_PATH"] + "/client-id").read().strip()
+              csec = open(os.environ["PORT_PATH"] + "/client-secret").read().strip()
+              tok = json.load(urllib.request.urlopen(urllib.request.Request(
+                  base + "/auth/access_token", data=json.dumps({"clientId": cid, "clientSecret": csec}).encode(),
+                  headers={"Content-Type": "application/json"}), timeout=20))["accessToken"]
+              app, run = os.environ["APP_NAME"], os.environ["RUN_NAME"]
+              eval_case = os.environ.get("EVAL_CASE", "")
+              slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", os.environ["SPEC_PATH"].lower())).strip("-")[:63]
+              task = eval_case or slug
+              body = json.dumps({
+                  "identifier": run,
+                  "title": "implement-spec — " + app,
+                  "properties": {
+                      "lane": "eval" if eval_case else "implement-spec",
+                      "status": "running",
+                      "task": task,
+                      "branch": "agent/implement-spec/" + (("eval-" + eval_case) if eval_case else slug),
+                      "port_run_id": os.environ.get("PORT_RUN_ID", ""),
+                      "continuation": os.environ.get("CONTINUATION", "") == "true",
+                  },
+                  "relations": {"service": app, "agent": "implement-spec"},
+              }).encode()
+              req = urllib.request.Request(
+                  base + "/blueprints/agentRun/entities?upsert=true&merge=true&create_missing_related_entities=true",
+                  data=body, method="POST", headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"})
+              urllib.request.urlopen(req, timeout=20)
+              print("agentRun", run, "-> running")
+              PY
     - name: fetch
       workspaces:
         - {name: source, workspace: source}
@@ -198,8 +276,16 @@ spec:
               # first line and smuggles the rest through.
               ok() { [[ $2 =~ $1 ]]; }
               ok '^[a-z0-9]+(-[a-z0-9]+)*$' "$APP_NAME"    || { echo "::error:: invalid app name"; exit 1; }
-              ok '^[A-Za-z0-9._/-]{1,255}$' "$BASE_BRANCH" || { echo "::error:: invalid base branch"; exit 1; }
               [ -z "$EVAL_CASE" ] || ok '^[a-z0-9][a-z0-9-]{0,62}$' "$EVAL_CASE" || { echo "::error:: invalid eval case id"; exit 1; }
+              # Eval cases pin a changesets-style tag (app-template@0.4.6), so
+              # '@' is allowed there; git clone --branch takes tags and the
+              # publish step that would need a real branch is skipped in eval
+              # mode. The normal lane keeps branches only. '@{' is never a ref.
+              if [ -n "$EVAL_CASE" ]; then
+                ok '^[A-Za-z0-9._/@-]{1,255}$' "$BASE_BRANCH" && [[ $BASE_BRANCH != *@\{* ]] || { echo "::error:: invalid base ref"; exit 1; }
+              else
+                ok '^[A-Za-z0-9._/-]{1,255}$' "$BASE_BRANCH" || { echo "::error:: invalid base branch"; exit 1; }
+              fi
               ok '^[A-Za-z0-9._/-]+$'       "$SPEC_PATH"   || { echo "::error:: invalid spec path"; exit 1; }
               case "$SPEC_PATH" in /*|*..*) echo "::error:: spec-path must be relative, with no '..'"; exit 1;; esac
               if [ -n "$DEMO_SLUG" ]; then
@@ -325,8 +411,18 @@ spec:
                   *) echo "::error:: eval-spec-url must be a raw platform-infra file"; exit 1;;
                 esac
                 mkdir -p "app/$(dirname "$SPEC_PATH")"
-                curl -sfL --max-filesize 200000 -o "app/$SPEC_PATH" "$EVAL_SPEC_URL" \
+                # platform-infra is an internal repo, so the raw URL needs a
+                # token. Mint a platform-infra-scoped contents:read token (same
+                # least-privilege path as the app clone) and read the file
+                # through the contents API with the raw media type.
+                rest="${EVAL_SPEC_URL#https://raw.githubusercontent.com/${GH_ORG}/platform-infra/}"
+                spec_ref="${rest%%/*}"; spec_file="${rest#*/}"
+                PI_TOKEN="$(mint_repo_token "$GH_ORG" platform-infra '{"contents":"read"}')"
+                curl -sfL --max-filesize 200000 -o "app/$SPEC_PATH" \
+                  -H "Authorization: Bearer $PI_TOKEN" -H "Accept: application/vnd.github.raw+json" \
+                  "$gh_api/repos/$GH_ORG/platform-infra/contents/${spec_file}?ref=${spec_ref}" \
                   || { echo "::error:: could not fetch the eval spec"; exit 1; }
+                unset PI_TOKEN
                 echo "eval ${EVAL_CASE}: spec replaced from ${EVAL_SPEC_URL}"
               fi
 
@@ -1609,6 +1705,16 @@ spec:
               GATESH
               chmod +x "${IMP}/stop-gate.sh"
 
+              # A repo that ships its own stop gate (.claude/hooks/stop-gate.sh,
+              # synced from framework/agents/hooks) wires the same gates through
+              # its project settings; injecting ours too would run lint,
+              # type-check and test twice per stop. Legacy repos keep ours.
+              if [ -f "${WS}/app/.claude/hooks/stop-gate.sh" ]; then
+                BUILDER_HOOKS='{}'
+              else
+                BUILDER_HOOKS='{ "Stop": [ { "hooks": [ { "type": "command", "command": "bash '"${IMP}"'/stop-gate.sh", "timeout": 900 } ] } ] }'
+              fi
+
               # Builder settings: Bash for the repo's own scripts, nothing
               # host-shaped; deny the token mount and outbound fetch tools.
               # Unquoted heredoc ONLY to expand ${IMP} — the body is ours, no
@@ -1633,11 +1739,7 @@ spec:
                     "WebFetch", "WebSearch"
                   ]
                 },
-                "hooks": {
-                  "Stop": [
-                    { "hooks": [ { "type": "command", "command": "bash ${IMP}/stop-gate.sh", "timeout": 900 } ] }
-                  ]
-                }
+                "hooks": ${BUILDER_HOOKS}
               }
               BSET
 
@@ -2808,12 +2910,91 @@ spec:
               - {name: SPEC_PATH, value: $(params.spec-path)}
               - {name: CONTINUATION, value: $(params.continuation)}
               - {name: RUN_NAME, value: $(context.pipelineRun.name)}
+              - {name: IMAGE, value: $(params.image)}
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
 
               gh_api="https://api.github.com"
               b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
+              # ── Agent provenance on the PR itself (F-15) ───────────────────
+              # A machine-readable comment the github-ocean PR mapping reads
+              # (agent_authored, agent_run) plus one line for the reviewer: run,
+              # lane, harness image, model(s) the sessions used, and the
+              # framework rules commit the repo carried. The finally callback
+              # puts the same values on the agentRun/codingAgent entities.
+              # printf '%s' only — none of these values is re-parsed by a shell.
+              agent_rules_commit() { # from the synced block's stamp in CLAUDE.md
+                local f
+                for f in "${WS}/app/CLAUDE.md" "${WS}/fresh/CLAUDE.md"; do
+                  if [ -f "$f" ] && [ ! -L "$f" ]; then
+                    grep -oE 'base\.md @ [0-9a-f]{7,40}' "$f" | head -1 | awk '{print $3}'
+                    return 0
+                  fi
+                done
+              }
+              agent_models() { # model ids from the claude -p JSON results, comma-joined
+                python3 - "$@" <<'PY'
+              import glob, json, os, sys
+              seen = []
+              for pat in sys.argv[1:]:
+                  for p in sorted(glob.glob(pat)):
+                      if os.path.islink(p):
+                          continue
+                      try:
+                          for m in (json.load(open(p)).get("modelUsage") or {}):
+                              if m not in seen:
+                                  seen.append(m)
+                      except Exception:
+                          pass
+              print(",".join(seen))
+              PY
+              }
+              provenance_footer() { # <lane> <claude-json-glob>...
+                local lane="$1"; shift
+                local rules model
+                rules="$(agent_rules_commit || true)"
+                model="$(agent_models "$@" || true)"
+                printf '\n<!-- agent-provenance: lane=%s agentRun=%s harness=%s model=%s rules=%s -->\n' \
+                  "$lane" "$RUN_NAME" "${IMAGE:-}" "${model:-unknown}" "${rules:-unknown}"
+                printf 'Agent provenance: run `%s` · lane `%s` · harness `%s` · model `%s` · rules `framework/agents/base.md@%s`\n' \
+                  "$RUN_NAME" "$lane" "${IMAGE:-unknown}" "${model:-unknown}" "${rules:-unknown}"
+              }
+              label_pr() { # <pr-number> — best-effort, never fails the publish
+                # The label is created per repo at scaffold (phase 2.9) and was
+                # added to the existing apps by hand; adding it to a PR goes
+                # through the issues API, which this token reaches with
+                # pull_requests:write (the rerun comments prove it). Port keys
+                # on the footer, not the label — the label is for humans and
+                # GitHub-side filters.
+                curl -q -sf -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+                  "$gh_api/repos/$GH_ORG/$APP_NAME/issues/$1/labels" -d '{"labels":["agent-authored"]}' >/dev/null \
+                  || echo "::warning:: could not add the agent-authored label to PR #$1 (label missing in the repo, or the App token lacks issues:write)"
+              }
+              # Review churn for the agentRun (F-17): CHANGES_REQUESTED rounds and
+              # commits pushed after the first review. Read with the same
+              # pull_requests:write token; the finally copies them onto the entity.
+              review_stats() { # <pr-number> -> JSON {"review_rounds":n,"commits_after_review":n}
+                GH_ORG="$GH_ORG" APP_NAME="$APP_NAME" GH_TOKEN="$GH_TOKEN" python3 - "$1" <<'RSPY'
+              import json, os, sys, urllib.request
+              repo = os.environ["GH_ORG"] + "/" + os.environ["APP_NAME"]; num = sys.argv[1]
+              def get(path):
+                  req = urllib.request.Request("https://api.github.com" + path, headers={
+                      "Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+                  return json.load(urllib.request.urlopen(req, timeout=30))
+              try:
+                  reviews = get(f"/repos/{repo}/pulls/{num}/reviews?per_page=100")
+                  commits = get(f"/repos/{repo}/pulls/{num}/commits?per_page=250")
+                  rounds = sum(1 for r in reviews if r.get("state") == "CHANGES_REQUESTED")
+                  first = min((r.get("submitted_at") for r in reviews if r.get("submitted_at")), default=None)
+                  after = sum(1 for c in commits if first and ((c.get("commit") or {}).get("committer") or {}).get("date", "") > first)
+                  print(json.dumps({"review_rounds": rounds, "commits_after_review": after}))
+              except Exception as e:
+                  print(json.dumps({}))
+                  print("review stats unavailable (non-fatal):", e, file=sys.stderr)
+              RSPY
+              }
               # Repo-scoped, LEAST-PRIVILEGE installation token.
               #
               # Discovering the installation via /repos/{owner}/{repo}/installation
@@ -3058,6 +3239,7 @@ spec:
               anything the agent should not have carried across. A DRAFT PR means
               verification failed — the findings above are the work list.
               BODY
+                provenance_footer implement-spec "${WS}/.implement/*-out*.json"
               } > "${WS}/pr-body.md"
 
               # One PR per lane branch: update the open one when it exists
@@ -3115,6 +3297,7 @@ spec:
               EDPY
                 PR_URL="https://github.com/$GH_ORG/$APP_NAME/pull/$EXISTING"
                 echo "updated: ${PR_URL}"
+                label_pr "$EXISTING"
               else
                 if [ "$NO_CHANGES" = "true" ]; then
                   echo "no changes and no open PR — nothing to publish"
@@ -3128,10 +3311,12 @@ spec:
                   --title "feat: implement from spec and approved demo" \
                   --body-file "${WS}/pr-body.md")"
                 echo "opened: ${PR_URL}"
+                label_pr "${PR_URL##*/}"
               fi
               # Provenance breadcrumb for the finally callback (agentRun): the
               # PR number keys the relation onto the ocean-synced PR entity.
-              printf '{"pr_url":"%s","pr_number":%s}\n' "$PR_URL" "${PR_URL##*/}" > "${WS}/publish-meta.json"
+              python3 -c 'import json,sys; m=json.loads(sys.argv[3] or "{}"); m.update({"pr_url": sys.argv[1], "pr_number": int(sys.argv[2])}); print(json.dumps(m))' \
+                "$PR_URL" "${PR_URL##*/}" "$(review_stats "${PR_URL##*/}")" > "${WS}/publish-meta.json"
               printf '%s' "${PR_URL}" > "$(results.pr-url.path)"
   finally:
     # Report the pipeline outcome back to Port so the action run leaves
@@ -3139,8 +3324,12 @@ spec:
     # every dispatch lingers in limbo). No-ops when the run id wasn't passed
     # or the scaffolder-port secret isn't mounted.
     - name: report-port-status
+      # Runs for a Port-triggered run (run id set) OR an eval-sweep run (case
+      # id set, no Port run). Tekton ANDs when-expressions, so the OR is the
+      # concatenation: the input is empty only when both are empty. Without
+      # this, eval runs never wrote their agentRun and the sweep waited blind.
       when:
-        - input: "$(params.port-run-id)"
+        - input: "$(params.port-run-id)$(params.eval-case)"
           operator: notin
           values: [""]
       params:
@@ -3235,11 +3424,15 @@ spec:
               TOKEN="$(python3 -c 'import json,sys;print(json.dumps({"clientId":sys.argv[1],"clientSecret":sys.argv[2]}))' "$CID" "$CSEC" \
                 | curl -sf -X POST https://api.port.io/v1/auth/access_token -H 'Content-Type: application/json' -d @- \
                 | python3 -c 'import json,sys;print(json.load(sys.stdin)["accessToken"])')" || { echo "Port auth failed — skipping"; exit 0; }
-              curl -sf -X PATCH "https://api.port.io/v1/actions/runs/$(params.run-id)" \
-                -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
-                -d "{\"status\":\"${STATUS}\",\"statusLabel\":\"${LABEL}\"}" >/dev/null \
-                || { echo "Port run PATCH failed (non-fatal)"; exit 0; }
-              echo "Port run $(params.run-id) -> ${STATUS} (${LABEL})"
+              if [ -n "$(params.run-id)" ]; then
+                curl -sf -X PATCH "https://api.port.io/v1/actions/runs/$(params.run-id)" \
+                  -H "Authorization: Bearer ${TOKEN}" -H 'Content-Type: application/json' \
+                  -d "{\"status\":\"${STATUS}\",\"statusLabel\":\"${LABEL}\"}" >/dev/null \
+                  || { echo "Port run PATCH failed (non-fatal)"; exit 0; }
+                echo "Port run $(params.run-id) -> ${STATUS} (${LABEL})"
+              else
+                echo "no Port run to update (eval sweep): ${STATUS} (${LABEL}); recording provenance only"
+              fi
 
               # --- transcript archive (gate 6, SOC2): WORM upload ------------
               # Tar the run's evidence (agent transcripts + harness verdicts +
@@ -3384,11 +3577,24 @@ spec:
                       except Exception:
                           pass
                   return ""
+              def models_used():
+                  import glob
+                  seen = []
+                  for p in (glob.glob(os.path.join(ws, ".implement", "*-out*.json")) if ws else []):
+                      if os.path.islink(p):
+                          continue
+                      try:
+                          for m in (json.load(open(p)).get("modelUsage") or {}):
+                              if m not in seen:
+                                  seen.append(m)
+                      except Exception:
+                          pass
+                  return ",".join(seen)
               agent_props = {
                   "lane": AGENT_LANE,
                   "runtime": "tekton/scaffolder (homelab)",
                   "harness_image": os.environ.get("IMAGE", ""),
-                  "model": "default",
+                  "model": models_used() or "default",
                   "rules_commit": rules_commit(),
                   "tool_policy": AGENT_TOOL_POLICY,
                   "lifecycle": "production",
@@ -3414,6 +3620,9 @@ spec:
               meta = load("publish-meta.json") or {}
               try:
                   rels["pull_request"] = os.environ["APP_NAME"] + "-pr-" + str(int(meta["pr_number"]))
+                  for k in ("review_rounds", "commits_after_review"):
+                      if isinstance(meta.get(k), int):
+                          props[k] = meta[k]
               except Exception:
                   pass
               # create_missing_related_entities: the PR was opened seconds ago
