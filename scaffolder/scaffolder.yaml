@@ -58,6 +58,7 @@ spec:
         - enable_email
         - brand_kit
         - targets
+        - criticality
         # implement-spec lane (shares this Repository CR; `name` is common):
         - base_branch
         - demo_slug
@@ -380,3 +381,26 @@ spec:
             cidr: 0.0.0.0/0
             except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
       ports: [{ protocol: TCP, port: 443 }]
+---
+# Sentry org auth token for scaffold-time project creation (onboard-app.sh
+# SENTRY_ADMIN_TOKEN: org:read, team:write, project:write). The Bitwarden
+# secret is created as PLACEHOLDER so this Secret always exists; the lane
+# skips project creation on a PLACEHOLDER value and the appOnboarding
+# sentry_* flags stay open for a reviewer.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-sentry
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-sentry
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: token
+      remoteRef: { key: eba845cf-3e78-4fda-bc60-b4e8002e7956 }   # SCAFFOLDER_SENTRY_TOKEN (Build Platform)
