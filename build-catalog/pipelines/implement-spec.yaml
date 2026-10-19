@@ -2972,6 +2972,29 @@ spec:
                   "$gh_api/repos/$GH_ORG/$APP_NAME/issues/$1/labels" -d '{"labels":["agent-authored"]}' >/dev/null \
                   || echo "::warning:: could not add the agent-authored label to PR #$1 (label missing in the repo, or the App token lacks issues:write)"
               }
+              # Review churn for the agentRun (F-17): CHANGES_REQUESTED rounds and
+              # commits pushed after the first review. Read with the same
+              # pull_requests:write token; the finally copies them onto the entity.
+              review_stats() { # <pr-number> -> JSON {"review_rounds":n,"commits_after_review":n}
+                GH_ORG="$GH_ORG" APP_NAME="$APP_NAME" GH_TOKEN="$GH_TOKEN" python3 - "$1" <<'RSPY'
+              import json, os, sys, urllib.request
+              repo = os.environ["GH_ORG"] + "/" + os.environ["APP_NAME"]; num = sys.argv[1]
+              def get(path):
+                  req = urllib.request.Request("https://api.github.com" + path, headers={
+                      "Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json"})
+                  return json.load(urllib.request.urlopen(req, timeout=30))
+              try:
+                  reviews = get(f"/repos/{repo}/pulls/{num}/reviews?per_page=100")
+                  commits = get(f"/repos/{repo}/pulls/{num}/commits?per_page=250")
+                  rounds = sum(1 for r in reviews if r.get("state") == "CHANGES_REQUESTED")
+                  first = min((r.get("submitted_at") for r in reviews if r.get("submitted_at")), default=None)
+                  after = sum(1 for c in commits if first and ((c.get("commit") or {}).get("committer") or {}).get("date", "") > first)
+                  print(json.dumps({"review_rounds": rounds, "commits_after_review": after}))
+              except Exception as e:
+                  print(json.dumps({}))
+                  print("review stats unavailable (non-fatal):", e, file=sys.stderr)
+              RSPY
+              }
               # Repo-scoped, LEAST-PRIVILEGE installation token.
               #
               # Discovering the installation via /repos/{owner}/{repo}/installation
@@ -3292,7 +3315,8 @@ spec:
               fi
               # Provenance breadcrumb for the finally callback (agentRun): the
               # PR number keys the relation onto the ocean-synced PR entity.
-              printf '{"pr_url":"%s","pr_number":%s}\n' "$PR_URL" "${PR_URL##*/}" > "${WS}/publish-meta.json"
+              python3 -c 'import json,sys; m=json.loads(sys.argv[3] or "{}"); m.update({"pr_url": sys.argv[1], "pr_number": int(sys.argv[2])}); print(json.dumps(m))' \
+                "$PR_URL" "${PR_URL##*/}" "$(review_stats "${PR_URL##*/}")" > "${WS}/publish-meta.json"
               printf '%s' "${PR_URL}" > "$(results.pr-url.path)"
   finally:
     # Report the pipeline outcome back to Port so the action run leaves
@@ -3596,6 +3620,9 @@ spec:
               meta = load("publish-meta.json") or {}
               try:
                   rels["pull_request"] = os.environ["APP_NAME"] + "-pr-" + str(int(meta["pr_number"]))
+                  for k in ("review_rounds", "commits_after_review"):
+                      if isinstance(meta.get(k), int):
+                          props[k] = meta[k]
               except Exception:
                   pass
               # create_missing_related_entities: the PR was opened seconds ago
