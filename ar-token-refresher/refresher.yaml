@@ -126,7 +126,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: refresher
-              image: alpine/k8s:1.37.0
+              image: alpine/k8s:1.37.1
               imagePullPolicy: IfNotPresent
               command: ["/bin/sh", "/scripts/refresh.sh"]
               env:
