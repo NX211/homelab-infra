@@ -1,7 +1,7 @@
 ---
 # plan-issue — draft an implementation plan for a roadmap issue and write it
 # into the issue body. Step 3 of the roadmap automation (platform-infra
-# docs/roadmap-mirror.md): moving a card to "Plan approved" (or "Replan") on an
+# docs/roadmap-mirror.md): moving a card to "Ready to plan" (or "Replan") on an
 # org GitHub Project fires Port's roadmap_plan_dispatch automation, which POSTs
 # here through PaC /incoming.
 #
@@ -119,7 +119,9 @@ spec:
               API = "https://api.github.com"
               org, repo, issue, item = os.environ["GH_ORG"], os.environ["REPO"], int(os.environ["ISSUE"]), os.environ["ITEM_ID"]
               mode, ws, run = os.environ["MODE"], os.environ["WS"], os.environ["RUN_NAME"]
-              WANT = {"plan": "Plan approved", "replan": "Replan"}[mode]
+              # "Plan approved" is the pre-rename name of Ready to plan, accepted
+              # until the boards are renamed; drop it afterwards.
+              WANT = {"plan": ("Ready to plan", "Plan approved"), "replan": ("Replan",)}[mode]
 
               def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
               def jwt():
@@ -161,10 +163,10 @@ spec:
               if (content.get("repository") or {}).get("name") != repo or content.get("number") != issue:
                   sys.exit("::error:: item does not belong to the requested issue — refusing")
               status = (card.get("status") or {}).get("name")
-              if status != WANT:
+              if status not in WANT:
                   # The operator moved it again before this run started: theirs wins.
-                  open(os.path.join(ws, "skip"), "w").write(f"card is in {status!r}, not {WANT!r}")
-                  print(f"card is in {status!r}, expected {WANT!r} — nothing to do"); sys.exit(0)
+                  open(os.path.join(ws, "skip"), "w").write(f"card is in {status!r}, not {WANT[0]!r}")
+                  print(f"card is in {status!r}, expected {WANT[0]!r} — nothing to do"); sys.exit(0)
               field = card["project"]["field"]
               planning = next(o["id"] for o in field["options"] if o["name"] == "Planning")
               gql(ptok, """mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{
@@ -531,7 +533,7 @@ spec:
     # On failure, say so on the issue: the card stays where it failed (Plan
     # approved or Planning), which the Roadmaps dashboard surfaces by
     # days-in-stage. Never auto-retry: moving it
-    # back to Plan approved would re-fire the lane in a loop on a persistent
+    # back to Ready to plan would re-fire the lane in a loop on a persistent
     # failure.
     - name: notify-issue
       when:
@@ -603,7 +605,7 @@ spec:
               tok = call("POST", f"/app/installations/{inst}/access_tokens", j, {"repositories": [repo], "permissions": {"issues": "write"}})["token"]
               call("POST", f"/repos/{org}/{repo}/issues/{issue}/comments", tok, {"body":
                   f"Planning run `{run}` failed: {reason} ({os.environ['OUTCOME']}). The card was left where it is. "
-                  "To retry, move it into **Plan approved** again (move it out first if it is already there), "
+                  "To retry, move it into **Ready to plan** again (move it out first if it is already there), "
                   "or to **Backlog** to drop it."})
               print("failure comment posted")
               PY
