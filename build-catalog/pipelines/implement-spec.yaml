@@ -1383,8 +1383,9 @@ spec:
           values: ["true"]
       timeout: "90m"
       # Task results reach an inline taskSpec only through pipelineTask params
-      # (Tekton does not substitute $(tasks.*) inside a taskSpec). Not declared
-      # in the taskSpec, so every pipeline param still propagates.
+      # (Tekton does not substitute $(tasks.*) inside a taskSpec), and the
+      # admission webhook requires them DECLARED in the taskSpec. Pipeline
+      # params with other names still propagate alongside them.
       params:
         - {name: plan-sha, value: "$(tasks.fetch.results.plan-sha)"}
       workspaces:
@@ -1392,6 +1393,8 @@ spec:
         - {name: anthropic, workspace: anthropic}
         - {name: npm, workspace: npm}
       taskSpec:
+        params:
+          - {name: plan-sha, type: string, default: ""}
         workspaces:
           - {name: source}
           - {name: anthropic}
@@ -3157,6 +3160,10 @@ spec:
         - {name: github-app, workspace: github-app}
         - {name: builder-app, workspace: builder-app}
       taskSpec:
+        params:
+          - {name: plan-sha, type: string, default: ""}
+          - {name: framework-sha, type: string, default: ""}
+          - {name: issue-title, type: string, default: ""}
         workspaces:
           - {name: source}
           - {name: github-app}
@@ -3651,6 +3658,8 @@ spec:
       workspaces:
         - {name: github-app, workspace: github-app}
       taskSpec:
+        params:
+          - {name: pr-url, type: string}
         workspaces:
           - {name: github-app}
         steps:
