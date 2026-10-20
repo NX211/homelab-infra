@@ -2910,7 +2910,7 @@ spec:
               - {name: SPEC_PATH, value: $(params.spec-path)}
               - {name: CONTINUATION, value: $(params.continuation)}
               - {name: RUN_NAME, value: $(context.pipelineRun.name)}
-              - {name: IMAGE, value: $(params.image)}
+              - {name: IMAGE, value: $(params.toolchain-image)}
             script: |
               #!/usr/bin/env bash
               set -euo pipefail

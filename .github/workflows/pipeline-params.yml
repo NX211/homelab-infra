@@ -1,0 +1,35 @@
+name: Pipeline Params
+
+# The build-catalog Pipelines are git-resolved at run time, so Tekton's
+# admission check only runs when a lane is dispatched. #1345 put an undeclared
+# $(params.image) into heal-rule and implement-spec and both lanes were rejected
+# on every dispatch until it was noticed. This checks every $(params.x)
+# resolves in its scope before merge.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "build-catalog/pipelines/**"
+      - "scripts/check-pipeline-params.py"
+      - ".github/workflows/pipeline-params.yml"
+  push:
+    branches: [main]
+    paths:
+      - "build-catalog/pipelines/**"
+
+permissions:
+  contents: read
+
+jobs:
+  params:
+    name: Pipeline params resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || python3 -m pip install --user --break-system-packages pyyaml==6.0.2
+          python3 scripts/check-pipeline-params.py build-catalog/pipelines/*.yaml
