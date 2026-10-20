@@ -154,7 +154,8 @@ spec:
                 id project { id title field(name:"Status"){ ... on ProjectV2SingleSelectField { id options { id name } } } }
                 status: fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
                 content { ... on Issue { number repository { name } } } } } }"""
-              ptok = token({"organization_projects": "write"})
+              # A projects-only token sees the card's issue as empty content.
+              ptok = token({"organization_projects": "write", "issues": "read"}, [repo])
               card = gql(ptok, CARD, {"id": item})["node"] or {}
               content = card.get("content") or {}
               if (content.get("repository") or {}).get("name") != repo or content.get("number") != issue:
@@ -475,8 +476,9 @@ spec:
               PY
 
   finally:
-    # On failure, say so on the issue: the card stays in Planning, which the
-    # Roadmaps dashboard surfaces by days-in-stage. Never auto-retry: moving it
+    # On failure, say so on the issue: the card stays where it failed (Plan
+    # approved or Planning), which the Roadmaps dashboard surfaces by
+    # days-in-stage. Never auto-retry: moving it
     # back to Plan approved would re-fire the lane in a loop on a persistent
     # failure.
     - name: notify-issue
@@ -548,8 +550,9 @@ spec:
               inst = call("GET", f"/repos/{org}/{repo}/installation", j)["id"]
               tok = call("POST", f"/app/installations/{inst}/access_tokens", j, {"repositories": [repo], "permissions": {"issues": "write"}})["token"]
               call("POST", f"/repos/{org}/{repo}/issues/{issue}/comments", tok, {"body":
-                  f"Planning run `{run}` failed: {reason} ({os.environ['OUTCOME']}). The card stays in **Planning**. "
-                  "Move it back to **Plan approved** to try again, or to **Backlog** to drop it."})
+                  f"Planning run `{run}` failed: {reason} ({os.environ['OUTCOME']}). The card was left where it is. "
+                  "To retry, move it into **Plan approved** again (move it out first if it is already there), "
+                  "or to **Backlog** to drop it."})
               print("failure comment posted")
               PY
 
