@@ -456,12 +456,14 @@ spec:
                   "**Build approved** to build exactly that version, or **Replan** to have it revised "
                   "from your edits and comments."})
 
-              ptok = token({"organization_projects": "write"})
+              ptok = token({"organization_projects": "write", "issues": "read"}, [repo])
               card = gql(ptok, """query($id:ID!){ node(id:$id){ ... on ProjectV2Item {
                   project { id field(name:"Status"){ ... on ProjectV2SingleSelectField { id options { id name } } } }
                   status: fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } } } } }""",
                   {"id": item})["node"]
               now = (card.get("status") or {}).get("name")
+              if now is None:
+                  sys.exit("::error:: could not read the card's status (token cannot see the card?) — plan is published, card not moved")
               if now != "Planning":
                   print(f"card is in {now!r}, not Planning — leaving it where the operator put it")
               else:
