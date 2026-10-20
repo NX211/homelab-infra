@@ -9,7 +9,8 @@ implement-spec and both lanes were dead until it was noticed.
 Scope rules mirrored from Tekton:
   - a pipeline task's own `params:` values see the Pipeline's params;
   - an inline taskSpec WITHOUT a params block sees the Pipeline's params
-    (propagation);
+    plus the pipeline task's own `params:` names (propagation; this is also
+    the only way a $(tasks.x.results.y) reaches an inline taskSpec);
   - an inline taskSpec WITH a params block sees only those.
 
   scripts/check-pipeline-params.py build-catalog/pipelines/*.yaml
@@ -47,7 +48,8 @@ def check(doc: dict) -> list:
             ts = task.get("taskSpec")
             if not ts:
                 continue
-            scope = {p["name"] for p in ts["params"]} if ts.get("params") else declared
+            own = {p["name"] for p in task.get("params") or []}
+            scope = {p["name"] for p in ts["params"]} if ts.get("params") else declared | own
             body = {k: v for k, v in ts.items() if k != "params"}
             for ref in sorted(refs(body) - scope):
                 where = "its taskSpec params" if ts.get("params") else "the Pipeline params"

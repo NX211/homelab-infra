@@ -47,6 +47,17 @@ spec:
     - {name: spec-path, type: string, default: "docs/SPEC.md"}
     # Free-text steer for this run, e.g. "only the pricing page".
     - {name: instructions, type: string, default: ""}
+    # PLAN MODE (roadmap step 4, dispatched by Port roadmap_build_dispatch when
+    # a card moves to Build approved). Set issue-number and the spec is the
+    # approved plan block frozen from that issue's body, not a file in the
+    # repo; `name` stays the Port service id and `repo` names the GitHub repo
+    # (service ids are kebab, repos may carry dots: jlshaw.link).
+    # plan-editors: comma-separated logins whose edits a plan may carry,
+    # besides the plan bot (Port passes local.roadmap_approvers).
+    - {name: repo, type: string, default: ""}
+    - {name: issue-number, type: string, default: ""}
+    - {name: item-id, type: string, default: ""}
+    - {name: plan-editors, type: string, default: ""}
     - {name: app-base-url, type: string, default: "https://coreyalan.com"}
     - {name: port-run-id, type: string, default: ""} # Port action run id (finally callback)
     # "true" = stop after render: fetch + resolve + screenshot, but never run the
@@ -136,6 +147,11 @@ spec:
     # once the token exists in BWS.
     - name: npm
       optional: true
+    # Build App (coreyalan-builder): Contents + Pull requests write on the
+    # roadmap app repos, nothing else. PLAN MODE publishes with it instead of
+    # the Scaffolder App; plan mode refuses to publish when it is unbound.
+    - name: builder-app
+      optional: true
   results:
     - name: pr-url
       description: The pull request opened by the publish task (empty if nothing changed).
@@ -158,6 +174,7 @@ spec:
         - {name: eval-case, value: "$(params.eval-case)"}
         - {name: port-run-id, value: "$(params.port-run-id)"}
         - {name: continuation, value: "$(params.continuation)"}
+        - {name: issue-number, value: "$(params.issue-number)"}
         - {name: image, value: "$(params.toolchain-image)"}
       taskSpec:
         params:
@@ -166,6 +183,7 @@ spec:
           - {name: eval-case, type: string}
           - {name: port-run-id, type: string}
           - {name: continuation, type: string}
+          - {name: issue-number, type: string}
           - {name: image, type: string}
         workspaces:
           - {name: port, optional: true}
@@ -180,6 +198,7 @@ spec:
               - {name: EVAL_CASE, value: $(params.eval-case)}
               - {name: PORT_RUN_ID, value: $(params.port-run-id)}
               - {name: CONTINUATION, value: $(params.continuation)}
+              - {name: ISSUE, value: $(params.issue-number)}
               - {name: RUN_NAME, value: $(context.pipelineRun.name)}
               - {name: PORT_BOUND, value: $(workspaces.port.bound)}
               - {name: PORT_PATH, value: $(workspaces.port.path)}
@@ -200,15 +219,24 @@ spec:
               app, run = os.environ["APP_NAME"], os.environ["RUN_NAME"]
               eval_case = os.environ.get("EVAL_CASE", "")
               slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", os.environ["SPEC_PATH"].lower())).strip("-")[:63]
-              task = eval_case or slug
+              issue = os.environ.get("ISSUE", "")
+              if not re.fullmatch(r"[0-9]{1,9}", issue):
+                  issue = ""
+              task = eval_case or (f"issue-{issue}" if issue else slug)
+              if eval_case:
+                  lane, branch = "eval", "agent/implement-spec/eval-" + eval_case
+              elif issue:
+                  lane, branch = "build", f"agent/implement-plan/issue-{issue}"
+              else:
+                  lane, branch = "implement-spec", "agent/implement-spec/" + slug
               body = json.dumps({
                   "identifier": run,
-                  "title": "implement-spec — " + app,
+                  "title": ("build — " if issue else "implement-spec — ") + app,
                   "properties": {
-                      "lane": "eval" if eval_case else "implement-spec",
+                      "lane": lane,
                       "status": "running",
                       "task": task,
-                      "branch": "agent/implement-spec/" + (("eval-" + eval_case) if eval_case else slug),
+                      "branch": branch,
                       "port_run_id": os.environ.get("PORT_RUN_ID", ""),
                       "continuation": os.environ.get("CONTINUATION", "") == "true",
                   },
@@ -237,6 +265,15 @@ spec:
           - {name: port, optional: true}
         # Pipeline params propagate into this inline taskSpec (no explicit
         # declaration/passing needed — declaring them would disable propagation).
+        # Results, not workspace files, carry the frozen plan's identity to
+        # later tasks: the agent can rewrite anything on the shared PVC.
+        results:
+          - name: plan-sha
+            description: sha256[:12] of the frozen plan text (plan mode), else empty.
+          - name: framework-sha
+            description: Commit of the framework repo the agent read.
+          - name: issue-title
+            description: Title of the plan's issue (plan mode), else empty.
         steps:
           - name: fetch
             image: $(params.toolchain-image)
@@ -261,6 +298,10 @@ spec:
               - {name: CONTINUATION, value: $(params.continuation)}
               - {name: EVAL_CASE, value: $(params.eval-case)}
               - {name: EVAL_SPEC_URL, value: $(params.eval-spec-url)}
+              - {name: REPO_PARAM, value: $(params.repo)}
+              - {name: ISSUE, value: $(params.issue-number)}
+              - {name: ITEM_ID, value: $(params.item-id)}
+              - {name: PLAN_EDITORS, value: $(params.plan-editors)}
               # System-generated by PaC, not operator input — safe by origin,
               # env-bound anyway for consistency.
               - {name: RUN_NAME, value: $(context.pipelineRun.name)}
@@ -268,6 +309,9 @@ spec:
               #!/usr/bin/env bash
               set -euo pipefail
               mkdir -p "${HOME}"
+              printf '' > "$(results.plan-sha.path)"
+              printf '' > "$(results.framework-sha.path)"
+              printf '' > "$(results.issue-title.path)"
 
               # Shape-validate before anything consumes these, so a malformed value
               # fails here rather than somewhere downstream holding a credential.
@@ -292,6 +336,19 @@ spec:
                 ok '^[a-z0-9]+(-[a-z0-9]+)*$' "$DEMO_SLUG" || { echo "::error:: invalid demo slug"; exit 1; }
               fi
               case "$CONTINUATION" in true) ;; *) CONTINUATION=false ;; esac
+              REPO="${REPO_PARAM:-$APP_NAME}"
+              ok '^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$' "$REPO" || { echo "::error:: invalid repo"; exit 1; }
+              PLAN_MODE=false
+              if [ -n "$ISSUE" ]; then
+                PLAN_MODE=true
+                [ -n "$REPO_PARAM" ] || { echo "::error:: plan mode needs the repo param"; exit 1; }
+                ok '^[0-9]{1,9}$'                   "$ISSUE"        || { echo "::error:: invalid issue number"; exit 1; }
+                ok '^PVTI_[A-Za-z0-9_-]{1,100}$'    "$ITEM_ID"      || { echo "::error:: invalid item id"; exit 1; }
+                ok '^[A-Za-z0-9-]+(,[A-Za-z0-9-]+)*$' "$PLAN_EDITORS" || { echo "::error:: invalid plan-editors"; exit 1; }
+                # One input per run: the approved plan is the whole brief.
+                [ -z "$DEMO_SLUG" ] && [ -z "$EVAL_CASE" ] && [ "$CONTINUATION" = "false" ] \
+                  || { echo "::error:: plan mode takes no demo, eval case or continuation"; exit 1; }
+              fi
 
               # --- day-2 identity + supersession -------------------------------
               # One in-flight run per (app, lane, task): label THIS PipelineRun
@@ -308,6 +365,8 @@ spec:
               # Eval runs are keyed by case so parallel cases on the same app and
               # spec path never supersede each other.
               [ -z "$EVAL_CASE" ] || TASK_SLUG="eval-${EVAL_CASE}"
+              # Plan runs are keyed by issue: one branch and PR per issue.
+              if [ "$PLAN_MODE" = "true" ]; then LANE=implement-plan; TASK_SLUG="issue-${ISSUE}"; fi
               KUBE_API=https://kubernetes.default.svc
               KUBE_SA=/var/run/secrets/kubernetes.io/serviceaccount
               kapi() { # kapi <method> <path> [merge-patch-json]
@@ -343,8 +402,8 @@ spec:
               # returns a token for EVERY repo the installation can reach, which
               # for this App is the whole org (Administration:write +
               # Contents:write). The scoping is the request BODY: `repositories`
-              # plus `permissions`. $APP_NAME is validated kebab-case upstream, so
-              # it is safe to interpolate into JSON.
+              # plus `permissions`. $REPO is shape-validated upstream (no quotes),
+              # so it is safe to interpolate into JSON.
               mint_repo_token() { # mint_repo_token <owner> <repo> <permissions-json>
                 local owner="$1" repo="$2" perms="$3" now hdr pld sig jwt inst
                 now="$(date +%s)"
@@ -363,7 +422,7 @@ spec:
               }
 
               # fetch only clones — read-only.
-              GH_TOKEN="$(mint_repo_token "$GH_ORG" "$APP_NAME" '{"contents":"read"}')"
+              GH_TOKEN="$(mint_repo_token "$GH_ORG" "$REPO" '{"contents":"read"}')"
 
               # The framework repo (private) rides along READ-ONLY: the agent's
               # conflict rule — "the TEMPLATE wins on CONTRACT: everything in the
@@ -382,6 +441,8 @@ spec:
                 || { echo "::error:: could not clone the framework repo — the contract rule depends on it"; exit 1; }
               # Reference material, not a working tree: dropping .git removes the
               # remote config and any git attack surface from the agent's view.
+              # Its commit is recorded first, for the PR and the agentRun.
+              git -C framework rev-parse HEAD | tr -d '\n' > "$(results.framework-sha.path)"
               rm -rf framework/.git
 
               # Keep the credential OFF the shared workspace. HOME is the
@@ -399,7 +460,7 @@ spec:
               git config --global user.name  "app-scaffolder"
 
               git clone --depth 1 --branch "$BASE_BRANCH" \
-                "https://github.com/$GH_ORG/$APP_NAME.git" app
+                "https://github.com/$GH_ORG/$REPO.git" app
 
               # Eval mode: replace the spec with the case's pinned slice. Only a
               # raw file from the platform-infra repo is accepted, so an eval
@@ -426,13 +487,92 @@ spec:
                 echo "eval ${EVAL_CASE}: spec replaced from ${EVAL_SPEC_URL}"
               fi
 
+              # --- plan mode: claim the card, freeze the approved plan ----------
+              # The brief is the plan block in the issue body as it stands NOW,
+              # hashed, and only if the body's last editor is the plan bot or an
+              # approver: otherwise anyone able to edit the issue could slip
+              # instructions into a plan that was approved. Nothing else from the
+              # issue (comments, other body text) reaches the agent. PLAN.md sits
+              # beside the clone, not in it, so it is never committed.
+              if [ "$PLAN_MODE" = "true" ]; then
+                CARD_TOKEN="$(mint_repo_token "$GH_ORG" "$REPO" '{"organization_projects":"write","issues":"read"}')"
+                CARD_TOKEN="$CARD_TOKEN" GH_ORG="$GH_ORG" REPO="$REPO" ISSUE="$ISSUE" ITEM_ID="$ITEM_ID" \
+                PLAN_EDITORS="$PLAN_EDITORS" SHA_OUT="$(results.plan-sha.path)" TITLE_OUT="$(results.issue-title.path)" \
+                  python3 - <<'PLPY'
+              import hashlib, json, os, re, sys, urllib.request
+              org, repo, issue, item = os.environ["GH_ORG"], os.environ["REPO"], int(os.environ["ISSUE"]), os.environ["ITEM_ID"]
+              tok = os.environ["CARD_TOKEN"]
+              BOT = {"coreyalan-scaffolder", "coreyalan-scaffolder[bot]"}
+              editors = set(os.environ["PLAN_EDITORS"].split(",")) | BOT
+              def gql(q, v):
+                  req = urllib.request.Request("https://api.github.com/graphql", method="POST",
+                      data=json.dumps({"query": q, "variables": v}).encode(),
+                      headers={"Authorization": "Bearer " + tok, "Content-Type": "application/json"})
+                  out = json.load(urllib.request.urlopen(req, timeout=30))
+                  if out.get("errors"):
+                      sys.exit("::error:: GraphQL: " + json.dumps(out["errors"])[:600])
+                  return out["data"]
+              def park(why):
+                  open("parked", "w").write(why)
+                  sys.exit("::error:: parked — " + why)
+
+              card = gql("""query($id:ID!){ node(id:$id){ ... on ProjectV2Item {
+                project { id title field(name:"Status"){ ... on ProjectV2SingleSelectField { id options { id name } } } }
+                status: fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } }
+                content { ... on Issue { number repository { name } } } } } }""", {"id": item})["node"] or {}
+              c = card.get("content") or {}
+              if (c.get("repository") or {}).get("name") != repo or c.get("number") != issue:
+                  sys.exit("::error:: item does not belong to the requested issue — refusing")
+              status = (card.get("status") or {}).get("name")
+              if status is None:
+                  sys.exit("::error:: could not read the card's status")
+              if status != "Build approved":
+                  park(f"card is in {status!r}, not 'Build approved' — the operator moved it; nothing built")
+
+              iss = gql("""query($o:String!,$r:String!,$n:Int!){ repository(owner:$o,name:$r){ issue(number:$n){
+                title body editor { login } } } }""", {"o": org, "r": repo, "n": issue})["repository"]["issue"]
+              body, editor = iss.get("body") or "", (iss.get("editor") or {}).get("login")
+              if editor not in editors:
+                  park(f"issue body last edited by {editor!r}, not the plan bot or an approver — re-approve the plan")
+              start, end = body.find("<!-- plan:start"), body.find("<!-- plan:end -->")
+              if not 0 <= start < end:
+                  park("no plan block in the issue body — run planning first")
+              marker, inner = body[start:end].split("-->", 1)
+              lines = inner.strip().splitlines()
+              if lines and lines[0].strip() == "## Plan":
+                  lines = lines[1:]
+              while lines and (not lines[-1].strip() or lines[-1].lstrip().startswith("<sub>Drafted")):
+                  lines.pop()
+              plan = "\n".join(lines).strip()
+              heads = re.findall(r"^### (.+?)\s*$", plan, re.M)
+              if not {"Goal", "Steps", "Acceptance checks"} <= set(heads):
+                  park(f"plan block lacks Goal/Steps/Acceptance checks (has {heads})")
+              if len(plan.encode()) > 40000:
+                  park("plan block over 40 KB")
+              digest = hashlib.sha256(plan.encode()).hexdigest()[:12]
+              drafted = (re.search(r"\bsha=([0-9a-f]{12})\b", marker) or [None, ""])[1]
+              open("PLAN.md", "w").write(plan + "\n")
+              open(os.environ["SHA_OUT"], "w").write(digest)
+              open(os.environ["TITLE_OUT"], "w").write(re.sub(r"[\x00-\x1f]", " ", iss.get("title") or "")[:200])
+              print(f"plan frozen: {digest} (drafted {drafted or '?'}, {'edited by the operator' if drafted and drafted != digest else 'as drafted'}), last editor {editor}")
+
+              field = card["project"]["field"]
+              building = next(o["id"] for o in field["options"] if o["name"] == "Building")
+              gql("""mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{
+                    projectId:$p, itemId:$i, fieldId:$f, value:{ singleSelectOptionId:$o } }){ projectV2Item { id } } }""",
+                  {"p": card["project"]["id"], "i": item, "f": field["id"], "o": building})
+              print(f"card -> Building ({card['project']['title']})")
+              PLPY
+                unset CARD_TOKEN
+              fi
+
               # --- continuation: resume ON the lane branch (park-and-wake) -----
               # The compare + guards run against the GitHub API, not local git —
               # the clone is shallow, so merge-base math is unreliable here.
               AGENT_BRANCH="agent/${LANE}/${TASK_SLUG}"
               if [ "$CONTINUATION" = "true" ]; then
                 CMP="$(curl -q -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-                  "$gh_api/repos/$GH_ORG/$APP_NAME/compare/${BASE_BRANCH}...${AGENT_BRANCH}")" \
+                  "$gh_api/repos/$GH_ORG/$REPO/compare/${BASE_BRANCH}...${AGENT_BRANCH}")" \
                   || { echo "::error:: continuation requested but cannot compare ${AGENT_BRANCH} to ${BASE_BRANCH} (branch missing?)"; exit 1; }
                 VERDICT="$(printf '%s' "$CMP" | python3 -c '
               import sys, json
@@ -474,10 +614,10 @@ spec:
                 # throughout: a broken context pre-load must not kill a
                 # continuation that can still act on wake_reason — warn
                 # loudly and let the builder proceed.
-                PR_TOKEN="$(mint_repo_token "$GH_ORG" "$APP_NAME" '{"contents":"read","pull_requests":"read"}' || true)"
+                PR_TOKEN="$(mint_repo_token "$GH_ORG" "$REPO" '{"contents":"read","pull_requests":"read"}' || true)"
                 [ -n "$PR_TOKEN" ] || echo "::warning:: continuation context mint failed — builder gets wake_reason only, no PR context"
                 curl -q -sf -H "Authorization: Bearer $PR_TOKEN" -H "Accept: application/vnd.github+json" \
-                  "$gh_api/repos/$GH_ORG/$APP_NAME/pulls?head=$GH_ORG:$AGENT_BRANCH&state=open" > /tmp/prs.json || printf '[]' > /tmp/prs.json
+                  "$gh_api/repos/$GH_ORG/$REPO/pulls?head=$GH_ORG:$AGENT_BRANCH&state=open" > /tmp/prs.json || printf '[]' > /tmp/prs.json
                 PR_NUM="$(python3 -c 'import json
               try:
                   prs = json.load(open("/tmp/prs.json"))
@@ -487,11 +627,11 @@ spec:
                 if [ -n "$PR_NUM" ]; then
                   HEAD_SHA="$(python3 -c 'import json;print(json.load(open("/tmp/prs.json"))[0]["head"]["sha"])')"
                   curl -q -sf -H "Authorization: Bearer $PR_TOKEN" -H "Accept: application/vnd.github+json" \
-                    "$gh_api/repos/$GH_ORG/$APP_NAME/pulls/$PR_NUM/comments?per_page=50" > /tmp/rc.json || printf '[]' > /tmp/rc.json
+                    "$gh_api/repos/$GH_ORG/$REPO/pulls/$PR_NUM/comments?per_page=50" > /tmp/rc.json || printf '[]' > /tmp/rc.json
                   curl -q -sf -H "Authorization: Bearer $PR_TOKEN" -H "Accept: application/vnd.github+json" \
-                    "$gh_api/repos/$GH_ORG/$APP_NAME/issues/$PR_NUM/comments?per_page=50" > /tmp/ic.json || printf '[]' > /tmp/ic.json
+                    "$gh_api/repos/$GH_ORG/$REPO/issues/$PR_NUM/comments?per_page=50" > /tmp/ic.json || printf '[]' > /tmp/ic.json
                   curl -q -sf -H "Authorization: Bearer $PR_TOKEN" -H "Accept: application/vnd.github+json" \
-                    "$gh_api/repos/$GH_ORG/$APP_NAME/commits/$HEAD_SHA/check-runs?per_page=50" > /tmp/cr.json || printf '{}' > /tmp/cr.json
+                    "$gh_api/repos/$GH_ORG/$REPO/commits/$HEAD_SHA/check-runs?per_page=50" > /tmp/cr.json || printf '{}' > /tmp/cr.json
                   python3 - "$PR_NUM" > pr-context.md <<'PCPY'
               import json, sys
               n = sys.argv[1]
@@ -536,11 +676,13 @@ spec:
 
               # --- the written spec (optional) --------------------------------
               HAVE_SPEC=false
-              if [ -f "app/$SPEC_PATH" ]; then
-                echo "spec: app/$SPEC_PATH ($(wc -c < "app/$SPEC_PATH") bytes)"
+              SPEC_FILE="app/$SPEC_PATH"
+              [ "$PLAN_MODE" = "true" ] && SPEC_FILE="PLAN.md"
+              if [ -f "$SPEC_FILE" ]; then
+                echo "spec: $SPEC_FILE ($(wc -c < "$SPEC_FILE") bytes)"
                 HAVE_SPEC=true
               else
-                echo "spec: app/$SPEC_PATH not present — demo-only run"
+                echo "spec: $SPEC_FILE not present — demo-only run"
               fi
 
               # --- v2 parking markers: refuse to burn tokens on an unresolved
@@ -549,7 +691,7 @@ spec:
               # examples and the standard's own backticked mentions must not
               # park anything. Never parks demo-only runs (no spec, no markers).
               if [ "$HAVE_SPEC" = "true" ]; then
-                MARKERS="$(python3 - "app/$SPEC_PATH" <<'MKPY'
+                MARKERS="$(python3 - "$SPEC_FILE" <<'MKPY'
               import re, sys
               raw = open(sys.argv[1], encoding="utf-8", errors="replace").read()
               def strip_fix(text, pat, flags=0):
@@ -1240,6 +1382,11 @@ spec:
           operator: notin
           values: ["true"]
       timeout: "90m"
+      # Task results reach an inline taskSpec only through pipelineTask params
+      # (Tekton does not substitute $(tasks.*) inside a taskSpec). Not declared
+      # in the taskSpec, so every pipeline param still propagates.
+      params:
+        - {name: plan-sha, value: "$(tasks.fetch.results.plan-sha)"}
       workspaces:
         - {name: source, workspace: source}
         - {name: anthropic, workspace: anthropic}
@@ -1255,10 +1402,58 @@ spec:
         # its own ~8-min cadence, which races a long multi-session run — a later
         # session (verifier/rework) would start with a token already too old for
         # Anthropic's freshly-issued requirement and 401. Minting right before
-        # each claude call guarantees a fresh token every time. Needs the pod's
-        # default kube-API SA token (automounted; not disabled here) + the
-        # scaffolder-runner-token-minter Role (scaffolder/rbac.yaml).
+        # each claude call guarantees a fresh token every time.
+        #
+        # The kube-API token that mints it lives ONLY in the token-minter
+        # sidecar (its own projected volume), never in a step: the agent runs
+        # in the steps with Bash, and scaffolder-runner may mint tokens and
+        # patch PipelineRuns. Steps ask through the shared /mint emptyDir. The
+        # PipelineRun sets automountServiceAccountToken: false for this task
+        # (taskRunSpecs), which the sidecar's explicit volume survives.
+        # RBAC: scaffolder-runner-token-minter (scaffolder/rbac.yaml).
+        volumes:
+          - name: mint
+            emptyDir: {medium: Memory, sizeLimit: 1Mi}
+          - name: minter-sa
+            projected:
+              sources:
+                - serviceAccountToken: {path: token, expirationSeconds: 3600}
+                - configMap: {name: kube-root-ca.crt, items: [{key: ca.crt, path: ca.crt}]}
+        stepTemplate:
+          volumeMounts:
+            - {name: mint, mountPath: /mint}
         sidecars:
+          - name: token-minter
+            image: $(params.toolchain-image)
+            volumeMounts:
+              - {name: mint, mountPath: /mint}
+              - {name: minter-sa, mountPath: /var/run/minter, readOnly: true}
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities: {drop: ["ALL"]}
+              seccompProfile: {type: RuntimeDefault}
+            script: |
+              #!/usr/bin/env bash
+              # Serves one mint per /mint/request: the anthropic-audience token
+              # lands in /mint/token, then /mint/done. Nothing else is exposed.
+              set -u
+              while true; do
+                if [ -f /mint/request ]; then
+                  rm -f /mint/request /mint/done
+                  if curl -sf --cacert /var/run/minter/ca.crt \
+                       -H "Authorization: Bearer $(cat /var/run/minter/token)" \
+                       -H 'Content-Type: application/json' \
+                       -X POST "https://kubernetes.default.svc/api/v1/namespaces/scaffolder/serviceaccounts/scaffolder-runner/token" \
+                       -d '{"spec":{"audiences":["https://api.anthropic.com"],"expirationSeconds":3600}}' \
+                     | python3 -c 'import sys,json;print(json.load(sys.stdin)["status"]["token"])' > /mint/token.tmp \
+                     && [ -s /mint/token.tmp ]; then
+                    mv /mint/token.tmp /mint/token; echo ok > /mint/done
+                  else
+                    rm -f /mint/token.tmp; echo fail > /mint/done
+                  fi
+                fi
+                sleep 0.3
+              done
           # Ephemeral per-run database, alive for every step. Trust auth is
           # fine: it listens only inside this pod's network namespace, holds
           # only synthetic data, and dies with the run. PGDATA under /tmp so
@@ -1436,6 +1631,9 @@ spec:
               - {name: DESIGN_SCOPE, value: $(params.design-scope)}
               - {name: CONTINUATION, value: $(params.continuation)}
               - {name: WAKE_REASON, value: $(params.wake-reason)}
+              - {name: ISSUE, value: $(params.issue-number)}
+              - {name: REPO_PARAM, value: $(params.repo)}
+              - {name: PLAN_SHA, value: $(params.plan-sha)}
               - {name: PLAYWRIGHT_BROWSERS_PATH, value: /ms-playwright}
             script: |
               #!/usr/bin/env bash
@@ -1461,19 +1659,20 @@ spec:
               # to outlast a single long session (600s expired mid-run and
               # 401'd a 15-min builder); 3600 is under the federation-rule cap
               # that rejects a too-long (7200) token outright.
-              KUBE_API=https://kubernetes.default.svc
-              KUBE_SA=/var/run/secrets/kubernetes.io/serviceaccount
+              # The mint itself happens in the token-minter sidecar, which alone
+              # holds a kube-API token (see the volumes note). A plan-mode run
+              # refuses outright if this container can see one.
+              if [ -n "${ISSUE}" ] && [ -e /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
+                echo "::error:: a service-account token is mounted in the agent container — refusing (set automountServiceAccountToken: false for implement)"
+                exit 1
+              fi
               mint_identity_token() {
-                [ -f "$KUBE_SA/token" ] || { echo "::error:: no kube SA token mounted — cannot mint WIF identity"; return 1; }
-                local resp
-                resp="$(curl -sf --cacert "$KUBE_SA/ca.crt" \
-                  -H "Authorization: Bearer $(cat "$KUBE_SA/token")" \
-                  -H 'Content-Type: application/json' \
-                  -X POST "$KUBE_API/api/v1/namespaces/scaffolder/serviceaccounts/scaffolder-runner/token" \
-                  -d '{"spec":{"audiences":["https://api.anthropic.com"],"expirationSeconds":3600}}')" \
-                  || { echo "::error:: TokenRequest mint failed (RBAC scaffolder-runner-token-minter?)"; return 1; }
-                printf '%s' "$resp" | python3 -c 'import sys,json;print(json.load(sys.stdin)["status"]["token"])' > "$ANTHROPIC_IDENTITY_TOKEN_FILE"
-                [ -s "$ANTHROPIC_IDENTITY_TOKEN_FILE" ] || { echo "::error:: minted token was empty"; return 1; }
+                local i
+                rm -f /mint/done; : > /mint/request
+                for i in $(seq 1 100); do [ -f /mint/done ] && break; sleep 0.3; done
+                [ "$(cat /mint/done 2>/dev/null)" = ok ] && [ -s /mint/token ] \
+                  || { echo "::error:: TokenRequest mint failed (token-minter sidecar; RBAC scaffolder-runner-token-minter?)"; return 1; }
+                cp /mint/token "$ANTHROPIC_IDENTITY_TOKEN_FILE"
               }
 
               WS="$(workspaces.source.path)"
@@ -1495,9 +1694,24 @@ spec:
               # by construction rather than by discipline — bash performs no
               # expansion at all on a quoted heredoc body. printf '%s' with a
               # variable never re-parses the value.
+              # Plan mode: the spec is the frozen plan beside the clone. The
+              # hash is re-checked before every verdict (plan_intact), so a
+              # builder that edits its own brief voids the run.
+              if [ -n "${ISSUE}" ]; then
+                SPEC_PATH="../PLAN.md"
+                [ -f "${WS}/PLAN.md" ] && [ ! -L "${WS}/PLAN.md" ] || { echo "::error:: plan mode but no PLAN.md from fetch"; exit 1; }
+              fi
+              plan_intact() {
+                [ -z "${ISSUE}" ] && return 0
+                [ ! -L "${WS}/PLAN.md" ] && [ "$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read().decode("utf-8","replace").strip().encode()).hexdigest()[:12])' "${WS}/PLAN.md" 2>/dev/null)" = "${PLAN_SHA}" ]
+              }
+              plan_intact || { echo "::error:: PLAN.md does not match the frozen plan ${PLAN_SHA}"; exit 1; }
               {
                 printf '# Run context\n\n'
                 printf -- '- App: %s\n' "$APP_NAME"
+                if [ -n "${ISSUE}" ]; then
+                  printf -- '- Source: the APPROVED PLAN for %s#%s (plan %s), frozen when the operator moved the card to Build approved\n' "${REPO_PARAM:-$APP_NAME}" "$ISSUE" "$PLAN_SHA"
+                fi
                 printf -- '- Spec path (relative to the repo root): %s\n' "$SPEC_PATH"
                 printf -- '- Design scope: %s\n' "${DESIGN_SCOPE:-tokens}"
                 if [ "${CONTINUATION:-false}" = "true" ]; then
@@ -1657,6 +1871,25 @@ spec:
               the operator and ARE instructions). Keep the diff minimal and on
               top of the existing work: do not restart the feature, do not
               reimplement what the PR already contains, do not reformat.
+
+              WHEN ../RUN.md SAYS "Source: the APPROVED PLAN": the spec is
+              ../PLAN.md, an implementation plan the operator approved. It is
+              your brief, and ONLY it: do not modify ../PLAN.md (it is
+              hash-checked and editing it voids the run). Its Steps are your task
+              list, in order. Every item under "Acceptance checks" must be true
+              when you finish, with the evidence run. Every line under
+              "Standards" is binding, and ../framework holds the pages it cites.
+              "Out of scope" is binding: touch nothing it lists, and nothing
+              outside "Scope". Where the plan and the code disagree, follow the
+              code's reality, keep to the plan's intent, and record the
+              deviation under DEVIATIONS. Anything the plan says belongs in the
+              PR description goes in ../SUMMARY.md (it becomes the PR body). Work
+              in another repository is never yours: put it under TODO
+              (cross-repo) with the exact text a human should apply. Ignore the
+              demo sections of this prompt (there is no demo). Also write
+              ../PR_TITLE: one line, a Conventional Commits title for the
+              change ("test: ...", "feat(scope): ...", "fix: ..."), under 72
+              characters, no trailing period.
 
               EXTRA INSTRUCTIONS FOR THIS RUN: read the "Operator instructions"
               section of ../RUN.md. That section comes from the operator who
@@ -2271,6 +2504,16 @@ spec:
               its "## Requirements" section, one entry each, evidence per entry —
               that array is the conformance verdict, and any unmet requirement is
               also a finding. For legacy specs omit "requirements".
+              WHEN ../RUN.md SAYS "Source: the APPROVED PLAN" (spec ../PLAN.md):
+              judge every item under its "Acceptance checks" as a requirements
+              entry with id "AC-<n>" (n = its position, from 1), and every line
+              under "Standards" as "STD-<n>" — evidence per entry, and run the
+              commands the checks name. A check that is the operator's to do
+              (manual, or in another repository) is met only if ../SUMMARY.md
+              hands it over explicitly; say so in its evidence. Any change
+              outside the plan's Scope, or touching its Out of scope list, is a
+              major finding. There is no demo and no Facts section: trace facts
+              to the plan, the issue's repository, or existing pages.
               Rules: findings without evidence are discarded. "pass" requires the
               primary flow to work when the app is live AND no v2 requirement to
               be unmet. Do not pad findings — an empty list with a real "checked"
@@ -2300,7 +2543,8 @@ spec:
                 agent_diag "verifier-$1" "${IMP}/verifier-out-$1.json" /tmp/verifier-err.log
                 stop_app
                 local post_hash; post_hash="$(tree_hash)"
-                VERIFY_VERDICT="$(python3 - "${WS}" "$pre_hash" "$post_hash" <<'VPY'
+                PLAN_TAMPERED=0; plan_intact || PLAN_TAMPERED=1
+                VERIFY_VERDICT="$(PLAN_TAMPERED="$PLAN_TAMPERED" python3 - "${WS}" "$pre_hash" "$post_hash" <<'VPY'
               import json, os, sys
               ws, pre, post = sys.argv[1:4]
               path = f"{ws}/.implement/verify.json"
@@ -2338,6 +2582,11 @@ spec:
                   out["findings"].append({"severity": "blocker",
                       "claim": "verifier modified the working tree — verification void",
                       "evidence": f"tree {pre[:12]} -> {post[:12]}"})
+              if os.environ.get("PLAN_TAMPERED") == "1":
+                  out["verdict"] = "fail"
+                  out["findings"].append({"severity": "blocker",
+                      "claim": "../PLAN.md no longer matches the approved plan — run void",
+                      "evidence": "harness sha256 check against the plan frozen in fetch"})
               json.dump(out, open(path if not os.path.islink(path) else f"{ws}/.implement/verify.json", "w"))
               print(out["verdict"])
               VPY
@@ -2486,8 +2735,9 @@ spec:
               rm -f "${IMP}/stop-denials"
               mint_identity_token || true
               claude -p "$(cat <<'BPROMPT'
-              You are implementing features in an existing application repository
-              scaffolded from app-template. Your working directory IS that repository,
+              You are implementing features in an existing application repository,
+              usually scaffolded from app-template; follow THIS repo's own layout
+              and conventions where they differ. Your working directory IS that repository,
               and you have a REAL environment: dependencies are installed, a Postgres
               for this run is at DATABASE_URL (schema applied, maybe seeded), and you
               may run the repo's own scripts with Bash (pnpm test / build / lint /
@@ -2595,6 +2845,25 @@ spec:
               the operator and ARE instructions). Keep the diff minimal and on
               top of the existing work: do not restart the feature, do not
               reimplement what the PR already contains, do not reformat.
+
+              WHEN ../RUN.md SAYS "Source: the APPROVED PLAN": the spec is
+              ../PLAN.md, an implementation plan the operator approved. It is
+              your brief, and ONLY it: do not modify ../PLAN.md (it is
+              hash-checked and editing it voids the run). Its Steps are your task
+              list, in order. Every item under "Acceptance checks" must be true
+              when you finish, with the evidence run. Every line under
+              "Standards" is binding, and ../framework holds the pages it cites.
+              "Out of scope" is binding: touch nothing it lists, and nothing
+              outside "Scope". Where the plan and the code disagree, follow the
+              code's reality, keep to the plan's intent, and record the
+              deviation under DEVIATIONS. Anything the plan says belongs in the
+              PR description goes in ../SUMMARY.md (it becomes the PR body). Work
+              in another repository is never yours: put it under TODO
+              (cross-repo) with the exact text a human should apply. Ignore the
+              demo sections of this prompt (there is no demo). Also write
+              ../PR_TITLE: one line, a Conventional Commits title for the
+              change ("test: ...", "feat(scope): ...", "fix: ..."), under 72
+              characters, no trailing period.
 
               EXTRA INSTRUCTIONS FOR THIS RUN: read the "Operator instructions"
               section of ../RUN.md. That section comes from the operator who
@@ -2878,13 +3147,20 @@ spec:
         - input: "$(params.eval-case)"
           operator: in
           values: [""]
+      # Fetch results via pipelineTask params (see implement).
+      params:
+        - {name: plan-sha, value: "$(tasks.fetch.results.plan-sha)"}
+        - {name: framework-sha, value: "$(tasks.fetch.results.framework-sha)"}
+        - {name: issue-title, value: "$(tasks.fetch.results.issue-title)"}
       workspaces:
         - {name: source, workspace: source}
         - {name: github-app, workspace: github-app}
+        - {name: builder-app, workspace: builder-app}
       taskSpec:
         workspaces:
           - {name: source}
           - {name: github-app}
+          - {name: builder-app, optional: true}
         results:
           - name: pr-url
             description: URL of the opened PR, or empty when the agent changed nothing.
@@ -2911,9 +3187,27 @@ spec:
               - {name: CONTINUATION, value: $(params.continuation)}
               - {name: RUN_NAME, value: $(context.pipelineRun.name)}
               - {name: IMAGE, value: $(params.toolchain-image)}
+              - {name: REPO_PARAM, value: $(params.repo)}
+              - {name: ISSUE, value: $(params.issue-number)}
+              - {name: PLAN_SHA, value: $(params.plan-sha)}
+              - {name: FRAMEWORK_SHA, value: $(params.framework-sha)}
+              - {name: ISSUE_TITLE, value: $(params.issue-title)}
+              - {name: BUILDER_BOUND, value: $(workspaces.builder-app.bound)}
+              - {name: BUILDER_PATH, value: $(workspaces.builder-app.path)}
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
+              REPO="${REPO_PARAM:-$APP_NAME}"
+              [[ $REPO =~ ^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$ ]] || { echo "::error:: invalid repo"; exit 1; }
+              # Plan mode pushes with the Build App (Contents + PRs on the app
+              # repos only), never the org-wide Scaffolder App.
+              APP_DIR="$(workspaces.github-app.path)"
+              if [ -n "$ISSUE" ]; then
+                [[ $ISSUE =~ ^[0-9]{1,9}$ ]] && [[ $PLAN_SHA =~ ^[0-9a-f]{12}$ ]] || { echo "::error:: plan mode without a valid issue/plan sha"; exit 1; }
+                [ "$BUILDER_BOUND" = "true" ] && [ -f "$BUILDER_PATH/app-private-key" ] \
+                  || { echo "::error:: plan mode needs the builder-app workspace — refusing to publish with the Scaffolder App"; exit 1; }
+                APP_DIR="$BUILDER_PATH"
+              fi
 
               gh_api="https://api.github.com"
               b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
@@ -2969,14 +3263,14 @@ spec:
                 # on the footer, not the label — the label is for humans and
                 # GitHub-side filters.
                 curl -q -sf -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-                  "$gh_api/repos/$GH_ORG/$APP_NAME/issues/$1/labels" -d '{"labels":["agent-authored"]}' >/dev/null \
+                  "$gh_api/repos/$GH_ORG/$REPO/issues/$1/labels" -d '{"labels":["agent-authored"]}' >/dev/null \
                   || echo "::warning:: could not add the agent-authored label to PR #$1 (label missing in the repo, or the App token lacks issues:write)"
               }
               # Review churn for the agentRun (F-17): CHANGES_REQUESTED rounds and
               # commits pushed after the first review. Read with the same
               # pull_requests:write token; the finally copies them onto the entity.
               review_stats() { # <pr-number> -> JSON {"review_rounds":n,"commits_after_review":n}
-                GH_ORG="$GH_ORG" APP_NAME="$APP_NAME" GH_TOKEN="$GH_TOKEN" python3 - "$1" <<'RSPY'
+                GH_ORG="$GH_ORG" APP_NAME="$REPO" GH_TOKEN="$GH_TOKEN" python3 - "$1" <<'RSPY'
               import json, os, sys, urllib.request
               repo = os.environ["GH_ORG"] + "/" + os.environ["APP_NAME"]; num = sys.argv[1]
               def get(path):
@@ -3002,16 +3296,16 @@ spec:
               # returns a token for EVERY repo the installation can reach, which
               # for this App is the whole org (Administration:write +
               # Contents:write). The scoping is the request BODY: `repositories`
-              # plus `permissions`. $APP_NAME is validated kebab-case upstream, so
-              # it is safe to interpolate into JSON.
+              # plus `permissions`. $REPO is shape-validated upstream (no quotes),
+              # so it is safe to interpolate into JSON.
               mint_repo_token() { # mint_repo_token <owner> <repo> <permissions-json>
                 local owner="$1" repo="$2" perms="$3" now hdr pld sig jwt inst
                 now="$(date +%s)"
                 hdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
                 pld="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now-60))" "$((now+540))" \
-                       "$(cat $(workspaces.github-app.path)/app-id)" | b64url)"
+                       "$(cat "$APP_DIR/app-id")" | b64url)"
                 sig="$(printf '%s' "$hdr.$pld" | openssl dgst -sha256 \
-                       -sign "$(workspaces.github-app.path)/app-private-key" -binary | b64url)"
+                       -sign "$APP_DIR/app-private-key" -binary | b64url)"
                 jwt="$hdr.$pld.$sig"
                 inst="$(curl -q -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
                        "$gh_api/repos/${owner}/${repo}/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
@@ -3025,7 +3319,7 @@ spec:
               curl -q -fsSL "https://github.com/cli/cli/releases/download/v${GH_VER}/gh_${GH_VER}_linux_amd64.tar.gz" | tar -xz -C /tmp
               export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:${PATH}"
               # publish pushes a branch and opens a PR — nothing else.
-              export GH_TOKEN="$(mint_repo_token "$GH_ORG" "$APP_NAME" '{"contents":"write","pull_requests":"write"}')"
+              export GH_TOKEN="$(mint_repo_token "$GH_ORG" "$REPO" '{"contents":"write","pull_requests":"write"}')"
               # Keep the credential OFF the shared workspace. HOME is the
               # workspace PVC, and `git config --global` would write the
               # installation token in plaintext to <workspace>/.gitconfig — which
@@ -3066,7 +3360,21 @@ spec:
               LANE=implement-spec
               TASK_SLUG="$(printf '%s' "$SPEC_PATH" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed -e 's/--*/-/g' -e 's/^-//' -e 's/-*$//')"
               TASK_SLUG="${TASK_SLUG:0:63}"
+              [ -n "$ISSUE" ] && { LANE=implement-plan; TASK_SLUG="issue-${ISSUE}"; }
               BRANCH="agent/${LANE}/${TASK_SLUG}"
+
+              # Title: the builder's Conventional Commits line if it is one,
+              # else a safe default. Read as bytes, symlink-guarded, one line.
+              TITLE="feat: implement from spec and approved demo"
+              COMMIT_MSG="feat($APP_NAME): implement from spec and approved demo"
+              if [ -n "$ISSUE" ]; then
+                TITLE="feat: $(printf '%s' "$ISSUE_TITLE" | tr -cd '[:print:]' | cut -c1-60) (#${ISSUE})"
+                if [ -f "${WS}/PR_TITLE" ] && [ ! -L "${WS}/PR_TITLE" ]; then
+                  T="$(head -c 200 "${WS}/PR_TITLE" | head -n 1 | tr -cd '[:print:]')"
+                  [[ $T =~ ^(feat|fix|test|docs|refactor|perf|chore|build|ci|style)(\([a-z0-9._/-]+\))?!?:\ .{3,90}$ ]] && TITLE="$T"
+                fi
+                COMMIT_MSG="$TITLE"$'\n\n'"Implements the approved plan for #${ISSUE} (plan ${PLAN_SHA})."
+              fi
 
               # Continuation stacks a commit ON the lane branch; a fresh rerun
               # rebuilds from base and force-resets the lane-owned branch.
@@ -3074,7 +3382,7 @@ spec:
               [ "$CONTINUATION" = "true" ] && CLONE_REF="$BRANCH"
               rm -rf "${WS}/fresh"
               git clone --depth 1 --branch "$CLONE_REF" \
-                "https://github.com/$GH_ORG/$APP_NAME.git" "${WS}/fresh"
+                "https://github.com/$GH_ORG/$REPO.git" "${WS}/fresh"
 
               # Replace the working tree wholesale so deletions the agent made are
               # honoured, while keeping OUR .git. --exclude drops the agent's.
@@ -3106,7 +3414,7 @@ spec:
                 # continuation path; this guards the fresh-rerun path.
                 if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
                   HUMANS="$(curl -q -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-                    "$gh_api/repos/$GH_ORG/$APP_NAME/compare/${BASE_BRANCH}...${BRANCH}" \
+                    "$gh_api/repos/$GH_ORG/$REPO/compare/${BASE_BRANCH}...${BRANCH}" \
                     | python3 -c 'import sys,json;cmp=json.load(sys.stdin);print(",".join(sorted({c.get("commit",{}).get("author",{}).get("email","") for c in cmp.get("commits",[])} - {"scaffolder@coreyalan.com"})))' \
                     2>/dev/null || true)"
                   if [ -n "$HUMANS" ]; then
@@ -3117,7 +3425,7 @@ spec:
                 fi
                 git checkout -q -b "$BRANCH"
                 git add -A
-                git commit -q -m "feat($APP_NAME): implement from spec and approved demo"
+                git commit -q -m "$COMMIT_MSG"
                 git push -u --force origin "$BRANCH"
               fi
 
@@ -3218,9 +3526,17 @@ spec:
               fi
 
               {
-                printf 'Automated implementation run for `%s`.\n\n' "$APP_NAME"
-                printf -- '- spec: `%s`\n' "$SPEC_PATH"
-                printf -- '- demo: `%s`\n\n' "${DEMO_SLUG:-(none)}"
+                if [ -n "$ISSUE" ]; then
+                  printf 'Implements the approved plan for #%s.\n\n' "$ISSUE"
+                  printf 'Closes #%s\n\n' "$ISSUE"
+                  printf -- '- plan: `%s` (frozen at Build approved)\n' "$PLAN_SHA"
+                  printf -- '- framework: `%s`\n' "$(printf '%s' "$FRAMEWORK_SHA" | tr -cd '0-9a-f' | cut -c1-12)"
+                  printf -- '- run: `%s`\n\n' "$RUN_NAME"
+                else
+                  printf 'Automated implementation run for `%s`.\n\n' "$APP_NAME"
+                  printf -- '- spec: `%s`\n' "$SPEC_PATH"
+                  printf -- '- demo: `%s`\n\n' "${DEMO_SLUG:-(none)}"
+                fi
                 # See the guard in `implement`: `cat` follows symlinks, and this
                 # pod mounts the GitHub App PRIVATE KEY. A link here would post it
                 # to github.com as a PR body. Re-check rather than trusting the
@@ -3255,7 +3571,7 @@ spec:
               # toggle needs GraphQL (REST cannot flip draft) and that
               # mutation touches no deprecated field; it degrades non-fatally.
               EXISTING="$(curl -q -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-                "$gh_api/repos/$GH_ORG/$APP_NAME/pulls?head=$GH_ORG:$BRANCH&base=$BASE_BRANCH&state=open" \
+                "$gh_api/repos/$GH_ORG/$REPO/pulls?head=$GH_ORG:$BRANCH&base=$BASE_BRANCH&state=open" \
                 | python3 -c 'import sys,json;prs=json.load(sys.stdin);print(prs[0]["number"] if prs else "")' 2>/dev/null || true)"
               if [ -n "$EXISTING" ]; then
                 if [ "$NO_CHANGES" = "true" ]; then
@@ -3267,7 +3583,7 @@ spec:
                 fi
                 DRAFT_STATE=ready
                 [ -n "$DRAFT_FLAG" ] && DRAFT_STATE=draft
-                GH_ORG="$GH_ORG" APP_NAME="$APP_NAME" GH_TOKEN="$GH_TOKEN" \
+                GH_ORG="$GH_ORG" APP_NAME="$REPO" GH_TOKEN="$GH_TOKEN" \
                   python3 - "$EXISTING" "${WS}/pr-body.md" "$DRAFT_STATE" "$NOTE" <<'EDPY'
               import json, os, sys, urllib.request
               num, body_path, want, note = sys.argv[1:5]
@@ -3295,7 +3611,7 @@ spec:
               except Exception as e:
                   print("PR comment failed (non-fatal):", e)
               EDPY
-                PR_URL="https://github.com/$GH_ORG/$APP_NAME/pull/$EXISTING"
+                PR_URL="https://github.com/$GH_ORG/$REPO/pull/$EXISTING"
                 echo "updated: ${PR_URL}"
                 label_pr "$EXISTING"
               else
@@ -3305,20 +3621,195 @@ spec:
                   exit 0
                 fi
                 PR_URL="$(gh pr create ${DRAFT_FLAG} \
-                  --repo "$GH_ORG/$APP_NAME" \
+                  --repo "$GH_ORG/$REPO" \
                   --base "$BASE_BRANCH" \
                   --head "$BRANCH" \
-                  --title "feat: implement from spec and approved demo" \
+                  --title "$TITLE" \
                   --body-file "${WS}/pr-body.md")"
                 echo "opened: ${PR_URL}"
                 label_pr "${PR_URL##*/}"
               fi
               # Provenance breadcrumb for the finally callback (agentRun): the
               # PR number keys the relation onto the ocean-synced PR entity.
-              python3 -c 'import json,sys; m=json.loads(sys.argv[3] or "{}"); m.update({"pr_url": sys.argv[1], "pr_number": int(sys.argv[2])}); print(json.dumps(m))' \
-                "$PR_URL" "${PR_URL##*/}" "$(review_stats "${PR_URL##*/}")" > "${WS}/publish-meta.json"
+              python3 -c 'import json,sys; m=json.loads(sys.argv[3] or "{}"); m.update({"pr_url": sys.argv[1], "pr_number": int(sys.argv[2]), "issue": sys.argv[4], "plan_sha": sys.argv[5]}); print(json.dumps(m))' \
+                "$PR_URL" "${PR_URL##*/}" "$(review_stats "${PR_URL##*/}")" "$ISSUE" "$PLAN_SHA" > "${WS}/publish-meta.json"
               printf '%s' "${PR_URL}" > "$(results.pr-url.path)"
+    # ── advance-card (plan mode): Building -> PR review, link the PR ──────────
+    # Scaffolder App, separate pod: the Build App never touches issues or
+    # projects. Only moves a card still in Building — an operator move wins.
+    - name: advance-card
+      runAfter: [publish]
+      when:
+        - input: "$(params.issue-number)"
+          operator: notin
+          values: [""]
+        - input: "$(tasks.publish.results.pr-url)"
+          operator: notin
+          values: [""]
+      params:
+        - {name: pr-url, value: "$(tasks.publish.results.pr-url)"}
+      workspaces:
+        - {name: github-app, workspace: github-app}
+      taskSpec:
+        workspaces:
+          - {name: github-app}
+        steps:
+          - name: advance
+            image: $(params.toolchain-image)
+            env:
+              - {name: HOME, value: /tmp/home}
+              - {name: GH_ORG, value: $(params.github-org)}
+              - {name: REPO, value: $(params.repo)}
+              - {name: ISSUE, value: $(params.issue-number)}
+              - {name: ITEM_ID, value: $(params.item-id)}
+              - {name: PR_URL, value: $(params.pr-url)}
+              - {name: RUN_NAME, value: $(context.pipelineRun.name)}
+              - {name: APP_KEY, value: $(workspaces.github-app.path)/app-private-key}
+              - {name: APP_ID_F, value: $(workspaces.github-app.path)/app-id}
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              python3 - <<'PY'
+
+              import base64, json, os, re, subprocess, sys, time, urllib.request
+              API = "https://api.github.com"
+              org, repo, issue = os.environ["GH_ORG"], os.environ["REPO"], os.environ["ISSUE"]
+              if not (re.fullmatch(r"[A-Za-z0-9]+([._-][A-Za-z0-9]+)*", repo) and re.fullmatch(r"[0-9]{1,9}", issue)):
+                  sys.exit("::error:: invalid repo/issue")
+              def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+              def call(method, path, token, payload=None):
+                  req = urllib.request.Request(API + path, method=method,
+                      data=json.dumps(payload).encode() if payload is not None else None,
+                      headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                               "Content-Type": "application/json"})
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      raw = r.read(); return json.loads(raw) if raw else {}
+              def token(perms):
+                  now = int(time.time())
+                  head = b64url(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
+                  body = b64url(json.dumps({"iat": now - 60, "exp": now + 540, "iss": open(os.environ["APP_ID_F"]).read().strip()}).encode())
+                  sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", os.environ["APP_KEY"], "-binary"],
+                                       input=f"{head}.{body}".encode(), capture_output=True, check=True).stdout
+                  j = f"{head}.{body}.{b64url(sig)}"
+                  inst = call("GET", f"/repos/{org}/{repo}/installation", j)["id"]
+                  return call("POST", f"/app/installations/{inst}/access_tokens", j,
+                              {"repositories": [repo], "permissions": perms})["token"]
+              item, pr = os.environ["ITEM_ID"], os.environ["PR_URL"]
+              if not re.fullmatch(r"PVTI_[A-Za-z0-9_-]{1,100}", item):
+                  sys.exit("::error:: invalid item id")
+              if not re.fullmatch(rf"https://github\.com/{re.escape(org)}/{re.escape(repo)}/pull/[0-9]+", pr):
+                  sys.exit("::error:: unexpected PR url")
+              ptok = token({"organization_projects": "write", "issues": "write"})
+              def gql(q, v):
+                  out = call("POST", "/graphql", ptok, {"query": q, "variables": v})
+                  if out.get("errors"):
+                      sys.exit("::error:: GraphQL: " + json.dumps(out["errors"])[:600])
+                  return out["data"]
+              card = gql("""query($id:ID!){ node(id:$id){ ... on ProjectV2Item {
+                project { id field(name:"Status"){ ... on ProjectV2SingleSelectField { id options { id name } } } }
+                status: fieldValueByName(name:"Status"){ ... on ProjectV2ItemFieldSingleSelectValue { name } } } } }""",
+                {"id": item})["node"] or {}
+              now = (card.get("status") or {}).get("name")
+              if now is None:
+                  sys.exit("::error:: could not read the card's status")
+              if now == "Building":
+                  field = card["project"]["field"]
+                  review = next(o["id"] for o in field["options"] if o["name"] == "PR review")
+                  gql("""mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{
+                        projectId:$p, itemId:$i, fieldId:$f, value:{ singleSelectOptionId:$o } }){ projectV2Item { id } } }""",
+                      {"p": card["project"]["id"], "i": item, "f": field["id"], "o": review})
+                  print("card -> PR review")
+              else:
+                  print(f"card is in {now!r}, not Building — leaving it where the operator put it")
+              call("POST", f"/repos/{org}/{repo}/issues/{issue}/comments", ptok, {"body":
+                  f"Build PR opened: {pr} (run `{os.environ['RUN_NAME']}`). It implements the plan as frozen at "
+                  "Build approved. A draft PR means verification failed and its findings are the work list. "
+                  "Merging it closes this issue."})
+              PY
   finally:
+    # Plan mode: say on the issue when a build fails. The card stays where it
+    # failed (Build approved or Building); a retry is a new move into Build
+    # approved. Never auto-retried — that would loop on a persistent failure.
+    - name: notify-issue
+      when:
+        - input: "$(params.issue-number)"
+          operator: notin
+          values: [""]
+        - input: "$(tasks.status)"
+          operator: in
+          values: ["Failed"]
+      params:
+        - {name: github-org, value: "$(params.github-org)"}
+        - {name: repo, value: "$(params.repo)"}
+        - {name: issue-number, value: "$(params.issue-number)"}
+        - {name: outcome, value: "$(tasks.status)"}
+        - {name: image, value: "$(params.toolchain-image)"}
+      workspaces:
+        - {name: github-app, workspace: github-app}
+        - {name: source, workspace: source}
+      taskSpec:
+        params:
+          - {name: github-org, type: string}
+          - {name: repo, type: string}
+          - {name: issue-number, type: string}
+          - {name: outcome, type: string}
+          - {name: image, type: string}
+        workspaces:
+          - {name: github-app}
+          - {name: source, optional: true}
+        steps:
+          - name: notify
+            image: $(params.image)
+            env:
+              - {name: HOME, value: /tmp/home}
+              - {name: GH_ORG, value: $(params.github-org)}
+              - {name: REPO, value: $(params.repo)}
+              - {name: ISSUE, value: $(params.issue-number)}
+              - {name: OUTCOME, value: $(params.outcome)}
+              - {name: RUN_NAME, value: $(context.pipelineRun.name)}
+              - {name: WSP, value: $(workspaces.source.path)}
+              - {name: APP_KEY, value: $(workspaces.github-app.path)/app-private-key}
+              - {name: APP_ID_F, value: $(workspaces.github-app.path)/app-id}
+            script: |
+              #!/usr/bin/env bash
+              set -uo pipefail
+              python3 - <<'PY' || echo "failure comment not posted (non-fatal)"
+
+              import base64, json, os, re, subprocess, sys, time, urllib.request
+              API = "https://api.github.com"
+              org, repo, issue = os.environ["GH_ORG"], os.environ["REPO"], os.environ["ISSUE"]
+              if not (re.fullmatch(r"[A-Za-z0-9]+([._-][A-Za-z0-9]+)*", repo) and re.fullmatch(r"[0-9]{1,9}", issue)):
+                  sys.exit("::error:: invalid repo/issue")
+              def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+              def call(method, path, token, payload=None):
+                  req = urllib.request.Request(API + path, method=method,
+                      data=json.dumps(payload).encode() if payload is not None else None,
+                      headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                               "Content-Type": "application/json"})
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      raw = r.read(); return json.loads(raw) if raw else {}
+              def token(perms):
+                  now = int(time.time())
+                  head = b64url(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
+                  body = b64url(json.dumps({"iat": now - 60, "exp": now + 540, "iss": open(os.environ["APP_ID_F"]).read().strip()}).encode())
+                  sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", os.environ["APP_KEY"], "-binary"],
+                                       input=f"{head}.{body}".encode(), capture_output=True, check=True).stdout
+                  j = f"{head}.{body}.{b64url(sig)}"
+                  inst = call("GET", f"/repos/{org}/{repo}/installation", j)["id"]
+                  return call("POST", f"/app/installations/{inst}/access_tokens", j,
+                              {"repositories": [repo], "permissions": perms})["token"]
+              p = os.path.join(os.environ.get("WSP", ""), "parked")
+              why = ""
+              if os.path.isfile(p) and not os.path.islink(p):
+                  why = re.sub(r"[^ -~]", " ", open(p).read())[:300]
+              reason = f"parked: {why}" if why else "the run did not complete"
+              tok = token({"issues": "write"})
+              call("POST", f"/repos/{org}/{repo}/issues/{issue}/comments", tok, {"body":
+                  f"Build run `{os.environ['RUN_NAME']}` failed: {reason} ({os.environ['OUTCOME']}). "
+                  "The card was left where it is. To retry, move it into **Build approved** again "
+                  "(move it out first if it is already there)."})
+              print("failure comment posted")
+              PY
     # Report the pipeline outcome back to Port so the action run leaves
     # IN_PROGRESS (the /incoming webhook is fire-and-forget; without this,
     # every dispatch lingers in limbo). No-ops when the run id wasn't passed
@@ -3345,6 +3836,8 @@ spec:
         - {name: transcripts-bucket, value: "$(params.transcripts-bucket)"}
         - {name: budget-builder, value: "$(params.budget-builder)"}
         - {name: eval-case, value: "$(params.eval-case)"}
+        - {name: issue-number, value: "$(params.issue-number)"}
+        - {name: repo, value: "$(params.repo)"}
       workspaces:
         - {name: port, workspace: port}
         # Read-only breadcrumbs for the agentRun provenance entity:
@@ -3366,6 +3859,8 @@ spec:
           - {name: transcripts-bucket, type: string}
           - {name: budget-builder, type: string}
           - {name: eval-case, type: string}
+          - {name: issue-number, type: string}
+          - {name: repo, type: string}
         workspaces:
           - {name: port, optional: true}
           - {name: source, optional: true}
@@ -3384,6 +3879,10 @@ spec:
             image: $(params.image)
             volumeMounts:
               - {name: gcp-sts-token, mountPath: /var/run/secrets/gcp-sts}
+            env:
+              # Env-bound, never substituted into the script body.
+              - {name: ISSUE_NUM, value: $(params.issue-number)}
+              - {name: REPO_NAME, value: $(params.repo)}
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -3509,14 +4008,23 @@ spec:
                       pass
                   return None
               eval_case = os.environ.get("EVAL_CASE", "")
+              issue = os.environ.get("ISSUE_NUM", "")
+              issue = issue if re.fullmatch(r"[0-9]{1,9}", issue) else ""
+              repo = os.environ.get("REPO_NAME", "")
+              repo = repo if re.fullmatch(r"[A-Za-z0-9]+([._-][A-Za-z0-9]+)*", repo) else os.environ["APP_NAME"]
+              # Eval runs get their own lane (spend kept apart from delivery);
+              # plan-mode runs are the roadmap "build" lane, keyed by issue.
+              if eval_case:
+                  lane, task, branch = "eval", eval_case, "agent/implement-spec/eval-" + eval_case
+              elif issue:
+                  lane, task, branch = "build", f"issue-{issue}", f"agent/implement-plan/issue-{issue}"
+              else:
+                  lane, task, branch = "implement-spec", os.environ["TASK_SLUG"], "agent/implement-spec/" + os.environ["TASK_SLUG"]
               props = {
-                  # An eval run is recorded under its own lane with the case id
-                  # as its task, so the sweep can find it and dashboards can
-                  # keep eval spend apart from delivery spend.
-                  "lane": "eval" if eval_case else "implement-spec",
+                  "lane": lane,
                   "status": os.environ["STATUS_E"],
-                  "task": eval_case or os.environ["TASK_SLUG"],
-                  "branch": "agent/implement-spec/" + (("eval-" + eval_case) if eval_case else os.environ["TASK_SLUG"]),
+                  "task": task,
+                  "branch": branch,
                   "port_run_id": os.environ["PORT_RUN_ID"],
                   "continuation": os.environ.get("CONTINUATION") == "true",
               }
@@ -3619,7 +4127,7 @@ spec:
               rels = {"service": os.environ["APP_NAME"], "agent": AGENT_LANE}
               meta = load("publish-meta.json") or {}
               try:
-                  rels["pull_request"] = os.environ["APP_NAME"] + "-pr-" + str(int(meta["pr_number"]))
+                  rels["pull_request"] = repo + "-pr-" + str(int(meta["pr_number"]))
                   for k in ("review_rounds", "commits_after_review"):
                       if isinstance(meta.get(k), int):
                           props[k] = meta[k]
@@ -3629,7 +4137,7 @@ spec:
               # and github-ocean's live event may not have landed yet — a bare
               # PR entity is created and enriched on sync.
               body = json.dumps({"identifier": run,
-                                 "title": "implement-spec — " + os.environ["APP_NAME"],
+                                 "title": ("build — " if issue else "implement-spec — ") + os.environ["APP_NAME"],
                                  "properties": props, "relations": rels}).encode()
               req = urllib.request.Request(
                   "https://api.port.io/v1/blueprints/agentRun/entities"
