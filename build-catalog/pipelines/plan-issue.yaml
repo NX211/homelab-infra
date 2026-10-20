@@ -119,9 +119,7 @@ spec:
               API = "https://api.github.com"
               org, repo, issue, item = os.environ["GH_ORG"], os.environ["REPO"], int(os.environ["ISSUE"]), os.environ["ITEM_ID"]
               mode, ws, run = os.environ["MODE"], os.environ["WS"], os.environ["RUN_NAME"]
-              # "Plan approved" is the pre-rename name of Ready to plan, accepted
-              # until the boards are renamed; drop it afterwards.
-              WANT = {"plan": ("Ready to plan", "Plan approved"), "replan": ("Replan",)}[mode]
+              WANT = {"plan": ("Ready to plan",), "replan": ("Replan",)}[mode]
 
               def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
               def jwt():
