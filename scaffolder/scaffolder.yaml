@@ -71,6 +71,12 @@ spec:
         - wake_reason
         # heal-rule lane (shares `name`, `base_branch`, `instructions`):
         - task_id
+        # plan-issue lane (roadmap planning; Port roadmap_plan_dispatch):
+        - repo
+        - service
+        - issue_number
+        - item_id
+        - mode
         # both lanes: Port action run id for the finally status callback
         - port_run_id
         - eval_case
