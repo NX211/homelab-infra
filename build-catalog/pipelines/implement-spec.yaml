@@ -3879,6 +3879,10 @@ spec:
             image: $(params.image)
             volumeMounts:
               - {name: gcp-sts-token, mountPath: /var/run/secrets/gcp-sts}
+            env:
+              # Env-bound, never substituted into the script body.
+              - {name: ISSUE_NUM, value: $(params.issue-number)}
+              - {name: REPO_NAME, value: $(params.repo)}
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -3990,7 +3994,6 @@ spec:
                 WAKE_REASON="$(params.wake-reason)" IMAGE="$(params.image)" \
                 AGENT_MAX_TURNS=200 AGENT_BUDGET_USD="$(params.budget-builder)" \
                 EVAL_CASE="$(params.eval-case)"
-              export ISSUE_NUM="$(params.issue-number)" REPO_NAME="$(params.repo)"
               python3 - <<'PROV' || echo "agentRun upsert failed (non-fatal)"
               import datetime, json, os, re, ssl, urllib.request
               ws, run = os.environ.get("WSP", ""), os.environ["RUN_NAME"]
