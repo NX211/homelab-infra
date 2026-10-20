@@ -375,7 +375,7 @@ spec:
               - { name: BASE_BRANCH, value: $(params.base-branch) }
               - { name: TASK_ID,     value: $(params.task-id) }
               - { name: RUN_NAME,    value: $(context.pipelineRun.name) }
-              - { name: IMAGE,    value: $(params.image) }
+              - { name: IMAGE,       value: $(params.toolchain-image) }
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
