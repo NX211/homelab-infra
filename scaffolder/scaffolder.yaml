@@ -77,6 +77,8 @@ spec:
         - issue_number
         - item_id
         - mode
+        # build lane (implement-spec plan mode; Port roadmap_build_dispatch)
+        - plan_editors
         # both lanes: Port action run id for the finally status callback
         - port_run_id
         - eval_case
@@ -154,6 +156,30 @@ spec:
       remoteRef: { key: f9b73dcd-32fa-4973-841d-b499004e35de }   # SCAFFOLDER_GITHUB_APP_ID
     - secretKey: app-private-key
       remoteRef: { key: 0b01607c-cdef-4c1d-a5fa-b499004e3611 }   # SCAFFOLDER_GITHUB_APP_PRIVATE_KEY
+---
+# Build App (coreyalan-builder, ID 5401008): Contents + Pull requests write on
+# capturly.app, dispatchr.social and jlshaw.link only, no Workflows permission
+# (so a build can never change .github/workflows). implement-spec PLAN MODE
+# publishes with it instead of the org-wide Scaffolder App.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-builder-app
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-builder-app
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: app-id
+      remoteRef: { key: ad79890a-e1b7-4119-bc02-b4e90142a69a }   # BUILDER_GITHUB_APP_ID
+    - secretKey: app-private-key
+      remoteRef: { key: 34bf1c68-8181-4b02-a436-b4e90142a66e }   # BUILDER_GITHUB_APP_PRIVATE_KEY
 ---
 # Second GitHub App — owned by the NX211 personal account, installed on
 # NX211/homelab-infra (Contents:write + PRs:write). The Corey-Alan-Consulting
