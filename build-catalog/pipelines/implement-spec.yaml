@@ -578,8 +578,11 @@ spec:
               import sys, json
               cmp = json.load(sys.stdin)
               commits = cmp.get("commits", [])
-              emails = {c.get("commit", {}).get("author", {}).get("email", "") for c in commits}
-              humans = sorted(emails - {"scaffolder@coreyalan.com"})
+              # Lane commits: API-created (author = an App bot) or legacy pushes.
+              def lane(c):
+                  return ((c.get("author") or {}).get("login", "") in ("coreyalan-scaffolder[bot]", "coreyalan-builder[bot]")
+                          or c.get("commit", {}).get("author", {}).get("email", "") == "scaffolder@coreyalan.com")
+              humans = sorted({c.get("commit", {}).get("author", {}).get("email", "") for c in commits if not lane(c)})
               if humans:
                   print("park-human " + ",".join(humans)[:200])
               elif len(commits) >= 4:
@@ -3410,19 +3413,71 @@ spec:
                 echo "agent made no changes — branch already at the desired state"
               fi
 
+              # Commits go through createCommitOnBranch, never `git push`: the
+              # App has no signing key, so pushed commits arrive unsigned and
+              # block merges on repos that require signatures. API commits carry
+              # GitHub's verified signature. The mutation can't express file
+              # modes, symlinks or submodules: symlinks and submodules refuse,
+              # mode changes are listed in the PR body for a human to apply.
+              api_commit() { # api_commit <expected-head-oid> <message>
+                git add -A
+                python3 - "$1" "$2" "$GH_ORG/$REPO" "$BRANCH" "${WS}/mode-notes" <<'APICOMMIT'
+              import base64, json, os, subprocess, sys
+              head, message, repo, branch, notes = sys.argv[1:6]
+              def git(*a):
+                  return subprocess.run(["git", *a], capture_output=True, check=True).stdout
+              adds, dels, modes = [], [], []
+              # --raw -z: ":<old mode> <new mode> <old> <new> <status>\0<path>[\0<path>]"
+              parts = git("diff", "--cached", "--raw", "-z", "--no-renames", head).split(b"\0")
+              i = 0
+              while i < len(parts) and parts[i]:
+                  meta = parts[i].decode().lstrip(":").split()
+                  path = parts[i + 1].decode(); i += 2
+                  old_mode, new_mode, status = meta[0], meta[1], meta[4]
+                  if status == "D":
+                      dels.append({"path": path}); continue
+                  if new_mode in ("120000", "160000"):
+                      sys.exit(f"::error:: {path} is a symlink or submodule; refusing to publish it")
+                  if new_mode == "100755" and old_mode != "100755":
+                      modes.append(path)
+                  blob = git("show", f":{path}")
+                  adds.append({"path": path, "contents": base64.b64encode(blob).decode()})
+              if not adds and not dels:
+                  print("api_commit: nothing staged"); sys.exit(0)
+              headline, _, body = message.partition("\n")
+              payload = {"query": """mutation($input: CreateCommitOnBranchInput!) {
+                  createCommitOnBranch(input: $input) { commit { oid } } }""",
+                  "variables": {"input": {
+                      "branch": {"repositoryNameWithOwner": repo, "branchName": branch},
+                      "expectedHeadOid": head,
+                      "message": {"headline": headline, "body": body.strip() or None},
+                      "fileChanges": {"additions": adds, "deletions": dels}}}}
+              res = subprocess.run(["gh", "api", "graphql", "--input", "-"],
+                                   input=json.dumps(payload).encode(), capture_output=True)
+              data = json.loads(res.stdout or b"{}")
+              if res.returncode != 0 or data.get("errors"):
+                  sys.exit(f"::error:: createCommitOnBranch failed: {json.dumps(data.get('errors')) or res.stderr.decode()[:300]}")
+              if modes:
+                  with open(notes, "w") as f:
+                      f.write("\n## File modes not carried\n\nThe API commit can't set the executable bit. Run `chmod +x` on:\n\n")
+                      f.writelines(f"- `{m}`\n" for m in modes)
+              print(f"api_commit: {branch} -> {data['data']['createCommitOnBranch']['commit']['oid']} "
+                    f"(+{len(adds)} -{len(dels)}) [signed]")
+              APICOMMIT
+              }
+              rm -f "${WS}/mode-notes"
+
               if [ "$NO_CHANGES" = "true" ]; then
                 : # nothing to commit or push; an existing PR still gets its body refreshed below
               elif [ "$CONTINUATION" = "true" ]; then
-                git add -A
-                git commit -q -m "fix($APP_NAME): address review and CI findings"
-                git push origin "HEAD:$BRANCH"
+                api_commit "$(git rev-parse HEAD)" "fix($APP_NAME): address review and CI findings"
               else
                 # Never force-reset over human commits. fetch guards the
                 # continuation path; this guards the fresh-rerun path.
                 if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
                   HUMANS="$(curl -q -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
                     "$gh_api/repos/$GH_ORG/$REPO/compare/${BASE_BRANCH}...${BRANCH}" \
-                    | python3 -c 'import sys,json;cmp=json.load(sys.stdin);print(",".join(sorted({c.get("commit",{}).get("author",{}).get("email","") for c in cmp.get("commits",[])} - {"scaffolder@coreyalan.com"})))' \
+                    | python3 -c 'import sys,json;cmp=json.load(sys.stdin);bots={"coreyalan-scaffolder[bot]","coreyalan-builder[bot]"};print(",".join(sorted({c["commit"]["author"]["email"] for c in cmp.get("commits",[]) if (c.get("author") or {}).get("login") not in bots and c["commit"]["author"]["email"]!="scaffolder@coreyalan.com"})))' \
                     2>/dev/null || true)"
                   if [ -n "$HUMANS" ]; then
                     printf 'human commits on %s' "$BRANCH" > "${WS}/parked"
@@ -3430,10 +3485,16 @@ spec:
                     exit 1
                   fi
                 fi
-                git checkout -q -b "$BRANCH"
-                git add -A
-                git commit -q -m "$COMMIT_MSG"
-                git push -u --force origin "$BRANCH"
+                # Lane-owned branch: point it at the base, then commit on top.
+                BASE_OID="$(git rev-parse HEAD)"
+                if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
+                  gh api -X PATCH "repos/$GH_ORG/$REPO/git/refs/heads/$BRANCH" \
+                    -f sha="$BASE_OID" -F force=true >/dev/null
+                else
+                  gh api "repos/$GH_ORG/$REPO/git/refs" \
+                    -f ref="refs/heads/$BRANCH" -f sha="$BASE_OID" >/dev/null
+                fi
+                api_commit "$BASE_OID" "$COMMIT_MSG"
               fi
 
               # Assemble the PR body as a FILE. printf '%s' never re-parses a
@@ -3554,6 +3615,7 @@ spec:
                   cat "${WS}/SUMMARY.md"
                 fi
                 [ -f "${WS}/verification.md" ] && cat "${WS}/verification.md"
+                [ -f "${WS}/mode-notes" ] && [ ! -L "${WS}/mode-notes" ] && cat "${WS}/mode-notes"
                 cat <<'BODY'
 
               ---
