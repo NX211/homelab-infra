@@ -16,6 +16,10 @@ metadata:
 spec:
   email: contact@jlshawconsulting.com
   domain: jlshaw.link
+  # Mail identity only (Port emailDomain). domain stays jlshaw.link because the
+  # tenant id derives from it; live site and mail are jlshawconsulting.com.
+  # provisionEmail is off, so the email island never touches the zone.
+  emailDomainName: mail.jlshawconsulting.com
   demoHost: jl-shaw.com
   blueprint: managed-hosting@v1
   islands:
