@@ -79,6 +79,21 @@ spec:
               bucketName:
                 description: Name of the bucket; required field.
                 type: string
+              delivery:
+                description: Delivery selects how documents reach this StateStore.
+                properties:
+                  config:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Config is handed to the registered writer and is not read by Kratix. Which keys it needs,
+                      and whether it needs any, depends on the mode.
+                    type: object
+                  mode:
+                    description: Mode names a registered writer. Leaving it unset
+                      writes to the StateStore directly.
+                    type: string
+                type: object
               endpoint:
                 description: |-
                   Endpoint to access the bucket.
@@ -317,16 +332,25 @@ spec:
                   Defaults to the Destination name
                 type: string
               stateStoreRef:
-                description: Reference to the StateStore (GitStateStore or BucketStateStore)
-                  used to persist resources for this Destination
+                description: Reference to the StateStore used to persist resources
+                  for this Destination
                 properties:
-                  kind:
-                    description: Kind of the StateStore resource. Must be either BucketStateStore
-                      or GitStateStore
-                    enum:
-                    - BucketStateStore
-                    - GitStateStore
+                  apiVersion:
+                    default: platform.kratix.io/v1alpha1
+                    description: APIVersion of the StateStore resource. Defaults to
+                      platform.kratix.io/v1alpha1
                     type: string
+                    x-kubernetes-validations:
+                    - message: stateStoreRef.apiVersion is immutable
+                      rule: self == oldSelf
+                  kind:
+                    description: |-
+                      Kind of the StateStore resource. Kratix manages BucketStateStore and GitStateStore.
+                      Any other Kind must be managed by its own controller.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: stateStoreRef.kind is immutable
+                      rule: self == oldSelf
                   name:
                     description: Name of the StateStore resource
                     type: string
@@ -677,6 +701,21 @@ spec:
                 default: main
                 description: Branch of the git repository; default to main.
                 type: string
+              delivery:
+                description: Delivery selects how documents reach this StateStore.
+                properties:
+                  config:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Config is handed to the registered writer and is not read by Kratix. Which keys it needs,
+                      and whether it needs any, depends on the mode.
+                    type: object
+                  mode:
+                    description: Mode names a registered writer. Leaving it unset
+                      writes to the StateStore directly.
+                    type: string
+                type: object
               gitAuthor:
                 default:
                   name: kratix
@@ -2078,6 +2117,17 @@ spec:
                   - type
                   type: object
                 type: array
+              deliveryGeneration:
+                description: |-
+                  DeliveryGeneration is the generation the outstanding delivery carries. An older one cannot
+                  satisfy the current generation, however it resolves.
+                format: int64
+                type: integer
+              deliveryReceipt:
+                description: |-
+                  DeliveryReceipt identifies a write the StateStore's writer accepted but has not delivered.
+                  It is set while WriteSucceeded is Unknown and cleared once the delivery resolves.
+                type: string
               versionID:
                 description: |-
                   VersionID contains the version identifier of the last applied workplacement
@@ -2085,6 +2135,7 @@ spec:
                   For Bucket StateStores, this is always empty
                 type: string
             type: object
+            x-kubernetes-preserve-unknown-fields: true
         type: object
     served: true
     storage: true
@@ -2336,6 +2387,20 @@ rules:
   - create
   - patch
 ---
+aggregationRule:
+  clusterRoleSelectors:
+  - matchLabels:
+      kratix.io/aggregate-to-kratix: "true"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: kratix-manager
+    app.kubernetes.io/instance: kratix-platform
+    app.kubernetes.io/part-of: kratix
+  name: kratix-platform-aggregated-role
+rules: []
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -2559,6 +2624,23 @@ metadata:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
     app.kubernetes.io/part-of: kratix
+  name: kratix-platform-aggregated-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kratix-platform-aggregated-role
+subjects:
+- kind: ServiceAccount
+  name: kratix-platform-controller-manager
+  namespace: kratix-platform-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: kratix-manager
+    app.kubernetes.io/instance: kratix-platform
+    app.kubernetes.io/part-of: kratix
   name: kratix-platform-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -2588,7 +2670,7 @@ subjects:
 ---
 apiVersion: v1
 data:
-  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:e63ac3133b394e47b96b06b8ff4f3774a5bc540d936c172f2a938676c03867b0
+  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:f61f2d4c4ac4028279d44da5ea2e89f0ad088982c6e07e5b374b24efbde18e1c
 kind: ConfigMap
 metadata:
   labels:
@@ -2680,7 +2762,7 @@ spec:
             configMapKeyRef:
               key: PIPELINE_ADAPTER_IMG
               name: kratix-platform-pipeline-adapter-config
-        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:e63ac3133b394e47b96b06b8ff4f3774a5bc540d936c172f2a938676c03867b0
+        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:f61f2d4c4ac4028279d44da5ea2e89f0ad088982c6e07e5b374b24efbde18e1c
         livenessProbe:
           httpGet:
             path: /healthz
