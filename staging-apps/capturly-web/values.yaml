@@ -165,6 +165,10 @@ staging-app:
         key: ab038390-a2ea-45b9-b058-b456015c2a4f
       - name: MAILGUN_DOMAIN
         key: 7688bad7-a9f1-4cdf-b134-b456015c2ce3
+      # Sandbox From: the code default is noreply@capturly.app, which DMARC
+      # p=reject drops when sent through the sandbox domain.
+      - name: MAILGUN_FROM
+        key: 7837607b-af48-49e9-86cb-b4f00018b1bc
       # Redis Sentinel auth. Value MUST equal redis-ng's password (helm-charts/
       # redis externalsecret) — set this Bitwarden secret to the same value.
       - name: REDIS_PASSWORD

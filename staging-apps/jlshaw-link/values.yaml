@@ -166,6 +166,16 @@ staging-app:
         key: 6aa33b1f-6133-42da-aa73-b42200fec4c5
       - name: API_KEY_HASH_SECRET
         key: 5aa854b6-bcd6-41bb-8f89-b43000efdc6b
+      # Mailgun sandbox (staging standard): delivers only to the sandbox's
+      # authorized recipients, and From must sit on the sandbox domain or the
+      # real domain's DMARC p=reject drops it. No signing/admin key mapped, so
+      # webhook reconcile stays off (apps sharing the sandbox would fight).
+      - name: MAILGUN_API_KEY
+        key: 3f73a306-10d5-42be-b8fb-b464015d5f35
+      - name: MAILGUN_DOMAIN
+        key: c3e0bb2a-413b-4bc2-817b-b464015dac15
+      - name: EMAIL_FROM
+        key: fb2988fe-64ea-4164-8fc2-b464015eb9ea
       # redis-ng Sentinel auth (master + sentinel share one password). Lives in
       # jlshaw's own staging Bitwarden project; same value as redis-ng's
       # STAGING_REDIS_NG_PASSWORD (helm-charts/redis/templates/externalsecret.yaml).
