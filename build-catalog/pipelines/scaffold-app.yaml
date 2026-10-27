@@ -81,6 +81,7 @@ spec:
       workspaces:
         - { name: source, workspace: source }
         - { name: github-app, workspace: github-app }
+        - { name: homelab-github-app, workspace: homelab-github-app }
         - { name: anthropic, workspace: anthropic }
         - { name: cloudflare, workspace: cloudflare }
         - { name: bws, workspace: bws }
@@ -90,6 +91,7 @@ spec:
         workspaces:
           - { name: source }
           - { name: github-app }
+          - { name: homelab-github-app }
           - { name: anthropic }
           - { name: cloudflare }
           - { name: bws }
@@ -119,6 +121,7 @@ spec:
             env:
               - { name: HOME, value: $(workspaces.source.path) }
               - { name: GH_ORG, value: $(params.github-org) }
+              - { name: HOMELAB_ORG, value: $(params.homelab-org) }
               # Params arrive from a Port form through a webhook. Tekton substitutes
               # $(params.x) as RAW TEXT into the script body before bash parses it,
               # so a value containing a quote breaks out and executes — in a step
@@ -162,6 +165,23 @@ spec:
                 jwt="$hdr.$pld.$sig"
                 inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
                        "$gh_api/orgs/${org}/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
+                curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+                       "$gh_api/app/installations/$inst/access_tokens" \
+                       | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
+              }
+              # NX211 homelab app (App B) for the staging PR: repo-scoped
+              # installation lookup, which works for a USER-owned install.
+              mint_repo_token() { # mint_repo_token <owner> <repo>
+                local owner="$1" repo="$2" now hdr pld sig jwt inst
+                now="$(date +%s)"
+                hdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
+                pld="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now-60))" "$((now+540))" \
+                       "$(cat $(workspaces.homelab-github-app.path)/app-id)" | b64url)"
+                sig="$(printf '%s' "$hdr.$pld" | openssl dgst -sha256 \
+                       -sign "$(workspaces.homelab-github-app.path)/app-private-key" -binary | b64url)"
+                jwt="$hdr.$pld.$sig"
+                inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
+                       "$gh_api/repos/${owner}/${repo}/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
                 curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
                        "$gh_api/app/installations/$inst/access_tokens" \
                        | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
@@ -214,6 +234,14 @@ spec:
 
               # --- clone platform-infra (carries all three scripts) ------------
               git clone --depth 1 "https://github.com/${GH_ORG}/platform-infra.git" "${HOME}/platform-infra"
+              # homelab-infra, at a path onboard-app.sh searches. Since #3809 it
+              # refuses to finish without one (an app routed to staging with no
+              # staging chart is the gatherbee gap), and it calls this repo's
+              # scripts/gen-staging-app.sh to write the staging half. Cloned by
+              # explicit URL with the homelab App's token: the global insteadOf
+              # above would otherwise send the org App's token to the NX211 repo.
+              HL_TOKEN="$(mint_repo_token "$HOMELAB_ORG" homelab-infra)" || { echo "GitHub App token mint failed for ${HOMELAB_ORG}/homelab-infra"; exit 1; }
+              git clone --depth 1 "https://x-access-token:${HL_TOKEN}@github.com/${HOMELAB_ORG}/homelab-infra.git" "${HOME}/Projects/homelab-infra"
               cd "${HOME}/platform-infra"
 
               DB_FLAG=""; [ "$DATABASE" = "true" ] && DB_FLAG="--database"
@@ -277,6 +305,30 @@ spec:
                 --github-org "$GH_ORG" "${DESC_ARGS[@]}" "${SPEC_ARGS[@]}" $DB_FLAG "${BRAND_ARGS[@]}" $EMAIL_FLAG "${CRIT_ARGS[@]}" \
                 --targets "$TARGETS" --ci --no-dns $AGENT_FLAG
 
+              # staging: open the homelab-infra PR NOW, before gate-1. The onboard
+              # PR routes the app to staging (gitops-trigger staging.appMap) and
+              # platform-infra's Staging Registration check fails it until this
+              # chart exists on homelab-infra main — so this PR merges first.
+              # Pushed with the homelab App's token by explicit URL; the global
+              # insteadOf above carries the org App's token, which cannot write
+              # to the NX211 repo.
+              HL="${HOME}/Projects/homelab-infra"
+              if [ -n "$(git -C "$HL" status --porcelain)" ]; then
+                # Fresh token: the one minted for the clone may have expired
+                # during scaffold-app.sh (the standards agent can run long).
+                HL_TOKEN="$(mint_repo_token "$HOMELAB_ORG" homelab-infra)" || { echo "GitHub App token mint failed for ${HOMELAB_ORG}/homelab-infra"; exit 1; }
+                HL_BRANCH="scaffold/staging-${APP_NAME}"
+                git -C "$HL" checkout -q -b "$HL_BRANCH"
+                git -C "$HL" add -A
+                git -C "$HL" commit -q -m "feat(staging): add ${APP_NAME} staging environment"
+                git -C "$HL" push -q "https://x-access-token:${HL_TOKEN}@github.com/${HOMELAB_ORG}/homelab-infra.git" "HEAD:refs/heads/${HL_BRANCH}"
+                GH_TOKEN="$HL_TOKEN" gh pr create --repo "${HOMELAB_ORG}/homelab-infra" --head "$HL_BRANCH" \
+                  --title "feat(staging): add ${APP_NAME} staging environment" \
+                  --body "Staging half of the ${COMPANY} scaffold (staging.${EFF_DOMAIN}), written by gen-staging-app.sh. **Merge this before the platform-infra onboard PR**: that PR's Staging Registration check needs this chart on main. Before first sync: create the staging Bitwarden project, fill \`bitwarden.projectID\` and the \`externalSecrets.secrets\` UUIDs, and bootstrap \`bitwarden-staging-${APP_NAME}-credentials\`."
+              else
+                echo "::error::onboard-app.sh wrote no staging files to ${HL}"; exit 1
+              fi
+
               # dns: fresh main so the dns PR carries ONLY <app>-dns.tf
               git checkout main && git pull --ff-only
               bash scripts/scaffold-dns.sh \
@@ -299,7 +351,7 @@ spec:
       params:
         - { name: approvers, value: "$(params.approvers[*])" }
         - { name: numberOfApprovalsRequired, value: $(params.approvals-required) }
-        - { name: description, value: "Merge+apply onboard & dns PRs for $(params.name); complete the registrar NS cutover for $(params.domain); then approve." }
+        - { name: description, value: "For $(params.name): merge the homelab-infra staging PR FIRST, then merge+apply the onboard & dns PRs; complete the registrar NS cutover for $(params.domain); then approve." }
 
     # ── finish: project-number backfill + staging ───────────────────────────
     - name: finish
@@ -307,13 +359,11 @@ spec:
       workspaces:
         - { name: source, workspace: source }
         - { name: github-app, workspace: github-app }
-        - { name: homelab-github-app, workspace: homelab-github-app }
         - { name: port, workspace: port }
       taskSpec:
         workspaces:
           - { name: source }
           - { name: github-app }
-          - { name: homelab-github-app }
           - { name: port, optional: true }
         # Pipeline params propagate into this inline taskSpec.
         volumes:
@@ -341,7 +391,6 @@ spec:
               - { name: COMPANY,      value: $(params.company) }
               - { name: DATABASE,     value: $(params.database) }
               - { name: GH_ORG,       value: $(params.github-org) }
-              - { name: HOMELAB_ORG,  value: $(params.homelab-org) }
               - { name: WIF_AUDIENCE, value: $(params.wif-audience) }
             volumeMounts:
               - { name: gcp-sts-token, mountPath: /var/run/secrets/gcp-sts }
@@ -367,23 +416,6 @@ spec:
                        | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
               }
 
-              # NX211 homelab app (App B): repo-scoped installation lookup, which
-              # works for a USER-owned install (unlike /orgs/<user>, which 404s).
-              mint_repo_token() { # mint_repo_token <owner> <repo>
-                local owner="$1" repo="$2" now hdr pld sig jwt inst
-                now="$(date +%s)"
-                hdr="$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)"
-                pld="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$((now-60))" "$((now+540))" \
-                       "$(cat $(workspaces.homelab-github-app.path)/app-id)" | b64url)"
-                sig="$(printf '%s' "$hdr.$pld" | openssl dgst -sha256 \
-                       -sign "$(workspaces.homelab-github-app.path)/app-private-key" -binary | b64url)"
-                jwt="$hdr.$pld.$sig"
-                inst="$(curl -sf -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
-                       "$gh_api/repos/${owner}/${repo}/installation" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
-                curl -sf -X POST -H "Authorization: Bearer $jwt" -H "Accept: application/vnd.github+json" \
-                       "$gh_api/app/installations/$inst/access_tokens" \
-                       | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
-              }
 
               # --- GCP access token, KEYLESS via Workload Identity Federation ---
               # Exchange the projected k3s SA token for a federated Google token
@@ -455,17 +487,10 @@ spec:
                 --body "Backfills \`${MOD}_project_number = \"${NUM}\"\` (read from GCP after the onboard apply). Merge after the onboard PR is applied." \
                 || echo "  (apps.tfvars PR skipped/failed)"
 
-              # --- homelab-infra: generate the staging environment (PR) --------
-              # App B (NX211-owned), repo-scoped — homelab-org is a USER account.
-              GH_TOKEN="$(mint_repo_token "$HOMELAB_ORG" homelab-infra)" || { echo "GitHub App token mint failed for ${HOMELAB_ORG}/homelab-infra"; exit 1; }
-              export GH_TOKEN
-              git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
-              git clone --depth 1 "https://github.com/$HOMELAB_ORG/homelab-infra.git" "${HOME}/hi"
-              cd "${HOME}/hi"
-              DB_FLAG=""; [ "$DATABASE" = "true" ] && DB_FLAG="--database"
-              bash scripts/gen-staging-app.sh \
-                --name "$APP_NAME" --domain "$DOMAIN" --company "$COMPANY" \
-                --gcp-project "$PROJECT_ID" $DB_FLAG --repo-root .
+              # Staging is NOT generated here any more: prepare opened the
+              # homelab-infra staging PR before gate-1 (onboard-app.sh ->
+              # gen-staging-app.sh), because the onboard PR's Staging
+              # Registration check needs that chart on main first.
 
               # Gate 1 is behind us and the project number is filled: stamp both.
               if [ "$(workspaces.port.bound)" = "true" ] && [ -f "${HOME}/pi/scripts/port-onboarding.sh" ]; then
@@ -473,8 +498,8 @@ spec:
                   --set project_number=true --set gate_merge_apply=true || true
               fi
 
-              echo "=== finish done. Review the apps.tfvars + staging PRs, complete the"
-              echo "=== staging TODOs, then APPROVE gate-2."
+              echo "=== finish done. Review the apps.tfvars PR, complete the staging"
+              echo "=== TODOs on the (already merged) staging app, then APPROVE gate-2."
 
     # ── gate-2: final review ─────────────────────────────────────────────────
     - name: gate-final
@@ -489,7 +514,7 @@ spec:
       params:
         - { name: approvers, value: "$(params.approvers[*])" }
         - { name: numberOfApprovalsRequired, value: $(params.approvals-required) }
-        - { name: description, value: "Review apps.tfvars + staging PRs for $(params.name); complete staging TODOs (BWS project, credentials, infraAppName); then approve." }
+        - { name: description, value: "Review the apps.tfvars PR for $(params.name); complete staging TODOs (BWS project + secret UUIDs, credentials bootstrap, infraAppName); then approve." }
 
   finally:
     # Report the pipeline outcome back to Port so the action run leaves
