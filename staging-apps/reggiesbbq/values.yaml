@@ -32,7 +32,7 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
-    digest: sha256:d9f12bd4a186b5835fb969877b51fc7eeec390b65b26257c54f855a19793bfc1
+    digest: sha256:71939fd2e6b0797d3e0fed3e7bd9a2247e7c74b6c30b55f7c220939cb4d6e770
   # Demo dataset for review: every order status, both gift shapes, loyalty
   # coupons, campaign outcomes, support threads. Idempotent, and the script
   # refuses to run unless APP_ENV=staging. Bump runId to re-seed in place.
@@ -45,7 +45,7 @@ staging-app:
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
-    digest: "sha256:4bbf8eeffddc889d849371ec2fb7a65c007f4c6a204cca26f2fe142aa45b3a19" # Seeded empty; CI's gitops-staging-update.yml fills it from the first prod build
+    digest: "sha256:01ca3ae142f434d20348cc3960f6b6244a2b003a86fbd8f69c815f9464fa6bab" # Seeded empty; CI's gitops-staging-update.yml fills it from the first prod build
   imagePullSecrets:
     - name: gcr-pull-secret-reggiesbbq
   gcrPullSecret:
