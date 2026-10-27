@@ -153,6 +153,14 @@ staging-app:
       # one is sent, so this cannot downgrade HMAC once it exists.
       - name: SHIPPO_WEBHOOK_TOKEN
         key: 01030a3a-a492-4170-8bb2-b4bc0145e268
+      # Mailgun sandbox (staging standard): delivers only to the sandbox's
+      # authorized recipients, and From must sit on the sandbox domain or the
+      # real domain's DMARC p=reject drops it. No signing/admin key mapped, so
+      # webhook reconcile stays off (apps sharing the sandbox would fight).
+      - name: MAILGUN_API_KEY
+        key: 31f979bb-4577-4dab-b447-b4f00017ed40
+      - name: MAILGUN_DOMAIN
+        key: 9e22cca5-88b0-46c2-aed1-b4f00018b208
       # Scoped SeaweedFS identity: Read/Write/List/Tagging on
       # reggiesbbq-uploads only, matching every other app in the
       # seaweedfs-s3-config-json blob. Without these the storage driver builds
