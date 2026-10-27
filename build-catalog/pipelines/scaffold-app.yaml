@@ -202,10 +202,8 @@ spec:
               curl -fsSL -o /tmp/bws.zip "https://github.com/bitwarden/sdk-sm/releases/download/bws-v${BWS_VER}/bws-x86_64-unknown-linux-gnu-${BWS_VER}.zip"
               python3 -c "import zipfile; zipfile.ZipFile('/tmp/bws.zip').extractall('/tmp/bwsbin')"
               chmod +x /tmp/bwsbin/bws
-              # helm pinned to CI's 4.2.x so onboard-app.sh born-renders (APP_MAP +
-              # rendered/<app>) instead of falling back to in-cluster Helm.
-              HELM_VER=4.2.1
-              curl -fsSL "https://get.helm.sh/helm-v${HELM_VER}-linux-amd64.tar.gz" | tar -xz -C /tmp
+              # helm is installed after the platform-infra clone below, at the
+              # version CI renders with (read from its render-drift.yml).
               export PATH="/tmp/gh_${GH_VER}_linux_amd64/bin:/tmp/bwsbin:/tmp/linux-amd64:${HOME}/.npm-global/bin:${PATH}"
               # Keyless Claude via Workload Identity Federation: the SDK exchanges
               # the projected SA token (aud api.anthropic.com, mounted below) for a
@@ -234,6 +232,12 @@ spec:
 
               # --- clone platform-infra (carries all three scripts) ------------
               git clone --depth 1 "https://github.com/${GH_ORG}/platform-infra.git" "${HOME}/platform-infra"
+              # Helm at CI's exact pin, so onboard-app.sh born-renders (APP_MAP +
+              # rendered/<app>) with output the render-drift check accepts. A
+              # hardcoded 4.2.1 here outlived CI's move to 4.3.1.
+              HELM_VER="$(sed -n "s/^[[:space:]]*version: '\(4\.[0-9]*\.[0-9]*\)'.*/\1/p" "${HOME}/platform-infra/.github/workflows/render-drift.yml" | head -1)"
+              [ -n "$HELM_VER" ] || { echo "could not read the Helm pin from platform-infra render-drift.yml"; exit 1; }
+              curl -fsSL "https://get.helm.sh/helm-v${HELM_VER}-linux-amd64.tar.gz" | tar -xz -C /tmp
               # homelab-infra, at a path onboard-app.sh searches. Since #3809 it
               # refuses to finish without one (an app routed to staging with no
               # staging chart is the gatherbee gap), and it calls this repo's
