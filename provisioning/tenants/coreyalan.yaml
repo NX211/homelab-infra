@@ -14,6 +14,9 @@ metadata:
 spec:
   email: corey@coreyalan.com
   domain: coreyalan.com
+  # Mail identity only (Port emailDomain); the zone is Terraform-managed, so
+  # provisionEmail stays off.
+  emailDomainName: mail.coreyalan.com
   demoHost: coreyalan.dev
   blueprint: managed-hosting@v1
   islands:
