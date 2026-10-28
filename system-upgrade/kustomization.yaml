@@ -6,3 +6,26 @@ resources:
   - https://github.com/rancher/system-upgrade-controller/releases/download/v0.19.2/crd.yaml
   - https://github.com/rancher/system-upgrade-controller/releases/download/v0.19.2/system-upgrade-controller.yaml
   - plans.yaml
+patches:
+  # The drain jobs' kubectl. Upstream ships v1.30.3 (still in v0.20.2), which
+  # falls further outside kubectl's one-minor skew with every k3s upgrade.
+  # Pin it to the minor the cluster is upgrading FROM and move it with each
+  # plan bump: one minor from both the old and the new API server throughout
+  # the hop, whichever image a drain job happens to start with.
+  - target:
+      kind: ConfigMap
+      name: default-controller-env
+    patch: |-
+      - op: replace
+        path: /data/SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE
+        value: rancher/kubectl:v1.33.13
+  # The controller reads that ConfigMap through envFrom, so it only sees a
+  # change after a restart; Reloader does the restart.
+  - target:
+      kind: Deployment
+      name: system-upgrade-controller
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          configmap.reloader.stakater.com/reload: default-controller-env
