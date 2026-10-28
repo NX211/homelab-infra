@@ -73,6 +73,7 @@ spec:
         - gatherbee-staging
         - blue-skysolutions-com-staging
         - reggiesbbq-staging
+        - showcase-staging
   provider:
     kubernetes:
       server:
