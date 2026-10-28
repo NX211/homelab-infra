@@ -47,7 +47,9 @@ spec:
           env:
             - name: COREYALAN_BASE_URL
               value: https://coreyalan.com
-            - name: NAMESPACE
+            # Every namespace holding a managed app's base ConfigMap and
+            # Middleware. Each one also needs the Role + RoleBinding in rbac.yaml.
+            - name: NAMESPACES
               value: staging
           envFrom:
             - secretRef:
