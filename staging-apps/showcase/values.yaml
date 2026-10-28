@@ -33,9 +33,6 @@ staging-app:
     digest: "sha256:55d3e9e91874176a2f8997c6d021961e7a7336baa33c652b0b377af5d4bb48b0" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-showcase
-  gcrPullSecret:
-    bitwardenKey: "" # keyless via WIF (ar-token-refresher)
-    secretName: gcr-pull-secret-showcase
   service:
     type: ClusterIP
     port: 3000
