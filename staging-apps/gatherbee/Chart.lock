@@ -1,6 +1,6 @@
 dependencies:
-- name: staging-app
-  repository: file://../../charts/staging-app
-  version: 0.8.5
-digest: sha256:914657a6b77ee8ff8bcb36fac8bf6fb7e122afb1e281cd1d5fdbf966a69d1497
-generated: "2026-09-25T16:25:31.805498-05:00"
+- name: nextjs-app
+  repository: oci://us-central1-docker.pkg.dev/platform-infra-prod/helm-charts
+  version: 1.19.0
+digest: sha256:cb20f03cb194fe523c48b416e388cc70cd3a60cc5ca77693ce626142ea6be566
+generated: "2026-10-28T11:27:03.59359-05:00"

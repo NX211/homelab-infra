@@ -67,6 +67,7 @@ spec:
   conditions:
     - namespaces:
         - argocd
+        - gatherbee-staging
   provider:
     kubernetes:
       server:

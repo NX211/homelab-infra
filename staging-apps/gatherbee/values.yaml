@@ -1,72 +1,163 @@
 # gatherbee.org - Staging Values
-# Build once, deploy many: the same image as prod, different config.
+# Build once, deploy many: the same image as prod, rendered by the same chart
+# (nextjs-app, from platform-infra), with staging config. Differences from
+# prod's helm-charts/gatherbee/values.yaml are staging facts, each noted below:
+# in-cluster Postgres instead of Cloud SQL, Bitwarden instead of GCP Secret
+# Manager, an Artifact Registry pull secret, Traefik in `default`, Prometheus
+# Operator instead of Alloy, the reviewer IP allowlist, and smaller sizes.
 
-staging-app:
-  appName: gatherbee
-  appLabel: GatherBee
+nextjs-app:
+  # Keeps every object named gatherbee-staging: the Service, TLS secret and
+  # allowlist Middleware keep their names, and Port's homelab mapping links
+  # Kyverno/Trivy reports to the gatherbee service by this prefix.
   fullnameOverride: gatherbee-staging
-  replicaCount: 1
+
+  # Same nine routes and schedules as prod, against staging data and test-mode
+  # third parties (Mailgun sandbox, Stripe test, SignWell test mode).
+  crons:
+    enabled: true
+    suspend: false
+    image: curlimages/curl:8.21.0
+    baseUrl: http://gatherbee-staging:3000
+    secretName: gatherbee-staging-secrets
+    secretTokenKey: ADMIN_API_KEY
+    method: POST
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    backoffLimit: 2
+    jobs:
+      - {name: reconcile-email-webhooks, schedule: "0 * * * *", path: /api/cron/reconcile-email-webhooks}
+      - {name: waitlist-holds, schedule: "*/15 * * * *", path: /api/cron/waitlist-holds}
+      - {name: class-meetings, schedule: "30 3 * * *", path: /api/cron/class-meetings}
+      - {name: retention-sweep, schedule: "15 2 * * *", path: /api/cron/retention-sweep}
+      - {name: trial-expiry, schedule: "5 * * * *", path: /api/cron/trial-expiry}
+      - {name: signature-reminders, schedule: "0 14 * * *", path: /api/cron/signature-reminders}
+      - {name: credential-reminders, schedule: "30 13 * * *", path: /api/cron/credential-reminders}
+      - {name: family-digest, schedule: "0 22 * * 0", path: /api/cron/family-digest}
+      - {name: split-transfer-sweep, schedule: "20 * * * *", path: /api/cron/split-transfer-sweep}
+
   deploymentAnnotations:
     reloader.stakater.com/auto: "true"
-  bitwarden:
-    projectID: "4b2a6e06-1311-47e4-932a-b4cc012e5347" # Staging - GatherBee
-    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
-    # One-time bootstrap: a BWS machine account scoped to the staging project,
-    # stored as this K8s secret in external-secrets-system (Bitwarden web
-    # console) — same as every other staging app.
-    credentialsSecret: bitwarden-staging-gatherbee-credentials
-  database:
-    enabled: true
-    superuser:
-      create: false # shares the postgres-superuser-staging secret
-    userKey: 47ef3b6f-2bf9-4336-93cf-b4d0016082e2 # DB_USER      gatherbee_staging
-    passwordKey: 91221247-5290-4ac2-8799-b4d00160835b # DB_PASSWORD
-    nameKey: c7026440-351c-429e-bb02-b4d001608321 # DB_NAME      gatherbee_staging
-  # Monorepo standalone build: Next's output is /app/apps/web/.next, so the
-  # writable cache volume has to mount there. At the chart default it lands
-  # beside the real directory and every image request re-encodes.
-  nextCachePath: /app/apps/web/.next/cache
-  migration:
-    enabled: true
-    repository: us-central1-docker.pkg.dev/coreyalan-gatherbee/gatherbee/gatherbee-web-migrate
-    digest: "sha256:bae66b9cf580a2a4a8cb2778124cedfb1d01d8853342906a9c4b32604d8bc760" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
   image:
     repository: us-central1-docker.pkg.dev/coreyalan-gatherbee/gatherbee/gatherbee-web
     pullPolicy: IfNotPresent
-    digest: "sha256:1f9c83188c6496dc30cfb9b1a2d1879dd8dfbff7a6bd2cd41e2a0474406d3e88" # Seeded empty; gitops-staging-update.yml fills it from the first prod build
+    digest: "sha256:1f9c83188c6496dc30cfb9b1a2d1879dd8dfbff7a6bd2cd41e2a0474406d3e88" # written by gitops-staging-update.yml
+  # Staging nodes cannot pull from Artifact Registry on their own. ESO keeps this
+  # secret current (templates/pull-secret.yaml); on the ServiceAccount too, so the
+  # migrate Job pulls with it.
   imagePullSecrets:
     - name: gcr-pull-secret-gatherbee
-  gcrPullSecret:
-    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO does not manage this pull secret
-    secretName: gcr-pull-secret-gatherbee
   service:
     type: ClusterIP
     port: 3000
+    targetPort: 3000
+  cacheMountPath: /app/apps/web/.next/cache
+
   ingress:
     enabled: true
     host: staging.gatherbee.org
     clusterIssuer: letsencrypt-prod
-    # On-LAN/in-cluster by default; the allowlist-reconciler unions reviewer IPs
-    # at runtime from Bitwarden.
-    #
-    # Stripe now IS wired, and Stripe publishes no fixed egress range, so the
-    # allowlist would reject legitimate callers and a test payment would sit
-    # unrecorded. The route authenticates itself instead: it verifies the
-    # signature against STRIPE_WEBHOOK_SECRET before doing any work, 400s an
-    # absent or bad signature, and 503s when unconfigured. Same reasoning as
-    # reggiesbbq's Stripe exemption; nothing else is exempted.
-    publicPaths:
+    # Reviewer IP allowlist (templates/ipallowlist.yaml), kept current by the
+    # allowlist-reconciler. On every route, including the auth rate limits.
+    middlewares:
+      - name: gatherbee-staging-ipallowlist
+    # Stripe publishes no fixed egress range, so the allowlist would reject it.
+    # The route authenticates itself: it verifies the signature against
+    # STRIPE_WEBHOOK_SECRET before doing any work, 400s an absent or bad one and
+    # 503s when unconfigured. Nothing else is exempt.
+    middlewareExemptPaths:
       - /api/webhooks/stripe
-    ipAllowList:
+
+  # Prod's shape at homelab size: the same HPA, PDB, quota and LimitRange
+  # objects, so their manifests and policy interactions are exercised.
+  replicaCount: 1
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  resourceQuota:
+    requestsCpu: "2"
+    requestsMemory: 4Gi
+    limitsCpu: "4"
+    limitsMemory: 6Gi
+    pods: "15"
+
+  # In-cluster Postgres (CNPG default/postgres); DATABASE_URL comes from
+  # Bitwarden. The database and role already exist: no db-init hook and no
+  # superuser credential in this namespace (prod creates its database in
+  # Terraform). Rebuilding staging from scratch needs a one-off CREATE ROLE /
+  # CREATE DATABASE as postgres before the first sync.
+  cloudSQL:
+    enabled: false
+  migration:
+    enabled: true
+    repository: us-central1-docker.pkg.dev/coreyalan-gatherbee/gatherbee/gatherbee-web-migrate
+    digest: "sha256:bae66b9cf580a2a4a8cb2778124cedfb1d01d8853342906a9c4b32604d8bc760" # written by gitops-staging-update.yml
+
+  authRateLimit:
+    enabled: true
+    paths:
+      - path: /api/auth/callback/credentials
+        tier: strict
+      - path: /api/auth/signin
+        tier: strict
+        prefixMatch: true
+      - path: /api/support
+        tier: strict
+
+  # kube-prometheus-stack scrapes through a PodMonitor; there is no Alloy here.
+  metrics:
+    enabled: true
+    scraperNamespace: monitoring
+    podMonitor:
       enabled: true
-      sourceRange:
-        - 10.0.0.0/8
-        - 172.16.0.0/12
-        - 192.168.0.0/16
-      reconcilerManaged: true
-      # MUST equal the StagingSite.infraAppName entered in the admin UI for
-      # review-access to resolve.
-      appName: gatherbee
+
+  networkPolicy:
+    ingressControllerNamespace: default
+    # Without Cloud SQL the chart's 443 rule is off; the app calls Stripe,
+    # Mailgun, R2, Sentry, OAuth providers and SignWell.
+    publicEgress: true
+    additionalEgress:
+      # Postgres (CNPG cluster `postgres` in `default`).
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: default
+            podSelector:
+              matchLabels:
+                cnpg.io/cluster: postgres
+        ports:
+          - protocol: TCP
+            port: 5432
+      # Redis Sentinel and the master it hands out, as on prod.
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: redis
+        ports:
+          - protocol: TCP
+            port: 6379
+          - protocol: TCP
+            port: 26379
+
+  serviceAccount:
+    create: true
+    name: gatherbee-app
+    annotations:
+      # Before the migrate hook (wave -1), which runs as this ServiceAccount and
+      # pulls with its imagePullSecrets. The chart leaves it at wave 0, which
+      # only works where the ServiceAccount already exists (prod).
+      argocd.argoproj.io/sync-wave: "-5"
+
   env:
     - name: NODE_ENV
       value: production
@@ -76,119 +167,139 @@ staging-app:
       value: https://staging.gatherbee.org
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.gatherbee.org
+    - name: DATABASE_CONNECTION_LIMIT
+      value: "3"
+    - name: REDIS_SENTINEL_HOST
+      value: redis-ng-sentinel.redis.svc.cluster.local
+    - name: REDIS_SENTINEL_PORT
+      value: "26379"
+    - name: REDIS_SENTINEL_MASTER
+      value: mymaster
+    # Support tickets go to staging coreyalan.com; COREYALAN_API_KEY is a staging
+    # v1 key for the gatherbee tenant (Bitwarden).
+    - name: COREYALAN_API_URL
+      value: https://staging.coreyalan.com
   envFrom:
     - secretRef:
         name: gatherbee-staging-secrets
-  # Mirrors platform-infra secrets/gatherbee.json, with the STAGING project's
-  # UUIDs. DATABASE_URL is staging-only: prod reaches Cloud SQL keylessly over
-  # PSC with IAM auth, while staging talks to the in-cluster postgres.
-  externalSecrets:
-    enabled: true
-    secretName: gatherbee-staging-secrets
-    refreshInterval: 1h
-    secrets:
-      - name: DATABASE_URL
-        key: de09d5ed-44d4-482f-a829-b4d00160839d
-      - name: ADMIN_API_KEY
-        key: c020798d-cb0b-40b3-9d52-b4cc012eff5f
-      - name: AUTH_SECRET
-        key: 08089b0d-db74-4305-8b35-b4cc012efef3
-      - name: NEXTAUTH_SECRET
-        key: 4aacb49a-5d3b-49e9-8eb4-b4cc012efeb3
-      - name: NEXTAUTH_URL
-        key: 2599666f-3288-4ea6-ba3f-b4cc012f0078
-      - name: NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
-        key: baf48be1-633c-4cc8-9038-b4cc012eff27
-      - name: GCP_PROJECT_ID
-        key: 0b732cdf-3f62-425f-bad9-b4cc012f00b1
-      - name: SENTRY_DSN
-        key: ae91eebf-e035-40dd-babf-b4cc012eff96
-      - name: SENTRY_ENVIRONMENT
-        key: 8baecae6-6914-4628-8ec4-b4cc012efff5
-      - name: NEXT_PUBLIC_SENTRY_DSN
-        key: 26517760-f549-42da-bb9e-b4cc012f091c
-      - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
-        key: b8a42915-d157-4680-8c70-b4cc012f0030
-      # Email. The staging key is a Mailgun SANDBOX sending key, deliberately
-      # not mail.gatherbee.org — a sandbox only delivers to authorised
-      # recipients, so a review environment cannot email real co-op families.
-      - name: MAILGUN_API_KEY
-        key: c965c083-c305-4bd3-83fe-b4d0016c81e0
-      - name: MAILGUN_DOMAIN
-        key: e861c923-8cfa-4b87-af8c-b4d0016c827e
-      # A sending key cannot manage webhooks; the reconciler needs an
-      # account-level key, and falls back silently without one.
-      - name: MAILGUN_ADMIN_API_KEY
-        key: 4ea2e55e-8143-43dc-81e1-b4d0016c82fd
-      - name: MAILGUN_WEBHOOK_SIGNING_KEY
-        key: 89194b6e-6feb-462a-8223-b4d0016c8375
-      # Object storage. Same Cloudflare account as production, SEPARATE
-      # bucket: staging writes real objects and must not land them among a
-      # co-op's live files. The app is gated on all four together.
-      - name: R2_ACCOUNT_ID
-        key: afe8f899-3300-4f46-ae4f-b4d0016c83eb
-      - name: R2_BUCKET
-        key: 4b384173-4530-444b-a7c6-b4d0016c8460
-      - name: R2_ACCESS_KEY_ID
-        key: c7340908-27d6-4348-867d-b4d0016c84d4
-      - name: R2_SECRET_ACCESS_KEY
-        key: 5d4532be-bce0-41d7-ac05-b4d0016c8553
-      # Billing. TEST keys — a live key in a review environment takes real
-      # money from real co-ops.
-      - name: STRIPE_SECRET_KEY
-        key: 7a250df9-44bb-4dae-8ec7-b4d00166438a
-      - name: STRIPE_WEBHOOK_SECRET
-        key: ac829bc0-bca5-4048-b332-b4d0016643bd
-      # OAuth. Separate client from production — the redirect URI differs.
-      - name: GOOGLE_CLIENT_ID
-        key: 19c699d4-39a5-4bc4-89d1-b4d0016c85e8
-      - name: GOOGLE_CLIENT_SECRET
-        key: 220ed92c-91e5-4411-a3a5-b4d0016c8685
-      # Sign in with Apple. AUTH_APPLE_SECRET is a pre-minted ES256 JWT with a
-      # ~6-month cap — rotation is a Bitwarden update, no chart change.
-      - name: AUTH_APPLE_ID
-        key: f60e20a8-beed-449d-9281-b4d1011eea25
-      - name: AUTH_APPLE_SECRET
-        key: 52abcb36-6830-439c-96be-b4d1011eea65
-      # SignWell e-signatures. TEST_MODE is a real value ("true" on staging);
-      # the app parses it strictly so a typo can never mean live signatures.
-      - name: SIGNWELL_API_KEY
-        key: b0ececdb-64c3-4949-8f4d-b4d10149ffb6
-      - name: SIGNWELL_WEBHOOK_ID
-        key: 8611cebf-9869-4067-bba5-b4d10149fff2
-      - name: SIGNWELL_TEST_MODE
-        key: 017dd51b-241e-44af-8bbf-b4d1014a0025
-  # Probes hit /api/health, NOT the chart default of `/`.
-  #
-  # `/` is the marketing homepage: Next server-renders it on every kubelet tick,
-  # and at these periods that is 18 renders/minute/pod (readiness every 5s +
-  # liveness every 10s), forever, for a response nothing reads. /api/health is
-  # deliberately dependency-free in the app (no DB, no Redis — see
-  # platform/app-contract.md), so it is safe for liveness as well as readiness:
-  # a database blip cannot restart the pod through it.
-  #
-  # gatherbee has no /api/health/live; the single route already plays the
-  # dependency-free role that capturly-web and coreyalan-com split out.
+
+  # /api/health is dependency-free in the app (no DB, no Redis), so it is safe
+  # for liveness as well as readiness and costs nothing to render.
   livenessProbe:
     enabled: true
-    path: /api/health
-    port: 3000
+    httpGet:
+      path: /api/health
+      port: 3000
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
     enabled: true
-    path: /api/health
-    port: 3000
+    httpGet:
+      path: /api/health
+      port: 3000
     initialDelaySeconds: 10
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
-  resources:
-    requests:
-      cpu: 100m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 768Mi
+
+# --- Staging-only objects (templates/) ---
+
+bitwarden:
+  projectID: "4b2a6e06-1311-47e4-932a-b4cc012e5347" # Staging - GatherBee
+  organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+  # BWS machine account scoped to the staging project, stored as this Secret in
+  # external-secrets-system (one-time bootstrap, as for every staging app).
+  credentialsSecret: bitwarden-staging-gatherbee-credentials
+
+# Reviewer IP allowlist. MUST keep appName equal to the StagingSite.infraAppName
+# in coreyalan.com's admin UI for review access to resolve.
+ipAllowList:
+  appName: gatherbee
+  sourceRange:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+
+# Mirrors platform-infra secrets/gatherbee.json with the STAGING project's
+# UUIDs. DATABASE_URL is staging-only: prod reaches Cloud SQL keylessly.
+externalSecrets:
+  secretName: gatherbee-staging-secrets
+  refreshInterval: 1h
+  secrets:
+    - name: DATABASE_URL
+      key: de09d5ed-44d4-482f-a829-b4d00160839d
+    - name: ADMIN_API_KEY
+      key: c020798d-cb0b-40b3-9d52-b4cc012eff5f
+    - name: AUTH_SECRET
+      key: 08089b0d-db74-4305-8b35-b4cc012efef3
+    - name: NEXTAUTH_SECRET
+      key: 4aacb49a-5d3b-49e9-8eb4-b4cc012efeb3
+    - name: NEXTAUTH_URL
+      key: 2599666f-3288-4ea6-ba3f-b4cc012f0078
+    - name: NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
+      key: baf48be1-633c-4cc8-9038-b4cc012eff27
+    - name: GCP_PROJECT_ID
+      key: 0b732cdf-3f62-425f-bad9-b4cc012f00b1
+    - name: SENTRY_DSN
+      key: ae91eebf-e035-40dd-babf-b4cc012eff96
+    - name: SENTRY_ENVIRONMENT
+      key: 8baecae6-6914-4628-8ec4-b4cc012efff5
+    - name: NEXT_PUBLIC_SENTRY_DSN
+      key: 26517760-f549-42da-bb9e-b4cc012f091c
+    - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
+      key: b8a42915-d157-4680-8c70-b4cc012f0030
+    # Email. The staging key is a Mailgun SANDBOX sending key, deliberately
+    # not mail.gatherbee.org — a sandbox only delivers to authorised
+    # recipients, so a review environment cannot email real co-op families.
+    - name: MAILGUN_API_KEY
+      key: c965c083-c305-4bd3-83fe-b4d0016c81e0
+    - name: MAILGUN_DOMAIN
+      key: e861c923-8cfa-4b87-af8c-b4d0016c827e
+    # A sending key cannot manage webhooks; the reconciler needs an
+    # account-level key, and falls back silently without one.
+    - name: MAILGUN_ADMIN_API_KEY
+      key: 4ea2e55e-8143-43dc-81e1-b4d0016c82fd
+    - name: MAILGUN_WEBHOOK_SIGNING_KEY
+      key: 89194b6e-6feb-462a-8223-b4d0016c8375
+    # Object storage. Same Cloudflare account as production, SEPARATE
+    # bucket: staging writes real objects and must not land them among a
+    # co-op's live files. The app is gated on all four together.
+    - name: R2_ACCOUNT_ID
+      key: afe8f899-3300-4f46-ae4f-b4d0016c83eb
+    - name: R2_BUCKET
+      key: 4b384173-4530-444b-a7c6-b4d0016c8460
+    - name: R2_ACCESS_KEY_ID
+      key: c7340908-27d6-4348-867d-b4d0016c84d4
+    - name: R2_SECRET_ACCESS_KEY
+      key: 5d4532be-bce0-41d7-ac05-b4d0016c8553
+    # Billing. TEST keys — a live key in a review environment takes real
+    # money from real co-ops.
+    - name: STRIPE_SECRET_KEY
+      key: 7a250df9-44bb-4dae-8ec7-b4d00166438a
+    - name: STRIPE_WEBHOOK_SECRET
+      key: ac829bc0-bca5-4048-b332-b4d0016643bd
+    # OAuth. Separate client from production — the redirect URI differs.
+    - name: GOOGLE_CLIENT_ID
+      key: 19c699d4-39a5-4bc4-89d1-b4d0016c85e8
+    - name: GOOGLE_CLIENT_SECRET
+      key: 220ed92c-91e5-4411-a3a5-b4d0016c8685
+    # Sign in with Apple. AUTH_APPLE_SECRET is a pre-minted ES256 JWT with a
+    # ~6-month cap — rotation is a Bitwarden update, no chart change.
+    - name: AUTH_APPLE_ID
+      key: f60e20a8-beed-449d-9281-b4d1011eea25
+    - name: AUTH_APPLE_SECRET
+      key: 52abcb36-6830-439c-96be-b4d1011eea65
+    # SignWell e-signatures. TEST_MODE is a real value ("true" on staging);
+    # the app parses it strictly so a typo can never mean live signatures.
+    - name: SIGNWELL_API_KEY
+      key: b0ececdb-64c3-4949-8f4d-b4d10149ffb6
+    - name: SIGNWELL_WEBHOOK_ID
+      key: 8611cebf-9869-4067-bba5-b4d10149fff2
+    - name: SIGNWELL_TEST_MODE
+      key: 017dd51b-241e-44af-8bbf-b4d1014a0025
+    # Redis Sentinel auth: a copy of STAGING_REDIS_NG_PASSWORD (Workbench),
+    # the password redis-ng itself uses. Keep the two equal.
+    - name: REDIS_PASSWORD
+      key: 4cf87f36-96c3-47b6-89e6-b4f1010ca711

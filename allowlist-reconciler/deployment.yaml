@@ -50,7 +50,7 @@ spec:
             # Every namespace holding a managed app's base ConfigMap and
             # Middleware. Each one also needs the Role + RoleBinding in rbac.yaml.
             - name: NAMESPACES
-              value: staging
+              value: staging,gatherbee-staging
           envFrom:
             - secretRef:
                 name: allowlist-reconciler-secrets
