@@ -71,6 +71,7 @@ spec:
     - namespaces:
         - argocd
         - gatherbee-staging
+        - blue-skysolutions-com-staging
   provider:
     kubernetes:
       server:
