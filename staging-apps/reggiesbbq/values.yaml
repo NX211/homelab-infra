@@ -17,10 +17,14 @@ staging-app:
     # project and store its token as this K8s secret in external-secrets-system
     # (one-time, Bitwarden web console — same as the other staging apps).
     credentialsSecret: bitwarden-staging-reggiesbbq-credentials
+  # The database and role already exist. Off removes only the db-init hook and
+  # its credentials ExternalSecret, so no Postgres superuser credential lands
+  # in this namespace; migrate and the app read DATABASE_URL from the app
+  # Secret.
   database:
-    enabled: true
+    enabled: false
     superuser:
-      create: false # uses the shared postgres-superuser-staging secret
+      create: false
     userKey: 1710cc98-8b27-4ab0-8332-b4b70185468a # DB_USER
     passwordKey: 12c9891c-ead7-4ee6-8518-b4b7018546ed # DB_PASSWORD
     nameKey: 82fe637f-ade2-4e5e-a74c-b4b7018546c0 # DB_NAME
