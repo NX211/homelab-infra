@@ -10,7 +10,6 @@ nextjs-app:
   # Every object keeps the reggiesbbq-staging name (Service, TLS secret; Port
   # maps reports by this prefix).
   fullnameOverride: reggiesbbq-staging
-
   # Prod's five routes and schedules, against staging data and test-mode
   # third parties (Stripe test, Shippo test, Mailgun).
   crons:
@@ -29,11 +28,10 @@ nextjs-app:
       - {name: marketing-campaigns, schedule: "*/5 * * * *", path: /api/cron/marketing-campaigns, method: POST}
       - {name: weekly-report, schedule: "0 14 * * 2", path: /api/cron/weekly-report}
       - {name: purge-expired-data, schedule: "30 3 * * *", path: /api/cron/purge-expired-data}
-
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
-    digest: "sha256:01ca3ae142f434d20348cc3960f6b6244a2b003a86fbd8f69c815f9464fa6bab" # written by gitops-staging-update.yml
+    digest: "sha256:1efd4dab8d97d2d73cac6499c13e8c7971b54917cda906cc3628f09eaae1db7c" # written by gitops-staging-update.yml
   # ESO keeps this secret current (templates/image-pull.yaml); also on the
   # ServiceAccount, so the migrate Job pulls with it.
   imagePullSecrets:
@@ -43,7 +41,6 @@ nextjs-app:
     port: 3000
     targetPort: 3000
   cacheMountPath: /app/apps/web/.next/cache
-
   ingress:
     enabled: true
     host: staging.reggiesbbqonline.com
@@ -59,7 +56,6 @@ nextjs-app:
     middlewareExemptPaths:
       - /api/webhooks/shippo
       - /api/webhooks/stripe
-
   # Prod's shape at homelab size.
   replicaCount: 1
   autoscaling:
@@ -74,7 +70,6 @@ nextjs-app:
     limitsCpu: "4"
     limitsMemory: 6Gi
     pods: "15"
-
   # In-cluster Postgres (CNPG default/postgres); DATABASE_URL from Bitwarden.
   # The database exists; no db-init and no superuser credential here.
   cloudSQL:
@@ -82,8 +77,7 @@ nextjs-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
-    digest: "sha256:71939fd2e6b0797d3e0fed3e7bd9a2247e7c74b6c30b55f7c220939cb4d6e770" # written by gitops-staging-update.yml
-
+    digest: "sha256:60b761d90f6757b97ce8b91d48b89ad88d1d959278ee8674d486f145ac8fdbbf" # written by gitops-staging-update.yml
   authRateLimit:
     enabled: true
     paths:
@@ -100,14 +94,12 @@ nextjs-app:
         tier: strict
       - path: /api/store/zip
         tier: moderate
-
   # kube-prometheus-stack scrapes through a PodMonitor; there is no Alloy here.
   metrics:
     enabled: true
     scraperNamespace: monitoring
     podMonitor:
       enabled: true
-
   networkPolicy:
     ingressControllerNamespace: default
     # Stripe, Shippo, Mailgun, Google OAuth, Sentry.
@@ -142,7 +134,6 @@ nextjs-app:
         ports:
           - protocol: TCP
             port: 8333
-
   serviceAccount:
     create: true
     name: reggiesbbq-app
@@ -150,7 +141,6 @@ nextjs-app:
       # Before the migrate hook (wave -1), which runs as this ServiceAccount
       # and pulls with its imagePullSecrets.
       argocd.argoproj.io/sync-wave: "-5"
-
   env:
     - name: NODE_ENV
       value: production
@@ -179,7 +169,6 @@ nextjs-app:
   envFrom:
     - secretRef:
         name: reggiesbbq-staging-secrets
-
   livenessProbe:
     enabled: true
     httpGet:
@@ -198,14 +187,11 @@ nextjs-app:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
-
 # --- Staging-only objects (templates/) ---
-
 bitwarden:
   projectID: "1700bcb5-dffc-4270-9683-b4b70185464d" # Staging - Reggie's BBQ
   organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
   credentialsSecret: bitwarden-staging-reggiesbbq-credentials
-
 # Reviewer IP allowlist: OFF (see nextjs-app.ingress.middlewares). appName MUST
 # equal the StagingSite.infraAppName in coreyalan.com's admin UI.
 ipAllowList:
@@ -218,7 +204,6 @@ ipAllowList:
     # Standing reviewer host: a fixed operator address that should not lapse,
     # unlike the per-reviewer, expiring coreyalan review-access grants.
     - 107.204.113.94/32
-
 # Staging demo data (templates/seed-job.yaml). PostSync, after migrate and a
 # healthy app; re-runs when the migration digest or runId changes. The script
 # is idempotent and refuses to run unless APP_ENV=staging.
@@ -235,7 +220,6 @@ seed:
     limits:
       cpu: 500m
       memory: 384Mi
-
 externalSecrets:
   secretName: reggiesbbq-staging-secrets
   refreshInterval: 1h
