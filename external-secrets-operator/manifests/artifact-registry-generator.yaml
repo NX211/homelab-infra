@@ -11,7 +11,7 @@
 # ExternalSecret that uses it, so the token is minted once, here, into the
 # artifact-registry-token Secret. Consumers in other namespaces read it through
 # the artifact-registry-token ClusterSecretStore, whose ServiceAccount can get
-# that one Secret and nothing else.
+# that one Secret and nothing else (artifact-registry-token-rbac.yaml).
 #
 # Freshness: tokens last 1h; this refreshes every 30m and consumers every 10m,
 # so a consumer's copy is at most ~40m old.
@@ -56,39 +56,6 @@ spec:
           apiVersion: generators.external-secrets.io/v1alpha1
           kind: GCRAccessToken
           name: artifact-registry
----
-# Read-only access to exactly the token Secret, for the ClusterSecretStore below.
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: artifact-registry-token-reader
-  namespace: external-secrets-system
-automountServiceAccountToken: false
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: artifact-registry-token-reader
-  namespace: external-secrets-system
-rules:
-  - apiGroups: [""]
-    resources: ["secrets"]
-    resourceNames: ["artifact-registry-token"]
-    verbs: ["get"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: artifact-registry-token-reader
-  namespace: external-secrets-system
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: artifact-registry-token-reader
-subjects:
-  - kind: ServiceAccount
-    name: artifact-registry-token-reader
-    namespace: external-secrets-system
 ---
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
