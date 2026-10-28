@@ -1,0 +1,68 @@
+# k3s upgrade plans, run by system-upgrade-controller.
+#
+# Bumping `version` on both plans upgrades the cluster: the server plan
+# upgrades blacktalon (the single control plane) first, then the agent plan
+# waits for it (`prepare: server-plan`) and upgrades the other nodes one at a
+# time. Kubernetes does not skip minors: move one minor per change, the same
+# value on both plans.
+#
+# Before an upgrade, every single-instance CloudNativePG cluster needs its
+# maintenance window open, or its PodDisruptionBudget (minAvailable: 1, zero
+# disruptions allowed) blocks the drain of its node indefinitely:
+#   kubectl patch cluster.postgresql.cnpg.io <name> -n <ns> --type merge \
+#     -p '{"spec":{"nodeMaintenanceWindow":{"inProgress":true,"reusePVC":true}}}'
+# for default/postgres, matrix/matrix-postgres and provisioning/provisioning-db,
+# and back to false once the agent plan completes. Postgres is down for a
+# minute or two while its node restarts; there is no replica to fail over to.
+# The field is not declared in Git, so Argo does not revert the patch.
+---
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: server-plan
+  namespace: system-upgrade
+  labels:
+    k3s-upgrade: server
+spec:
+  concurrency: 1
+  cordon: true
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: In
+        values:
+          - "true"
+  serviceAccountName: system-upgrade
+  upgrade:
+    image: rancher/k3s-upgrade
+  # renovate: datasource=github-releases depName=k3s-io/k3s
+  version: v1.32.13+k3s1
+---
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: agent-plan
+  namespace: system-upgrade
+  labels:
+    k3s-upgrade: agent
+spec:
+  concurrency: 1
+  cordon: true
+  drain:
+    force: true
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: NotIn
+        values:
+          - "true"
+  prepare:
+    args:
+      - prepare
+      - server-plan
+    image: rancher/k3s-upgrade
+  serviceAccountName: system-upgrade
+  upgrade:
+    image: rancher/k3s-upgrade
+  # renovate: datasource=github-releases depName=k3s-io/k3s
+  version: v1.32.13+k3s1
