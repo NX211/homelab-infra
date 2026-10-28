@@ -6,6 +6,12 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   instances: {{ .Values.instances }}
+  # Single instance on node-local storage: a PodDisruptionBudget can only
+  # block the node's drain (k3s upgrades), never keep Postgres up. Without one
+  # the drain evicts the pod and it restarts on the same PVC once the node is
+  # back, which CloudNativePG recommends for staging over toggling
+  # nodeMaintenanceWindow by hand.
+  enablePDB: false
 
   # PostgreSQL configuration
   imageName: {{ .Values.imageName }}
@@ -62,6 +68,3 @@ spec:
   resources:
     {{- toYaml .Values.resources | nindent 4 }}
 
-  # Monitoring
-  monitoring:
-    enablePodMonitor: {{ .Values.monitoring.enablePodMonitor }}
