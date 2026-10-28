@@ -1,0 +1,32 @@
+# Argo CD's credential for the OCI Helm chart registry (shared charts such as
+# nextjs-app, published by platform-infra publish-charts.yml). Argo reads any
+# Secret labelled secret-type=repository; ESO rewrites the password every 30m
+# from the artifact-registry ClusterGenerator.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: helm-charts-repo
+  namespace: argocd
+spec:
+  refreshInterval: 30m
+  target:
+    name: repo-helm-charts
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      metadata:
+        labels:
+          argocd.argoproj.io/secret-type: repository
+      data:
+        name: helm-charts
+        type: helm
+        enableOCI: "true"
+        url: us-central1-docker.pkg.dev/platform-infra-prod/helm-charts
+        username: "{{ .username }}"
+        password: "{{ .password }}"
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: ClusterGenerator
+          name: artifact-registry
