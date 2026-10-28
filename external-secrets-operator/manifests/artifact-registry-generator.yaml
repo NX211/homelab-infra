@@ -95,6 +95,11 @@ kind: ClusterSecretStore
 metadata:
   name: artifact-registry-token
 spec:
+  # Only these namespaces may use the store: the token reads every app
+  # project's registry, so each consumer is added explicitly, in review.
+  conditions:
+    - namespaces:
+        - argocd
   provider:
     kubernetes:
       server:
