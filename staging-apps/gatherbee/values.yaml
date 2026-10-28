@@ -43,7 +43,7 @@ nextjs-app:
     pullPolicy: IfNotPresent
     digest: "sha256:1f9c83188c6496dc30cfb9b1a2d1879dd8dfbff7a6bd2cd41e2a0474406d3e88" # written by gitops-staging-update.yml
   # Staging nodes cannot pull from Artifact Registry on their own. ESO keeps this
-  # secret current (templates/pull-secret.yaml); on the ServiceAccount too, so the
+  # secret current (templates/image-pull.yaml); on the ServiceAccount too, so the
   # migrate Job pulls with it.
   imagePullSecrets:
     - name: gcr-pull-secret-gatherbee
