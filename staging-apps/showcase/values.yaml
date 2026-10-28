@@ -12,10 +12,14 @@ staging-app:
     credentialsSecret: bitwarden-staging-showcase-credentials
   # Flipped with the v1 API (showcase repo #1) — the service now has a schema
   # and DB-touching routes. Secrets live in the Staging - Showcase BWS project.
+  # The database and role already exist. Off removes only the db-init hook and
+  # its credentials ExternalSecret, so no Postgres superuser credential lands
+  # in this namespace; migrate and the app read DATABASE_URL from the app
+  # Secret.
   database:
-    enabled: true
+    enabled: false
     superuser:
-      create: false # shares the postgres-superuser-staging secret
+      create: false
     userKey: "d056ef12-ae17-4230-8bc2-b4b0002a70d6" # SHOWCASE_STAGING_DB_USER
     passwordKey: "fa31c47f-a6db-4f1a-92a8-b4b0002a712e" # SHOWCASE_STAGING_DB_PASSWORD
     nameKey: "9e063ed3-2083-41a7-a0de-b4b0002a7101" # SHOWCASE_STAGING_DB_NAME
