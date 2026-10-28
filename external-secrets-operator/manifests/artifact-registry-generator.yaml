@@ -1,0 +1,36 @@
+# Keyless Artifact Registry credentials, minted by ESO.
+#
+# ESO requests a token for the ar-puller ServiceAccount (audience = the
+# homelab-staging WIF provider), exchanges it at Google STS, and returns a
+# short-lived AR access token. The federated principal holds reader on the
+# helm-charts repo and on every app project (platform-infra
+# terraform/environments/prod/chart-registry.tf); there is no GCP service
+# account or key. Consumers reference the ClusterGenerator from an
+# ExternalSecret and refresh before the 1h token expiry.
+#
+# Replaces ar-token-refresher (a CronJob doing the same exchange by hand), app
+# by app.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ar-puller
+  namespace: external-secrets-system
+automountServiceAccountToken: false
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: ClusterGenerator
+metadata:
+  name: artifact-registry
+spec:
+  kind: GCRAccessToken
+  generator:
+    gcrAccessTokenSpec:
+      projectID: platform-infra-prod
+      auth:
+        workloadIdentityFederation:
+          audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+          serviceAccountRef:
+            name: ar-puller
+            namespace: external-secrets-system
+            audiences:
+              - //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
