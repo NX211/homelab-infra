@@ -6,15 +6,11 @@
 # time. Kubernetes does not skip minors: move one minor per change, the same
 # value on both plans.
 #
-# Before an upgrade, every single-instance CloudNativePG cluster needs its
-# maintenance window open, or its PodDisruptionBudget (minAvailable: 1, zero
-# disruptions allowed) blocks the drain of its node indefinitely:
-#   kubectl patch cluster.postgresql.cnpg.io <name> -n <ns> --type merge \
-#     -p '{"spec":{"nodeMaintenanceWindow":{"inProgress":true,"reusePVC":true}}}'
-# for default/postgres, matrix/matrix-postgres and provisioning/provisioning-db,
-# and back to false once the agent plan completes. Postgres is down for a
-# minute or two while its node restarts; there is no replica to fail over to.
-# The field is not declared in Git, so Argo does not revert the patch.
+# The single-instance CloudNativePG clusters (default/postgres and
+# matrix/matrix-postgres on greytalon, provisioning/provisioning-db on
+# redtalon) set enablePDB: false, so drains evict them without manual steps.
+# Each is down while its node upgrades (there is no replica to fail over to),
+# and crons that hit it in that window fail once.
 ---
 apiVersion: upgrade.cattle.io/v1
 kind: Plan
