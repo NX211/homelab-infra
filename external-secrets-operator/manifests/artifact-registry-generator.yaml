@@ -13,8 +13,11 @@
 # the artifact-registry-token ClusterSecretStore, whose ServiceAccount can get
 # that one Secret and nothing else (artifact-registry-token-rbac.yaml).
 #
-# Freshness: tokens last 1h; this refreshes every 30m and consumers every 10m,
-# so a consumer's copy is at most ~40m old.
+# Freshness: the federated tokens Google issues here last 15 MINUTES (the
+# `expiry` key records it), not the hour an SA access token gets. This mints
+# every 5m and consumers copy every 2m, so a copy is at most ~7m old with 8m+
+# left. Never stretch these toward the lifetime: a copy taken just before a
+# refresh outlives its token.
 #
 # Replaces ar-token-refresher (a CronJob doing the same exchange by hand), app
 # by app.
@@ -46,7 +49,7 @@ metadata:
   name: artifact-registry-token
   namespace: external-secrets-system
 spec:
-  refreshInterval: 30m
+  refreshInterval: 5m
   target:
     name: artifact-registry-token
     creationPolicy: Owner

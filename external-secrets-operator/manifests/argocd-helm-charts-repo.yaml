@@ -1,14 +1,15 @@
 # Argo CD's credential for the OCI Helm chart registry (shared charts such as
 # nextjs-app, published by platform-infra publish-charts.yml). Argo reads any
 # Secret labelled secret-type=repository; ESO copies the current Artifact
-# Registry token into it every 10m (artifact-registry-generator.yaml).
+# Registry token into it every 2m (tokens last 15m; see
+# artifact-registry-generator.yaml).
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: helm-charts-repo
   namespace: argocd
 spec:
-  refreshInterval: 10m
+  refreshInterval: 2m
   target:
     name: repo-helm-charts
     creationPolicy: Owner
