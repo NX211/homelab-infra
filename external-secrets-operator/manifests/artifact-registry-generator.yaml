@@ -1,0 +1,90 @@
+# Keyless Artifact Registry credentials, minted by ESO.
+#
+# ESO requests a token for the ar-puller ServiceAccount (audience = the
+# homelab-staging WIF provider), exchanges it at Google STS, and returns a
+# short-lived AR access token. The federated principal holds reader on the
+# helm-charts repo and on every app project (platform-infra
+# terraform/environments/prod/chart-registry.tf); there is no GCP service
+# account or key.
+#
+# ESO resolves the generator's ServiceAccount in the namespace of the
+# ExternalSecret that uses it, so the token is minted once, here, into the
+# artifact-registry-token Secret. Consumers in other namespaces read it through
+# the artifact-registry-token ClusterSecretStore, whose ServiceAccount can get
+# that one Secret and nothing else (artifact-registry-token-rbac.yaml).
+#
+# Freshness: the federated tokens Google issues here last 15 MINUTES (the
+# `expiry` key records it), not the hour an SA access token gets. This mints
+# every 5m and consumers copy every 2m, so a copy is at most ~7m old with 8m+
+# left. Never stretch these toward the lifetime: a copy taken just before a
+# refresh outlives its token.
+#
+# Replaces ar-token-refresher (a CronJob doing the same exchange by hand), app
+# by app.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ar-puller
+  namespace: external-secrets-system
+automountServiceAccountToken: false
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: GCRAccessToken
+metadata:
+  name: artifact-registry
+  namespace: external-secrets-system
+spec:
+  projectID: platform-infra-prod
+  auth:
+    workloadIdentityFederation:
+      audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+      serviceAccountRef:
+        name: ar-puller
+        audiences:
+          - //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: artifact-registry-token
+  namespace: external-secrets-system
+spec:
+  refreshInterval: 5m
+  target:
+    name: artifact-registry-token
+    creationPolicy: Owner
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: GCRAccessToken
+          name: artifact-registry
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: artifact-registry-token
+spec:
+  # Only these namespaces may use the store: the token reads every app
+  # project's registry, so each consumer is added explicitly, in review.
+  conditions:
+    - namespaces:
+        - argocd
+        - gatherbee-staging
+        - blue-skysolutions-com-staging
+        - reggiesbbq-staging
+        - showcase-staging
+  provider:
+    kubernetes:
+      server:
+        url: "https://kubernetes.default.svc"
+        caProvider:
+          type: ConfigMap
+          name: kube-root-ca.crt
+          key: ca.crt
+          namespace: external-secrets-system
+      auth:
+        serviceAccount:
+          name: artifact-registry-token-reader
+          namespace: external-secrets-system
+      remoteNamespace: external-secrets-system

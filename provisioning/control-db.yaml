@@ -11,6 +11,12 @@ metadata:
   namespace: provisioning
 spec:
   instances: 1
+  # Single instance on node-local storage: a PodDisruptionBudget can only
+  # block the node's drain (k3s upgrades), never keep Postgres up. Without one
+  # the drain evicts the pod and it restarts on the same PVC once the node is
+  # back, which CloudNativePG recommends for staging over toggling
+  # nodeMaintenanceWindow by hand.
+  enablePDB: false
   # Pinned minor on the current "system" image line (legacy-compatible layout,
   # Debian trixie packages). The floating :16 tag had frozen on an ancient
   # bullseye digest whose 15 criticals were all fix:NONE in-distro.

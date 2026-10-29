@@ -1,68 +1,136 @@
-# showcase.coreyalan.com - Staging Values (build once, deploy many: same image as prod).
-staging-app:
-  appName: showcase
-  appLabel: showcase
+# showcase.coreyalan.com - Staging Values
+# Same image as prod, rendered by the same chart (nextjs-app, from
+# platform-infra). Differences from prod's helm-charts/showcase values are
+# staging facts: in-cluster Postgres instead of Cloud SQL, Bitwarden instead of
+# GCP Secret Manager, assets in in-cluster SeaweedFS instead of GCS, keyless
+# Google access by direct federation instead of GKE Workload Identity, an
+# Artifact Registry pull secret, Traefik in `default`, Prometheus Operator
+# instead of Alloy, the reviewer allowlist, and smaller sizes. Prod's
+# demoHosts (jl-shaw.com, coreyalan.dev) have no staging hosts.
+
+nextjs-app:
+  # Every object keeps the showcase-staging name (Service, TLS secret; Port
+  # maps reports by this prefix).
   fullnameOverride: showcase-staging
-  replicaCount: 1
-  deploymentAnnotations:
-    reloader.stakater.com/auto: "true"
-  bitwarden:
-    projectID: "0e531424-811e-4368-8ddf-b4af004207d9" # Staging - Showcase
-    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
-    credentialsSecret: bitwarden-staging-showcase-credentials
-  # Flipped with the v1 API (showcase repo #1) — the service now has a schema
-  # and DB-touching routes. Secrets live in the Staging - Showcase BWS project.
-  database:
-    enabled: true
-    superuser:
-      create: false # shares the postgres-superuser-staging secret
-    userKey: "d056ef12-ae17-4230-8bc2-b4b0002a70d6" # SHOWCASE_STAGING_DB_USER
-    passwordKey: "fa31c47f-a6db-4f1a-92a8-b4b0002a712e" # SHOWCASE_STAGING_DB_PASSWORD
-    nameKey: "9e063ed3-2083-41a7-a0de-b4b0002a7101" # SHOWCASE_STAGING_DB_NAME
-  migration:
-    enabled: true
-    repository: us-central1-docker.pkg.dev/coreyalan-showcase/showcase/showcase-web-migrate
-    digest: "sha256:3908837e9ecc9dde5ba2f66e2fdbfeb60385f52da98816ced6b73f9402446d8c" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/coreyalan-showcase/showcase/showcase-web
     pullPolicy: IfNotPresent
-    digest: "sha256:55d3e9e91874176a2f8997c6d021961e7a7336baa33c652b0b377af5d4bb48b0" # Updated by CI/CD
+    digest: "sha256:55d3e9e91874176a2f8997c6d021961e7a7336baa33c652b0b377af5d4bb48b0" # written by gitops-staging-update.yml
+  # ESO keeps this secret current (templates/image-pull.yaml); also on the
+  # ServiceAccount, so the migrate Job pulls with it.
   imagePullSecrets:
     - name: gcr-pull-secret-showcase
-  gcrPullSecret:
-    bitwardenKey: "" # keyless via WIF (ar-token-refresher)
-    secretName: gcr-pull-secret-showcase
   service:
     type: ClusterIP
     port: 3000
+    targetPort: 3000
   ingress:
     enabled: true
     host: staging.showcase.coreyalan.com
     clusterIssuer: letsencrypt-prod
-    # Pub/Sub push consumers: OIDC-verified in-app; Google's push IPs must
-    # bypass the RFC1918 allowlist or staging jobs never deliver.
-    publicPaths:
+    middlewares:
+      - name: showcase-staging-ipallowlist
+    # Pub/Sub push deliveries come from Google, not a reviewer IP. The route
+    # verifies the push OIDC token itself and refuses anything without one.
+    middlewareExemptPaths:
       - /api/internal/jobs
-    ipAllowList:
-      enabled: true
-      sourceRange:
-        - 10.0.0.0/8
-        - 172.16.0.0/12
-        - 192.168.0.0/16
-      reconcilerManaged: true
-      appName: showcase
-  # Keyless staging publisher (decision Q6): direct federated principal —
-  # staging:showcase-staging is granted pubsub.publisher on the ingest/webhook
-  # topics in platform-infra (showcase-jobs.tf); no GCP SA, no key.
-  gcpWorkloadIdentity:
+  # Prod's shape at homelab size.
+  replicaCount: 1
+  autoscaling:
     enabled: true
-    ksaName: showcase-staging
-    audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  resourceQuota:
+    requestsCpu: "2"
+    requestsMemory: 4Gi
+    limitsCpu: "4"
+    limitsMemory: 6Gi
+    pods: "15"
+  # In-cluster Postgres (CNPG default/postgres); DATABASE_URL from Bitwarden.
+  # The database exists; no db-init and no superuser credential here.
+  cloudSQL:
+    enabled: false
+  migration:
+    enabled: true
+    repository: us-central1-docker.pkg.dev/coreyalan-showcase/showcase/showcase-web-migrate
+    digest: "sha256:3908837e9ecc9dde5ba2f66e2fdbfeb60385f52da98816ced6b73f9402446d8c" # written by gitops-staging-update.yml
+  # kube-prometheus-stack scrapes through a PodMonitor; there is no Alloy here.
+  metrics:
+    enabled: true
+    scraperNamespace: monitoring
+    podMonitor:
+      enabled: true
+  networkPolicy:
+    ingressControllerNamespace: default
+    # Pub/Sub, Google STS and the push-token certs.
+    publicEgress: true
+    additionalEgress:
+      # Postgres (CNPG cluster `postgres` in `default`).
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: default
+            podSelector:
+              matchLabels:
+                cnpg.io/cluster: postgres
+        ports:
+          - protocol: TCP
+            port: 5432
+      # Assets: SeaweedFS S3 gateway.
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: seaweedfs
+        ports:
+          - protocol: TCP
+            port: 8333
+  # The federated subject is system:serviceaccount:showcase-staging:showcase-staging,
+  # so this name is load-bearing for Pub/Sub IAM.
+  serviceAccount:
+    create: true
+    name: showcase-staging
+    annotations:
+      # Before the migrate hook (wave -1), which runs as this ServiceAccount
+      # and pulls with its imagePullSecrets.
+      argocd.argoproj.io/sync-wave: "-5"
+  extraVolumes:
+    - name: gcp-cred
+      configMap:
+        name: showcase-staging-gcp-cred
+    - name: gcp-sts-token
+      projected:
+        sources:
+          - serviceAccountToken:
+              audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+              expirationSeconds: 3600
+              path: token
+  extraVolumeMounts:
+    - name: gcp-cred
+      mountPath: /etc/gcp
+      readOnly: true
+    - name: gcp-sts-token
+      mountPath: /var/run/secrets/gcp-sts
+      readOnly: true
   env:
     - name: NODE_ENV
       value: production
+    - name: NEXT_PUBLIC_APP_URL
+      value: https://staging.showcase.coreyalan.com
+    - name: APP_URL
+      value: https://staging.showcase.coreyalan.com
     - name: GOOGLE_CLOUD_PROJECT
       value: coreyalan-showcase
+    - name: GOOGLE_APPLICATION_CREDENTIALS
+      value: /etc/gcp/credential-config.json
     - name: INGEST_ENV
       value: staging
     # SeaweedFS object storage (per-app identity, scoped to this bucket).
@@ -77,57 +145,53 @@ staging-app:
       value: "true"
     - name: S3_SHOWCASE_ASSETS_BUCKET
       value: showcase-staging-assets
-    - name: APP_URL
-      value: https://staging.showcase.coreyalan.com
-    - name: NEXT_PUBLIC_APP_URL
-      value: https://staging.showcase.coreyalan.com
   envFrom:
     - secretRef:
         name: showcase-staging-secrets
-  externalSecrets:
-    enabled: true
-    secretName: showcase-staging-secrets
-    refreshInterval: 1h
-    secrets:
-      - name: DATABASE_URL
-        key: 27d72ae8-a3a2-43b8-afdf-b4b0002a7160
-      - name: SHOWCASE_COOKIE_SECRET
-        key: e788d8eb-b687-4a06-95e2-b4af00420877
-      # SeaweedFS S3 credentials (identity: showcase-staging; scoped to showcase-staging-assets)
-      - name: S3_ACCESS_KEY_ID
-        key: dd3fcf80-f300-4f31-ac25-b4b1017f6870
-      - name: S3_SECRET_ACCESS_KEY
-        key: 028457b6-c74b-46aa-b843-b4b1017f68b0
-  # Probes hit /api/health, NOT `/`. `/` is the marketing homepage, which Next
-  # server-renders on every kubelet tick — 18 renders/minute/pod at these
-  # periods (readiness 5s + liveness 10s), forever, for a response nothing
-  # reads. /api/health is dependency-free in the app (no DB, no Redis, per
-  # platform/app-contract.md), so it is safe for liveness too: a database blip
-  # cannot restart the pod through it.
-  #
-  # Set explicitly rather than relying on the chart default: this app pins
-  # staging-app 0.8.2 and vendors that tarball, so a newer chart default would
-  # not reach it without a pin bump.
   livenessProbe:
     enabled: true
-    path: /api/health
-    port: 3000
+    httpGet:
+      path: /api/health
+      port: 3000
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
     enabled: true
-    path: /api/health
-    port: 3000
+    httpGet:
+      path: /api/health
+      port: 3000
     initialDelaySeconds: 10
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
-  resources:
-    requests:
-      cpu: 100m
-      memory: 512Mi
-    limits:
-      cpu: 500m
-      memory: 768Mi
+# --- Staging-only objects (templates/) ---
+bitwarden:
+  projectID: "0e531424-811e-4368-8ddf-b4af004207d9" # Staging - Showcase
+  organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+  credentialsSecret: bitwarden-staging-showcase-credentials
+gcpWorkloadIdentity:
+  audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+# Reviewer IP allowlist. appName MUST equal the StagingSite.infraAppName in
+# coreyalan.com's admin UI.
+ipAllowList:
+  enabled: true
+  appName: showcase
+  sourceRange:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+externalSecrets:
+  secretName: showcase-staging-secrets
+  refreshInterval: 1h
+  secrets:
+    - name: DATABASE_URL
+      key: 27d72ae8-a3a2-43b8-afdf-b4b0002a7160
+    - name: SHOWCASE_COOKIE_SECRET
+      key: e788d8eb-b687-4a06-95e2-b4af00420877
+    # SeaweedFS S3 credentials (identity: showcase-staging; scoped to showcase-staging-assets)
+    - name: S3_ACCESS_KEY_ID
+      key: dd3fcf80-f300-4f31-ac25-b4b1017f6870
+    - name: S3_SECRET_ACCESS_KEY
+      key: 028457b6-c74b-46aa-b843-b4b1017f68b0

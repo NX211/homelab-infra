@@ -1,0 +1,36 @@
+# Artifact Registry pull secret, from the ESO-minted token
+# (external-secrets-operator/manifests/artifact-registry-generator.yaml). This
+# namespace must be listed in that store's conditions. Refreshed every 2m;
+# tokens last 15m.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: gcr-pull-secret-gatherbee
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+spec:
+  refreshInterval: 2m
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: artifact-registry-token
+  target:
+    name: gcr-pull-secret-gatherbee
+    creationPolicy: Owner
+    template:
+      type: kubernetes.io/dockerconfigjson
+      metadata:
+        annotations:
+          # A refreshed token needs no restart.
+          reloader.stakater.com/ignore: "true"
+      engineVersion: v2
+      data:
+        .dockerconfigjson: '{"auths":{"us-central1-docker.pkg.dev":{"username":"{{ "{{" }} .username {{ "}}" }}","password":"{{ "{{" }} .password {{ "}}" }}","auth":"{{ "{{" }} printf "%s:%s" .username .password | b64enc {{ "}}" }}"}}}'
+  data:
+    - secretKey: username
+      remoteRef:
+        key: artifact-registry-token
+        property: username
+    - secretKey: password
+      remoteRef:
+        key: artifact-registry-token
+        property: password

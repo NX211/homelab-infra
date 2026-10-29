@@ -6,7 +6,9 @@
 // ipAllowList with AND, so the union must live in one middleware).
 //
 // Discovery: base ConfigMaps labeled allowlist.coreyalan.com/managed=true in
-// the staging namespace carry { app, middleware, baseSourceRange, enabled }.
+// each watched namespace (NAMESPACES; default `staging`) carry { app,
+// middleware, baseSourceRange, enabled }. The Middleware is patched in the
+// ConfigMap's own namespace, so an app can live in its own namespace.
 // For each, we fetch the signed desired state, verify the HMAC, merge with the
 // base ranges, patch the Middleware if changed, and POST an ack.
 //
@@ -23,7 +25,8 @@ const CONFIG = {
   internalToken: requireEnv('STAGING_INTERNAL_API_TOKEN'),
   hmacSecret: requireEnv('STAGING_ALLOWLIST_HMAC_SECRET'),
   webhookToken: process.env.RECONCILER_WEBHOOK_TOKEN || '',
-  namespace: process.env.NAMESPACE || 'staging',
+  // Comma-separated. NAMESPACE (singular) is the pre-0.3.0 name, still honored.
+  namespaces: parseNamespaces(process.env.NAMESPACES || process.env.NAMESPACE),
   labelSelector: process.env.LABEL_SELECTOR || 'allowlist.coreyalan.com/managed=true',
   pollIntervalMs: Number(process.env.POLL_INTERVAL_MS) || 20000,
   port: Number(process.env.PORT) || 8080,
@@ -51,6 +54,14 @@ function requireEnv(name) {
 
 // Parse a CIDR list from either a JSON array (`["a/32","b/32"]`) or a
 // comma-separated string (`a/32, b/32`). Empty/unset ⇒ [].
+function parseNamespaces(raw) {
+  const list = String(raw || '')
+    .split(',')
+    .map(ns => ns.trim())
+    .filter(Boolean);
+  return list.length ? Array.from(new Set(list)) : ['staging'];
+}
+
 function parseCidrList(raw) {
   if (!raw) return [];
   const trimmed = raw.trim();
@@ -113,24 +124,35 @@ function k8sRequest(method, path, body, contentType = 'application/json') {
   });
 }
 
-const listBaseConfigMaps = () =>
-  k8sRequest(
-    'GET',
-    `/api/v1/namespaces/${CONFIG.namespace}/configmaps?labelSelector=${encodeURIComponent(
-      CONFIG.labelSelector
-    )}`
-  ).then(res => res.items || []);
+// One namespace failing (deleted, RBAC missing) must not stop the others; its
+// apps keep their last allowlist, which only ever blocks, never widens.
+async function listBaseConfigMaps() {
+  const results = await Promise.allSettled(
+    CONFIG.namespaces.map(ns =>
+      k8sRequest(
+        'GET',
+        `/api/v1/namespaces/${ns}/configmaps?labelSelector=${encodeURIComponent(CONFIG.labelSelector)}`
+      )
+    )
+  );
+  const items = [];
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled') items.push(...(result.value?.items || []));
+    else log('error', 'list base configmaps failed', { namespace: CONFIG.namespaces[i], error: String(result.reason) });
+  });
+  return items;
+}
 
-const getMiddlewareSourceRange = name =>
+const getMiddlewareSourceRange = (namespace, name) =>
   k8sRequest(
     'GET',
-    `/apis/traefik.io/v1alpha1/namespaces/${CONFIG.namespace}/middlewares/${name}`
+    `/apis/traefik.io/v1alpha1/namespaces/${namespace}/middlewares/${name}`
   ).then(mw => mw?.spec?.ipAllowList?.sourceRange || []);
 
-const patchMiddlewareSourceRange = (name, sourceRange) =>
+const patchMiddlewareSourceRange = (namespace, name, sourceRange) =>
   k8sRequest(
     'PATCH',
-    `/apis/traefik.io/v1alpha1/namespaces/${CONFIG.namespace}/middlewares/${name}`,
+    `/apis/traefik.io/v1alpha1/namespaces/${namespace}/middlewares/${name}`,
     { spec: { ipAllowList: { sourceRange } } },
     'application/merge-patch+json'
   );
@@ -220,7 +242,8 @@ async function reconcileConfigMap(cm) {
   if (data.enabled === 'false') return;
   const app = data.app;
   const middleware = data.middleware;
-  if (!app || !middleware) {
+  const namespace = cm.metadata?.namespace;
+  if (!app || !middleware || !namespace) {
     log('warn', 'base configmap missing app/middleware', { name: cm.metadata?.name });
     return;
   }
@@ -256,14 +279,14 @@ async function reconcileConfigMap(cm) {
   const appliedHash = crypto.createHash('sha256').update(merged.join(',')).digest('hex');
 
   try {
-    const current = (await getMiddlewareSourceRange(middleware)).sort();
+    const current = (await getMiddlewareSourceRange(namespace, middleware)).sort();
     if (JSON.stringify(current) === JSON.stringify(merged)) {
       // Already in sync; still ack so coreyalan records the confirmed version.
       await ack(app, desired.version, appliedHash, 'ok');
       return;
     }
-    await patchMiddlewareSourceRange(middleware, merged);
-    log('info', 'applied allowlist', { app, version: desired.version, count: merged.length });
+    await patchMiddlewareSourceRange(namespace, middleware, merged);
+    log('info', 'applied allowlist', { app, namespace, version: desired.version, count: merged.length });
     await ack(app, desired.version, appliedHash, 'ok');
   } catch (error) {
     log('error', 'apply failed', { app, error: String(error) });
@@ -327,7 +350,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(CONFIG.port, () => log('info', 'reconciler started', {
-  namespace: CONFIG.namespace,
+  namespaces: CONFIG.namespaces,
   pollIntervalMs: CONFIG.pollIntervalMs,
   port: CONFIG.port,
 }));
