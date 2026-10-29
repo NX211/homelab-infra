@@ -31,9 +31,9 @@ postgres:
     work_mem: "8MB"
     checkpoint_completion_target: "0.9"
     random_page_cost: "1.1"
-  monitoring:
+  podMonitor:
     # Opt-in (cluster-wide pattern). Enabled in Phase 7.
-    enablePodMonitor: false
+    enabled: false
 
 # --------------------------------------------------------------------------
 # Dedicated Redis for Synapse worker replication.
