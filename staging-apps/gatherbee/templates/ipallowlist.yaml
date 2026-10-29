@@ -1,0 +1,52 @@
+# Reviewer IP allowlist for staging.gatherbee.org, applied to every app route
+# through nextjs-app's ingress.middlewares. The allowlist-reconciler owns
+# sourceRange at runtime (base ∪ reviewer IPs from coreyalan.com); the Argo
+# Application ignores that field. It discovers the base ConfigMap by label and
+# patches the Middleware in this namespace, which must be in its NAMESPACES.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: gatherbee-staging-ipallowlist
+spec:
+  ipAllowList:
+    sourceRange:
+      {{- toYaml .Values.ipAllowList.sourceRange | nindent 6 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatherbee-staging-allowlist-base
+  labels:
+    allowlist.coreyalan.com/managed: "true"
+data:
+  app: {{ .Values.ipAllowList.appName | quote }}
+  middleware: gatherbee-staging-ipallowlist
+  enabled: "true"
+  baseSourceRange: {{ .Values.ipAllowList.sourceRange | toJson | quote }}
+---
+# The reconciler's access to this namespace: read the base ConfigMap, patch the
+# Middleware. Declared here so it exists as soon as the namespace does.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: allowlist-reconciler
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["traefik.io"]
+    resources: ["middlewares"]
+    verbs: ["get", "list", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: allowlist-reconciler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: allowlist-reconciler
+subjects:
+  - kind: ServiceAccount
+    name: allowlist-reconciler
+    namespace: staging
