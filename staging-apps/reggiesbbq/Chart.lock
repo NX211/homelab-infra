@@ -1,6 +1,6 @@
 dependencies:
 - name: nextjs-app
   repository: oci://us-central1-docker.pkg.dev/platform-infra-prod/helm-charts
-  version: 1.20.0
-digest: sha256:7e16126aa3cdd6c424efceaf4b051526ef3eaba7ba6c1b1715a9623ca322949e
-generated: "2026-10-28T16:35:56.675337-05:00"
+  version: 1.21.1
+digest: sha256:e0543505d24219c99cbf507a40bf760847445e61b66f9425993185a1340596b2
+generated: "2026-10-28T19:20:05.236385-05:00"

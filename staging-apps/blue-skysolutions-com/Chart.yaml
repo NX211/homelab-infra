@@ -12,5 +12,5 @@ dependencies:
   # Published and keyless-signed by platform-infra publish-charts.yml; Argo CD
   # pulls it with the ESO-minted Artifact Registry token.
   - name: nextjs-app
-    version: "1.19.0"
+    version: "1.21.1"
     repository: "oci://us-central1-docker.pkg.dev/platform-infra-prod/helm-charts"
