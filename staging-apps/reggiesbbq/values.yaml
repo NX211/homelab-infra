@@ -1,105 +1,161 @@
-# Reggie's BBQ - Staging Values
-# Build once, deploy many: same image as prod, different config.
+# reggiesbbqonline.com - Staging Values
+# Same image as prod, rendered by the same chart (nextjs-app, from
+# platform-infra). Differences from prod's helm-charts/reggiesbbq values are
+# staging facts: in-cluster Postgres instead of Cloud SQL, Bitwarden instead of
+# GCP Secret Manager, uploads to in-cluster SeaweedFS, an Artifact Registry pull
+# secret, Traefik in `default`, Prometheus Operator instead of Alloy, the
+# staging-only demo seed, and smaller sizes.
 
-staging-app:
-  appName: reggiesbbq
-  appLabel: Reggie's BBQ
+nextjs-app:
+  # Every object keeps the reggiesbbq-staging name (Service, TLS secret; Port
+  # maps reports by this prefix).
   fullnameOverride: reggiesbbq-staging
-  replicaCount: 1
-  # Per-app Bitwarden staging store (least privilege). TODO(scaffold): create a
-  # staging BWS project for this app and put its id here; bootstrap the
-  # credentialsSecret (a BWS access token scoped to that project) as a K8s secret
-  # in external-secrets-system — one-time, same pattern as the other staging apps.
-  bitwarden:
-    projectID: "1700bcb5-dffc-4270-9683-b4b70185464d" # Staging - Reggie's BBQ
-    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
-    # TODO(bootstrap): create a BWS machine account scoped to the staging
-    # project and store its token as this K8s secret in external-secrets-system
-    # (one-time, Bitwarden web console — same as the other staging apps).
-    credentialsSecret: bitwarden-staging-reggiesbbq-credentials
-  database:
+  # Prod's five routes and schedules, against staging data and test-mode
+  # third parties (Stripe test, Shippo test, Mailgun).
+  crons:
     enabled: true
-    superuser:
-      create: false # uses the shared postgres-superuser-staging secret
-    userKey: 1710cc98-8b27-4ab0-8332-b4b70185468a # DB_USER
-    passwordKey: 12c9891c-ead7-4ee6-8518-b4b7018546ed # DB_PASSWORD
-    nameKey: 82fe637f-ade2-4e5e-a74c-b4b7018546c0 # DB_NAME
-  # Monorepo standalone build: Next's output is /app/apps/web/.next, so the
-  # writable cache volume has to mount there. At the chart default it landed
-  # beside the real directory and every image request re-encoded, logging
-  # "ENOENT: mkdir /app/apps/web/.next/cache/images/...".
-  nextCachePath: /app/apps/web/.next/cache
-  migration:
-    enabled: true
-    repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
-    digest: sha256:d9f12bd4a186b5835fb969877b51fc7eeec390b65b26257c54f855a19793bfc1
-  # Demo dataset for review: every order status, both gift shapes, loyalty
-  # coupons, campaign outcomes, support threads. Idempotent, and the script
-  # refuses to run unless APP_ENV=staging. Bump runId to re-seed in place.
-  seed:
-    enabled: true
-    # Bumped to re-run the seed after rotating the three SEED_*_PASSWORD values
-    # in Bitwarden. The seed upserts the users, so the existing rows pick up the
-    # new hashes — no manual DB edit.
-    runId: "2"
+    suspend: false
+    image: curlimages/curl:8.21.0
+    baseUrl: http://reggiesbbq-staging:3000
+    secretName: reggiesbbq-staging-secrets
+    secretTokenKey: ADMIN_API_KEY
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    backoffLimit: 2
+    jobs:
+      - {name: reconcile-email-webhooks, schedule: "0 * * * *", path: /api/cron/reconcile-email-webhooks, method: POST}
+      - {name: reconcile-stripe-payments, schedule: "*/10 * * * *", path: /api/cron/reconcile-stripe-payments, method: POST}
+      - {name: marketing-campaigns, schedule: "*/5 * * * *", path: /api/cron/marketing-campaigns, method: POST}
+      - {name: weekly-report, schedule: "0 14 * * 2", path: /api/cron/weekly-report}
+      - {name: purge-expired-data, schedule: "30 3 * * *", path: /api/cron/purge-expired-data}
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
-    digest: "sha256:4bbf8eeffddc889d849371ec2fb7a65c007f4c6a204cca26f2fe142aa45b3a19" # Seeded empty; CI's gitops-staging-update.yml fills it from the first prod build
+    digest: "sha256:1efd4dab8d97d2d73cac6499c13e8c7971b54917cda906cc3628f09eaae1db7c" # written by gitops-staging-update.yml
+  # ESO keeps this secret current (templates/image-pull.yaml); also on the
+  # ServiceAccount, so the migrate Job pulls with it.
   imagePullSecrets:
     - name: gcr-pull-secret-reggiesbbq
-  gcrPullSecret:
-    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO does not manage this pull secret
-    secretName: gcr-pull-secret-reggiesbbq
   service:
     type: ClusterIP
     port: 3000
+    targetPort: 3000
+  cacheMountPath: /app/apps/web/.next/cache
   ingress:
     enabled: true
     host: staging.reggiesbbqonline.com
     clusterIssuer: letsencrypt-prod
-    # On-LAN/in-cluster by default; the allowlist-reconciler unions reviewer IPs
-    # at runtime from Bitwarden (STAGING_BASE_ALLOWLIST_CIDR stays out of git).
-    # Shippo's senders are not in the allowlist and cannot be — the carrier
-    # publishes no stable egress range. The route authenticates itself instead:
-    # it verifies Shippo's t=/v1= HMAC over `${timestamp}.${body}` against
-    # SHIPPO_WEBHOOK_SECRET, is replay-bounded, and fails closed (503 with no
-    # secret, 401 on a bad signature). Nothing else is exempted.
-    publicPaths:
+    # The reviewer IP allowlist is OFF (open since #1058; kept open 2026-10-28).
+    # To restore: set ipAllowList.enabled below to true AND list
+    # `- name: reggiesbbq-staging-ipallowlist` here.
+    middlewares: []
+    # Exempt from the allowlist when it is on. Both routes authenticate
+    # themselves: Shippo's t=/v1= HMAC (replay-bounded, fails closed) and
+    # Stripe's signature (400 without a valid one, 503 when unconfigured).
+    # Neither carrier publishes a fixed egress range.
+    middlewareExemptPaths:
       - /api/webhooks/shippo
-      # Stripe signs every delivery and the route verifies it before doing any
-      # work: no signature is a 400, a bad one is a 400, and an unset
-      # STRIPE_WEBHOOK_SECRET is a 503. Same reasoning as Shippo above —
-      # Stripe publishes no fixed egress range, so the allowlist would reject
-      # legitimate callers and orders would sit in PENDING after a real charge.
       - /api/webhooks/stripe
-    # TEMPORARY: allowlist disabled — staging.reggiesbbqonline.com is open to
-    # the internet with no IP restriction and no other middleware in front of
-    # it. Flip back to true to restore; sourceRange below is kept intact so
-    # the revert is this one line.
-    ipAllowList:
-      enabled: false
-      sourceRange:
-        - 10.0.0.0/8
-        - 172.16.0.0/12
-        - 192.168.0.0/16
-        # Standing reviewer host. Lives here rather than in the coreyalan
-        # review-access flow because that flow is per-reviewer and expires;
-        # this one is a fixed operator address that should not lapse.
-        - 107.204.113.94/32
-      reconcilerManaged: true
-      # TODO(scaffold): appName MUST equal the StagingSite.infraAppName entered in
-      # the admin UI for review-access to resolve. Defaulted to the prod-app name.
-      appName: reggiesbbq
+  # Prod's shape at homelab size.
+  replicaCount: 1
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: ""
+  resourceQuota:
+    requestsCpu: "2"
+    requestsMemory: 4Gi
+    limitsCpu: "4"
+    limitsMemory: 6Gi
+    pods: "15"
+  # In-cluster Postgres (CNPG default/postgres); DATABASE_URL from Bitwarden.
+  # The database exists; no db-init and no superuser credential here.
+  cloudSQL:
+    enabled: false
+  migration:
+    enabled: true
+    repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
+    digest: "sha256:60b761d90f6757b97ce8b91d48b89ad88d1d959278ee8674d486f145ac8fdbbf" # written by gitops-staging-update.yml
+  authRateLimit:
+    enabled: true
+    paths:
+      - path: /api/auth/callback/credentials
+        tier: strict
+      - path: /api/auth/signin
+        tier: strict
+        prefixMatch: true
+      - path: /api/auth/signup
+        tier: strict
+      - path: /api/auth/forgot-password
+        tier: strict
+      - path: /api/auth/reset-password
+        tier: strict
+      - path: /api/store/zip
+        tier: moderate
+  # kube-prometheus-stack scrapes through a PodMonitor; there is no Alloy here.
+  metrics:
+    enabled: true
+    scraperNamespace: monitoring
+    podMonitor:
+      enabled: true
+  networkPolicy:
+    ingressControllerNamespace: default
+    # Stripe, Shippo, Mailgun, Google OAuth, Sentry.
+    publicEgress: true
+    additionalEgress:
+      # Postgres (CNPG cluster `postgres` in `default`).
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: default
+            podSelector:
+              matchLabels:
+                cnpg.io/cluster: postgres
+        ports:
+          - protocol: TCP
+            port: 5432
+      # Redis Sentinel and the master it hands out, as on prod.
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: redis
+        ports:
+          - protocol: TCP
+            port: 6379
+          - protocol: TCP
+            port: 26379
+      # Uploads: SeaweedFS S3 gateway.
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: seaweedfs
+        ports:
+          - protocol: TCP
+            port: 8333
+  serviceAccount:
+    create: true
+    name: reggiesbbq-app
+    annotations:
+      # Before the migrate hook (wave -1), which runs as this ServiceAccount
+      # and pulls with its imagePullSecrets.
+      argocd.argoproj.io/sync-wave: "-5"
   env:
     - name: NODE_ENV
       value: production
     - name: APP_ENV
       value: staging
-    # ---- SeaweedFS S3 uploads (in-cluster) ----
-    # Prod uses native GCS (UPLOADS_BUCKET); staging uses SeaweedFS via the
-    # storage driver. Credentials are a scoped S3 identity (Read/Write/List on
-    # reggiesbbq-uploads only) — see the ESO TODO below.
+    - name: NEXT_PUBLIC_APP_URL
+      value: https://staging.reggiesbbqonline.com
+    - name: DATABASE_CONNECTION_LIMIT
+      value: "3"
+    - name: REDIS_SENTINEL_HOST
+      value: redis-ng-sentinel.redis.svc.cluster.local
+    - name: REDIS_SENTINEL_PORT
+      value: "26379"
+    - name: REDIS_SENTINEL_MASTER
+      value: mymaster
     - name: STORAGE_PROVIDER
       value: s3
     - name: S3_ENDPOINT
@@ -113,97 +169,135 @@ staging-app:
   envFrom:
     - secretRef:
         name: reggiesbbq-staging-secrets
-  # External Secrets (Bitwarden staging project). Stripe/Shippo values are
-  # PLACEHOLDER until Reggie's accounts exist (use Stripe TEST keys here).
-  externalSecrets:
-    enabled: true
-    secretName: reggiesbbq-staging-secrets
-    refreshInterval: 1h
-    secrets:
-      - name: DATABASE_URL
-        key: 8fc4028f-a66a-47ad-9c92-b4b701854722
-      - name: AUTH_SECRET
-        key: 14f82414-0735-45fd-9e8e-b4b701854756
-      - name: NEXTAUTH_URL
-        key: 37b94bb7-b2f4-4758-97cf-b4b70185594f
-      # Optional sign-in provider: auth.ts registers Google only when both are
-      # present, and treats a REPLACE_ME_* placeholder as absent, so the
-      # sign-in page shows no Google button until the real client lands rather
-      # than one that fails at the OAuth round trip. Staging needs its own
-      # client — Google matches redirect URIs exactly, and this host's is
-      # https://staging.reggiesbbqonline.com/api/auth/callback/google
-      - name: GOOGLE_CLIENT_ID
-        key: 0632d0b8-e5aa-4734-86dc-b4de01617224
-      - name: GOOGLE_CLIENT_SECRET
-        key: 3b7129c7-c573-4ee8-974e-b4de01617260
-      - name: STRIPE_SECRET_KEY
-        key: 254e08f9-6711-46f0-a707-b4b701855c41
-      - name: STRIPE_WEBHOOK_SECRET
-        key: 754cee31-8c74-454f-8fc0-b4b701855da5
-      - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-        key: f787b1dc-508f-44ff-adbf-b4b701855f07
-      - name: SHIPPO_API_KEY
-        key: bd0ee5f6-e730-452e-bb08-b4b701855aaf
-      - name: SHIPPO_WEBHOOK_SECRET
-        key: 0e0796db-5cde-4e7a-8a68-b4b701856070
-      # Shippo's self-service webhook auth: a token we choose and append to the
-      # URL in their dashboard. HMAC (the secret above) is stronger but is
-      # provisioned by Shippo's solutions team on request, so this is what the
-      # account can actually use today. The route prefers a signature whenever
-      # one is sent, so this cannot downgrade HMAC once it exists.
-      - name: SHIPPO_WEBHOOK_TOKEN
-        key: 01030a3a-a492-4170-8bb2-b4bc0145e268
-      # Scoped SeaweedFS identity: Read/Write/List/Tagging on
-      # reggiesbbq-uploads only, matching every other app in the
-      # seaweedfs-s3-config-json blob. Without these the storage driver builds
-      # its S3 client with empty credentials and every object call 403s —
-      # which is what silently broke admin image uploads, and what the
-      # coverage-map tile archive now depends on.
-      - name: S3_ACCESS_KEY_ID
-        key: 87e82003-7ae5-467e-88a6-b4d401061d9b
-      - name: S3_SECRET_ACCESS_KEY
-        key: 52efb0b9-bded-4322-888c-b4d401061ddb
-      - name: SHIPPO_FROM_NAME
-        key: d1212a07-2c2d-4d48-bb03-b4b7018561cd
-      - name: SHIPPO_FROM_ADDRESS1
-        key: 0b3635de-c909-4e40-90b7-b4b70185632d
-      - name: SHIPPO_FROM_CITY
-        key: 343d9d4f-6da4-4dae-9705-b4b70185648e
-      - name: SHIPPO_FROM_STATE
-        key: 21f835f9-d897-413a-8c6a-b4b7018565ee
-      - name: SHIPPO_FROM_ZIP
-        key: 8a41119a-2416-44cd-8adf-b4b70185674d
-      # Staging seed sign-in passwords — generated, stored only in Bitwarden.
-      # Rotate by editing the secret there and bumping seed.runId.
-      - name: SEED_ADMIN_PASSWORD
-        key: 6292f3c1-c6f8-4550-b1e8-b4bc0008a74a
-      - name: SEED_STAFF_PASSWORD
-        key: 4795b71a-afc9-44b9-a5fc-b4bc0008a781
-      - name: SEED_CUSTOMER_PASSWORD
-        key: 1dce0b69-e1d4-4ed3-8034-b4bc0008a7cb
-  # Probes hit /api/health, NOT `/`. `/` is the marketing homepage, which Next
-  # server-renders on every kubelet tick — 18 renders/minute/pod at these
-  # periods (readiness 5s + liveness 10s), forever, for a response nothing
-  # reads. /api/health is dependency-free in the app (no DB, no Redis, per
-  # platform/app-contract.md), so it is safe for liveness too: a database blip
-  # cannot restart the pod through it.
-  #
-  # Set explicitly rather than relying on the chart default: this app pins
-  # staging-app 0.8.4 and vendors that tarball, so a newer chart default would
-  # not reach it without a pin bump.
   livenessProbe:
     enabled: true
-    path: /api/health
-    port: 3000
+    httpGet:
+      path: /api/health
+      port: 3000
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
     enabled: true
-    path: /api/health
-    port: 3000
+    httpGet:
+      path: /api/health
+      port: 3000
     initialDelaySeconds: 10
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+# --- Staging-only objects (templates/) ---
+bitwarden:
+  projectID: "1700bcb5-dffc-4270-9683-b4b70185464d" # Staging - Reggie's BBQ
+  organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+  credentialsSecret: bitwarden-staging-reggiesbbq-credentials
+# Reviewer IP allowlist: OFF (see nextjs-app.ingress.middlewares). appName MUST
+# equal the StagingSite.infraAppName in coreyalan.com's admin UI.
+ipAllowList:
+  enabled: false
+  appName: reggiesbbq
+  sourceRange:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    # Standing reviewer host: a fixed operator address that should not lapse,
+    # unlike the per-reviewer, expiring coreyalan review-access grants.
+    - 107.204.113.94/32
+# Staging demo data (templates/seed-job.yaml). PostSync, after migrate and a
+# healthy app; re-runs when the migration digest or runId changes. The script
+# is idempotent and refuses to run unless APP_ENV=staging.
+seed:
+  runId: "2"
+  command: ["npx", "tsx", "prisma/seed-staging.ts"]
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 384Mi
+externalSecrets:
+  secretName: reggiesbbq-staging-secrets
+  refreshInterval: 1h
+  secrets:
+    - name: DATABASE_URL
+      key: 8fc4028f-a66a-47ad-9c92-b4b701854722
+    - name: AUTH_SECRET
+      key: 14f82414-0735-45fd-9e8e-b4b701854756
+    - name: NEXTAUTH_URL
+      key: 37b94bb7-b2f4-4758-97cf-b4b70185594f
+    # Optional sign-in provider: auth.ts registers Google only when both are
+    # present, and treats a REPLACE_ME_* placeholder as absent, so the
+    # sign-in page shows no Google button until the real client lands rather
+    # than one that fails at the OAuth round trip. Staging needs its own
+    # client — Google matches redirect URIs exactly, and this host's is
+    # https://staging.reggiesbbqonline.com/api/auth/callback/google
+    - name: GOOGLE_CLIENT_ID
+      key: 0632d0b8-e5aa-4734-86dc-b4de01617224
+    - name: GOOGLE_CLIENT_SECRET
+      key: 3b7129c7-c573-4ee8-974e-b4de01617260
+    - name: STRIPE_SECRET_KEY
+      key: 254e08f9-6711-46f0-a707-b4b701855c41
+    - name: STRIPE_WEBHOOK_SECRET
+      key: 754cee31-8c74-454f-8fc0-b4b701855da5
+    - name: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+      key: f787b1dc-508f-44ff-adbf-b4b701855f07
+    - name: SHIPPO_API_KEY
+      key: bd0ee5f6-e730-452e-bb08-b4b701855aaf
+    - name: SHIPPO_WEBHOOK_SECRET
+      key: 0e0796db-5cde-4e7a-8a68-b4b701856070
+    # Shippo's self-service webhook auth: a token we choose and append to the
+    # URL in their dashboard. HMAC (the secret above) is stronger but is
+    # provisioned by Shippo's solutions team on request, so this is what the
+    # account can actually use today. The route prefers a signature whenever
+    # one is sent, so this cannot downgrade HMAC once it exists.
+    - name: SHIPPO_WEBHOOK_TOKEN
+      key: 01030a3a-a492-4170-8bb2-b4bc0145e268
+    # Mailgun sandbox (staging standard): delivers only to the sandbox's
+    # authorized recipients, and From must sit on the sandbox domain or the
+    # real domain's DMARC p=reject drops it. No signing/admin key mapped, so
+    # webhook reconcile stays off (apps sharing the sandbox would fight).
+    - name: MAILGUN_API_KEY
+      key: 31f979bb-4577-4dab-b447-b4f00017ed40
+    - name: MAILGUN_DOMAIN
+      key: 9e22cca5-88b0-46c2-aed1-b4f00018b208
+    # Scoped SeaweedFS identity: Read/Write/List/Tagging on
+    # reggiesbbq-uploads only, matching every other app in the
+    # seaweedfs-s3-config-json blob. Without these the storage driver builds
+    # its S3 client with empty credentials and every object call 403s —
+    # which is what silently broke admin image uploads, and what the
+    # coverage-map tile archive now depends on.
+    - name: S3_ACCESS_KEY_ID
+      key: 87e82003-7ae5-467e-88a6-b4d401061d9b
+    - name: S3_SECRET_ACCESS_KEY
+      key: 52efb0b9-bded-4322-888c-b4d401061ddb
+    - name: SHIPPO_FROM_NAME
+      key: d1212a07-2c2d-4d48-bb03-b4b7018561cd
+    - name: SHIPPO_FROM_ADDRESS1
+      key: 0b3635de-c909-4e40-90b7-b4b70185632d
+    - name: SHIPPO_FROM_CITY
+      key: 343d9d4f-6da4-4dae-9705-b4b70185648e
+    - name: SHIPPO_FROM_STATE
+      key: 21f835f9-d897-413a-8c6a-b4b7018565ee
+    - name: SHIPPO_FROM_ZIP
+      key: 8a41119a-2416-44cd-8adf-b4b70185674d
+    # Staging seed sign-in passwords — generated, stored only in Bitwarden.
+    # Rotate by editing the secret there and bumping seed.runId.
+    - name: SEED_ADMIN_PASSWORD
+      key: 6292f3c1-c6f8-4550-b1e8-b4bc0008a74a
+    - name: SEED_STAFF_PASSWORD
+      key: 4795b71a-afc9-44b9-a5fc-b4bc0008a781
+    - name: SEED_CUSTOMER_PASSWORD
+      key: 1dce0b69-e1d4-4ed3-8034-b4bc0008a7cb
+    # Bearer the in-cluster CronJobs send and the app checks. Random,
+    # staging-only (created 2026-10-28).
+    - name: ADMIN_API_KEY
+      key: de2838d7-61af-4008-92bc-b4f1012c27a2
+    # Redis Sentinel auth: a copy of STAGING_REDIS_NG_PASSWORD (Workbench), the
+    # password redis-ng itself uses. Keep the two equal.
+    - name: REDIS_PASSWORD
+      key: 0363c4fe-ebc4-4902-9e48-b4f101251729
