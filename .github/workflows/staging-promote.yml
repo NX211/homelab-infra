@@ -73,14 +73,21 @@ jobs:
           # .staging-app.worker.image.* and have no migrate sibling (mirror of
           # the routing in gitops-staging-update.yml and platform-infra's
           # gitops-update.yml).
+          # The base chart's key: nextjs-app (prod's chart) or staging-app.
+          KEY=staging-app
+          if [ "$(yq eval 'has("nextjs-app")' "${VALUES_FILE}")" = "true" ]; then KEY=nextjs-app; fi
           if [[ "$IMAGE_SHORT" == *-worker ]]; then
+            if [ "$KEY" = "nextjs-app" ]; then
+              echo "ERROR: ${APP_NAME} is on nextjs-app, which has no staging worker path yet; refusing to guess one"
+              exit 1
+            fi
             DIGEST=$(yq eval '.["staging-app"].worker.image.digest' "${VALUES_FILE}")
             IMAGE=$(yq eval '.["staging-app"].worker.image.repository' "${VALUES_FILE}")
             MIGRATE_DIGEST=""
           else
-            DIGEST=$(yq eval '.["staging-app"].image.digest' "${VALUES_FILE}")
-            IMAGE=$(yq eval '.["staging-app"].image.repository' "${VALUES_FILE}")
-            MIGRATE_DIGEST=$(yq eval '.["staging-app"].migration.digest // ""' "${VALUES_FILE}")
+            DIGEST=$(yq eval ".\"${KEY}\".image.digest" "${VALUES_FILE}")
+            IMAGE=$(yq eval ".\"${KEY}\".image.repository" "${VALUES_FILE}")
+            MIGRATE_DIGEST=$(yq eval ".\"${KEY}\".migration.digest // \"\"" "${VALUES_FILE}")
           fi
           TAG=$(yq eval '.appVersion' "${CHART_FILE}" 2>/dev/null || echo "")
 

@@ -39,7 +39,7 @@ spec:
         - name: reconciler
           # Built from apps/allowlist-reconciler and pinned by digest (the tag
           # is kept for readability). Rebuild + repush + re-pin to update.
-          image: ghcr.io/nx211/allowlist-reconciler:0.2.0@sha256:91b6b5d6d8d8cd337edabc2c10361e0f24ed415dfbd015d719997ffe7a721627
+          image: ghcr.io/nx211/allowlist-reconciler:0.3.0@sha256:34703a114db05fca8b4d1dad6d4e1cff8d7f944458df15b8f2bd6c46c533df71
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -47,8 +47,10 @@ spec:
           env:
             - name: COREYALAN_BASE_URL
               value: https://coreyalan.com
-            - name: NAMESPACE
-              value: staging
+            # Every namespace holding a managed app's base ConfigMap and
+            # Middleware. Each one also needs the Role + RoleBinding in rbac.yaml.
+            - name: NAMESPACES
+              value: staging,gatherbee-staging,blue-skysolutions-com-staging,reggiesbbq-staging,showcase-staging
           envFrom:
             - secretRef:
                 name: allowlist-reconciler-secrets
