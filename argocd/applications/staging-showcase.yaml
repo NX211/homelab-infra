@@ -16,14 +16,17 @@ spec:
     path: staging-apps/showcase
   destination:
     server: https://kubernetes.default.svc
-    namespace: staging
+    # Own namespace, as on prod (X4 app parity). Moved before the chart changes,
+    # so the namespace-wide policies of nextjs-app never meet the shared one.
+    # The federated Pub/Sub publisher subject follows (platform-infra #4280).
+    namespace: showcase-staging
   # The allowlist-reconciler owns this Middleware's sourceRange; ignore it so
   # selfHeal won't revert runtime writes.
   ignoreDifferences:
     - group: traefik.io
       kind: Middleware
       name: showcase-staging-ipallowlist
-      namespace: staging
+      namespace: showcase-staging
       jsonPointers:
         - /spec/ipAllowList/sourceRange
   syncPolicy:
@@ -32,6 +35,18 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+    # Pod Security `restricted`, matching prod. plane and environment as on
+    # `staging` (Kyverno's business-plane policies key on plane).
+    managedNamespaceMetadata:
+      labels:
+        environment: staging
+        plane: business
+        pod-security.kubernetes.io/enforce: restricted
+        pod-security.kubernetes.io/enforce-version: v1.34
+        pod-security.kubernetes.io/warn: restricted
+        pod-security.kubernetes.io/warn-version: v1.34
+        pod-security.kubernetes.io/audit: restricted
+        pod-security.kubernetes.io/audit-version: v1.34
     retry:
       limit: 5
       backoff:

@@ -1,6 +1,10 @@
 ---
-# Least privilege: read base ConfigMaps + read/patch Traefik Middlewares, in the
-# staging namespace only. No cluster-wide access, no secrets access via the API.
+# Least privilege: read base ConfigMaps + read/patch Traefik Middlewares, granted
+# per watched namespace (the deployment's NAMESPACES). No cluster-wide access, no
+# secrets access via the API. An app in its own namespace grants the same Role
+# to this ServiceAccount from its own chart (so it exists with the namespace,
+# e.g. staging-apps/gatherbee/templates/ipallowlist.yaml), in the change that
+# adds the namespace to NAMESPACES.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
