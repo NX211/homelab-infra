@@ -1,0 +1,64 @@
+# k3s upgrade plans, run by system-upgrade-controller.
+#
+# Bumping `version` on both plans upgrades the cluster: the server plan
+# upgrades blacktalon (the single control plane) first, then the agent plan
+# waits for it (`prepare: server-plan`) and upgrades the other nodes one at a
+# time. Kubernetes does not skip minors: move one minor per change, the same
+# value on both plans.
+#
+# The single-instance CloudNativePG clusters (default/postgres and
+# matrix/matrix-postgres on greytalon, provisioning/provisioning-db on
+# redtalon) set enablePDB: false, so drains evict them without manual steps.
+# Each is down while its node upgrades (there is no replica to fail over to),
+# and crons that hit it in that window fail once.
+---
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: server-plan
+  namespace: system-upgrade
+  labels:
+    k3s-upgrade: server
+spec:
+  concurrency: 1
+  cordon: true
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: In
+        values:
+          - "true"
+  serviceAccountName: system-upgrade
+  upgrade:
+    image: rancher/k3s-upgrade
+  # renovate: datasource=github-releases depName=k3s-io/k3s
+  version: v1.35.9+k3s1
+---
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: agent-plan
+  namespace: system-upgrade
+  labels:
+    k3s-upgrade: agent
+spec:
+  concurrency: 1
+  cordon: true
+  drain:
+    force: true
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: NotIn
+        values:
+          - "true"
+  prepare:
+    args:
+      - prepare
+      - server-plan
+    image: rancher/k3s-upgrade
+  serviceAccountName: system-upgrade
+  upgrade:
+    image: rancher/k3s-upgrade
+  # renovate: datasource=github-releases depName=k3s-io/k3s
+  version: v1.35.9+k3s1

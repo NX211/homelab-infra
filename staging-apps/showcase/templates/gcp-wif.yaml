@@ -1,0 +1,19 @@
+# Keyless Google access (Pub/Sub publish): the external_account ADC config the
+# app reads through GOOGLE_APPLICATION_CREDENTIALS. Its subject token is the
+# projected ServiceAccount token mounted by nextjs-app.extraVolumes. Direct
+# federation: system:serviceaccount:showcase-staging:showcase-staging holds the
+# topic IAM itself (platform-infra homelab_showcase_stg_namespaces); no GCP SA,
+# no key.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: showcase-staging-gcp-cred
+data:
+  credential-config.json: |
+    {
+      "type": "external_account",
+      "audience": "{{ .Values.gcpWorkloadIdentity.audience }}",
+      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+      "token_url": "https://sts.googleapis.com/v1/token",
+      "credential_source": { "file": "/var/run/secrets/gcp-sts/token", "format": { "type": "text" } }
+    }
