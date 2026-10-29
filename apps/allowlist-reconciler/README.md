@@ -8,9 +8,11 @@ IP). See `docs/staging-access/PLAN.md` in the coreyalan.com repo for the design.
 ## How it works
 
 1. **Discovery** — lists base ConfigMaps labeled
-   `allowlist.coreyalan.com/managed=true` in the `staging` namespace. Each one
-   (rendered by the `staging-app` chart) carries `{ app, middleware,
-   baseSourceRange, enabled }`.
+   `allowlist.coreyalan.com/managed=true` in every namespace in `NAMESPACES`.
+   Each one (rendered by the app's staging chart) carries `{ app, middleware,
+   baseSourceRange, enabled }`, and its Middleware is patched in the
+   ConfigMap's own namespace, so an app can move into its own namespace. A
+   namespace that fails to list is logged and skipped; the rest still reconcile.
 2. **Pull** — for each app, `GET /api/internal/staging-allowlist?app=<app>` on
    coreyalan.com (Bearer `STAGING_INTERNAL_API_TOKEN`), then **verifies the HMAC
    signature** (`STAGING_ALLOWLIST_HMAC_SECRET`) before trusting the payload.
@@ -44,7 +46,7 @@ static policy declarative and auditable.
 | `STAGING_INTERNAL_API_TOKEN` | Bearer for the internal desired-state + ack APIs |
 | `STAGING_ALLOWLIST_HMAC_SECRET` | verifies the desired-state signature |
 | `RECONCILER_WEBHOOK_TOKEN` | verifies inbound `POST /reconcile` pushes |
-| `NAMESPACE` | default `staging` |
+| `NAMESPACES` | comma-separated namespaces to watch, default `staging` (`NAMESPACE` is the pre-0.3.0 name, still honored). Each needs the Role + RoleBinding in `allowlist-reconciler/rbac.yaml`. |
 | `LABEL_SELECTOR` | default `allowlist.coreyalan.com/managed=true` |
 | `POLL_INTERVAL_MS` | default `20000` |
 | `PORT` | default `8080` |
@@ -52,8 +54,8 @@ static policy declarative and auditable.
 
 Secrets come from Bitwarden via External Secrets (see
 `../../allowlist-reconciler/externalsecret.yaml`). RBAC is least-privilege:
-`get/list/watch` ConfigMaps and `get/list/update/patch` Traefik Middlewares in
-`staging` only.
+`get/list/watch` ConfigMaps and `get/list/update/patch` Traefik Middlewares,
+granted per watched namespace (no cluster-wide access).
 
 ## Build & publish the image
 

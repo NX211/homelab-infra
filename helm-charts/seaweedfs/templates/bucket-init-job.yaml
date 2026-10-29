@@ -36,12 +36,19 @@ spec:
               until wget -q -O- "http://{{ include "seaweedfs.fullname" . }}-filer:{{ .Values.filer.port }}/healthz" >/dev/null 2>&1; do
                 sleep 2
               done
-              echo "Filer ready. Creating buckets..."
-              cat <<EOF | weed shell -master={{ include "seaweedfs.fullname" . }}-master:{{ .Values.master.port }}
-              {{- range .Values.buckets }}
-              s3.bucket.create -name {{ . }}
-              {{- end }}
-              EOF
+              # s3.bucket.create fails on a bucket that already exists, so
+              # create only the missing ones; otherwise every sync after the
+              # first fails this hook.
+              master="{{ include "seaweedfs.fullname" . }}-master:{{ .Values.master.port }}"
+              existing="$(echo s3.bucket.list | weed shell -master="$master" | awk '{print $1}')"
+              for b in{{ range .Values.buckets }} {{ . }}{{ end }}; do
+                if printf '%s\n' "$existing" | grep -qx "$b"; then
+                  echo "exists: $b"
+                else
+                  echo "creating: $b"
+                  echo "s3.bucket.create -name $b" | weed shell -master="$master"
+                fi
+              done
               echo "Done."
           resources:
             requests:

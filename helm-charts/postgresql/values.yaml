@@ -46,9 +46,9 @@ bootstrap:
     postInitApplicationSQL:
       - "ALTER USER app CREATEDB CREATEROLE"
 
-# Monitoring
-monitoring:
-  enablePodMonitor: true
+# Monitoring (chart-owned PodMonitor; CloudNativePG deprecated enablePodMonitor)
+podMonitor:
+  enabled: true
 
 # Backup configuration (disabled by default)
 backup:

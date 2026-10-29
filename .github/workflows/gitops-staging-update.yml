@@ -124,14 +124,21 @@ jobs:
         run: |
           VALUES_FILE="staging-apps/${APP_NAME}/values.yaml"
 
-          # Values are nested under the staging-app subchart key. Worker
+          # Values are nested under the base chart's key: `nextjs-app` for an
+          # app on prod's chart (X4 app parity), `staging-app` otherwise. Worker
           # images live under a different values path and have no migrate
           # sibling — mirror of the values-path routing in platform-infra's
           # gitops-update.yml. Without this, a worker dispatch would clobber
           # the web image digest.
-          DIGEST_PATH='."staging-app".image.digest'
+          KEY=staging-app
+          if [ "$(yq eval 'has("nextjs-app")' "${VALUES_FILE}")" = "true" ]; then KEY=nextjs-app; fi
+          DIGEST_PATH=".\"${KEY}\".image.digest"
           IS_WORKER=false
           if [[ "$IMAGE_SHORT" == *-worker ]]; then
+            if [ "$KEY" = "nextjs-app" ]; then
+              echo "ERROR: ${APP_NAME} is on nextjs-app, which has no staging worker path yet; refusing to guess one"
+              exit 1
+            fi
             DIGEST_PATH='."staging-app".worker.image.digest'
             IS_WORKER=true
           fi
@@ -149,9 +156,9 @@ jobs:
           # the platform-infra gitops-update.yml fix in PR #589).
           # Worker dispatches never carry a migrate sibling.
           if [ "$IS_WORKER" = "false" ] && [ -n "$MIGRATE_DIGEST" ]; then
-            HAS_MIGRATION=$(yq eval '.["staging-app"].migration // "null"' "${VALUES_FILE}")
+            HAS_MIGRATION=$(yq eval ".\"${KEY}\".migration // \"null\"" "${VALUES_FILE}")
             if [ "$HAS_MIGRATION" != "null" ]; then
-              yq eval ".\"staging-app\".migration.digest = \"${MIGRATE_DIGEST}\"" -i "${VALUES_FILE}"
+              yq eval ".\"${KEY}\".migration.digest = \"${MIGRATE_DIGEST}\"" -i "${VALUES_FILE}"
               echo "Updated migration digest to ${MIGRATE_DIGEST}"
             fi
           fi
@@ -204,8 +211,8 @@ jobs:
           echo "promote=${PROMOTE}" >> "$GITHUB_OUTPUT"
 
           echo "Updated ${VALUES_FILE}:"
-          yq eval '.["staging-app"].image' "${VALUES_FILE}"
-          yq eval '.migration' "${VALUES_FILE}"
+          yq eval ".\"${KEY}\".image" "${VALUES_FILE}"
+          yq eval ".\"${KEY}\".migration" "${VALUES_FILE}"
 
       - name: Helm lint
         env:
