@@ -1,0 +1,54 @@
+{{- /*
+Staging demo-data seed, carried over from the staging-app chart. Never
+rendered for prod: it lives only in this staging wrapper.
+
+PostSync starts only after the migrate hook and the app report healthy, so the
+schema is present. The Job name hashes the migration digest and seed.runId, so
+it re-runs on a new schema or a bumped runId; BeforeHookCreation clears the
+prior Job. Credentials (seed passwords, DATABASE_URL) arrive through the app
+Secret.
+*/}}
+{{- $mig := index .Values "nextjs-app" "migration" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: reggiesbbq-seed-{{ printf "%s-%s" $mig.digest (.Values.seed.runId | toString) | sha256sum | trunc 8 }}
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: {{ .Values.seed.ttlSecondsAfterFinished }}
+  backoffLimit: {{ .Values.seed.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.seed.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        app: reggiesbbq-seed
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: reggiesbbq-app
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001 # the migration image's `migrate` user
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: seed
+          image: "{{ $mig.repository }}@{{ $mig.digest }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          command:
+            {{- toYaml .Values.seed.command | nindent 12 }}
+          env:
+            - name: APP_ENV
+              value: staging
+          envFrom:
+            - secretRef:
+                name: {{ .Values.externalSecrets.secretName }}
+          resources:
+            {{- toYaml .Values.seed.resources | nindent 12 }}

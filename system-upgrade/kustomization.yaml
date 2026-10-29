@@ -18,14 +18,20 @@ patches:
     patch: |-
       - op: replace
         path: /data/SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE
-        value: rancher/kubectl:v1.33.13
-  # The controller reads that ConfigMap through envFrom, so it only sees a
-  # change after a restart; Reloader does the restart.
-  - target:
-      kind: Deployment
-      name: system-upgrade-controller
-    patch: |-
-      - op: add
-        path: /metadata/annotations
-        value:
-          configmap.reloader.stakater.com/reload: default-controller-env
+        value: rancher/kubectl:v1.34.9
+# The controller reads that ConfigMap through envFrom, so it only sees a change
+# after a restart. Copying the image into the pod template makes every change
+# roll the controller as part of the same sync.
+replacements:
+  - source:
+      kind: ConfigMap
+      name: default-controller-env
+      fieldPath: data.SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE
+    targets:
+      - select:
+          kind: Deployment
+          name: system-upgrade-controller
+        fieldPaths:
+          - spec.template.metadata.annotations.[upgrade.coreyalan.com/kubectl-image]
+        options:
+          create: true

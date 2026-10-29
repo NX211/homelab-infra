@@ -15,6 +15,12 @@ metadata:
     argocd.argoproj.io/sync-wave: "-2"
 spec:
   instances: {{ .Values.postgres.instances }}
+  # Single instance on node-local storage: a PodDisruptionBudget can only
+  # block the node's drain (k3s upgrades), never keep Postgres up. Without one
+  # the drain evicts the pod and it restarts on the same PVC once the node is
+  # back, which CloudNativePG recommends for staging over toggling
+  # nodeMaintenanceWindow by hand.
+  enablePDB: false
   imageName: {{ .Values.postgres.imageName }}
 
   # CNPG auto-generates the "<cluster>-superuser" secret (username/password)
@@ -50,5 +56,3 @@ spec:
   resources:
     {{- toYaml .Values.postgres.resources | nindent 4 }}
 
-  monitoring:
-    enablePodMonitor: {{ .Values.postgres.monitoring.enablePodMonitor }}
