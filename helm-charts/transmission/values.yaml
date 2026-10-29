@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: lscr.io/linuxserver/transmission
-  tag: "4.1.3-r0-ls364"
+  tag: "4.1.3-r0-ls366"
   pullPolicy: IfNotPresent
 
 # Service configuration
