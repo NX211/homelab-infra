@@ -1,58 +1,83 @@
-# Blue Sky Solutions - Staging Values
-# Build once, deploy many: same image as prod, different config.
+# blue-skysolutions.com - Staging Values
+# Same image as prod, rendered by the same chart (nextjs-app, from
+# platform-infra). Differences from prod's helm-charts/blue-skysolutions-com
+# values are staging facts: Bitwarden instead of GCP Secret Manager, uploads to
+# in-cluster SeaweedFS, an Artifact Registry pull secret, Traefik in `default`,
+# the reviewer IP allowlist, and smaller sizes.
 
-staging-app:
-  appName: blue-sky
-  appLabel: Blue Sky Solutions
+nextjs-app:
+  # Every object keeps the blue-skysolutions-com-staging name (Service, TLS
+  # secret, allowlist Middleware; Port maps reports by this prefix).
   fullnameOverride: blue-skysolutions-com-staging
-  replicaCount: 1
-  # Per-app Bitwarden secret store (least privilege)
-  # NOTE: bitwarden-staging-blue-sky-credentials must exist as a K8s secret in
-  # external-secrets-system ns holding a BWS access token scoped to projectID below.
-  # This is a one-time manual bootstrap (or via SealedSecret) — same pattern as the
-  # other staging apps.
-  bitwarden:
-    projectID: "a96c3c80-5344-4693-b43b-b435015fc390"
-    organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
-    credentialsSecret: bitwarden-staging-blue-sky-credentials
-  # No database
-  database:
-    enabled: false
-  # No migrations
-  migration:
-    enabled: false
+
   image:
     repository: us-central1-docker.pkg.dev/blue-skysolutions/blue-skysolutions/blue-skysolutions-web
     pullPolicy: IfNotPresent
-    digest: "sha256:c082c20970fc863cbd4a4316f13d6a6f6f3741cded730a7b366f5b760b8cf518" # Updated by CI/CD via gitops-staging-update.yml — seeded from prod for first deploy
+    digest: "sha256:c082c20970fc863cbd4a4316f13d6a6f6f3741cded730a7b366f5b760b8cf518" # written by gitops-staging-update.yml
+  # ESO keeps this secret current (templates/image-pull.yaml); also set on the
+  # ServiceAccount.
   imagePullSecrets:
     - name: gcr-pull-secret-blue-sky
-  # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
-  gcrPullSecret:
-    bitwardenKey: "" # keyless via WIF (ar-token-refresher); ESO no longer manages this pull secret
-    secretName: gcr-pull-secret-blue-sky
   service:
     type: ClusterIP
     port: 3000
+    targetPort: 3000
+
   ingress:
     enabled: true
     host: staging.blue-skysolutions.com
     clusterIssuer: letsencrypt-prod
-    # Restrict access to on-LAN/in-cluster sources (RFC1918). The external base
-    # CIDR is injected at runtime by the allowlist-reconciler from Bitwarden
-    # (STAGING_BASE_ALLOWLIST_CIDR), so it stays out of this public repo.
-    ipAllowList:
-      enabled: true
-      sourceRange:
-        - 10.0.0.0/8
-        - 172.16.0.0/12
-        - 192.168.0.0/16
-      # Review-access flow: the in-cluster allowlist-reconciler manages this
-      # Middleware's sourceRange (base ∪ reviewer IPs). Renders the discovery
-      # ConfigMap the reconciler polls.
-      # appName MUST equal the StagingSite.infraAppName entered in the admin UI.
-      reconcilerManaged: true
-      appName: blue-skysolutions-com
+    # Reviewer IP allowlist (templates/ipallowlist.yaml), kept current by the
+    # allowlist-reconciler.
+    middlewares:
+      - name: blue-skysolutions-com-staging-ipallowlist
+
+  # Prod's shape at homelab size.
+  replicaCount: 1
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  resourceQuota:
+    requestsCpu: "2"
+    requestsMemory: 4Gi
+    limitsCpu: "4"
+    limitsMemory: 6Gi
+    pods: "15"
+
+  cloudSQL:
+    enabled: false
+
+  networkPolicy:
+    ingressControllerNamespace: default
+    # Mailgun, Sentry and other HTTPS APIs (prod opens the same 443 rule).
+    publicEgress: true
+    additionalEgress:
+      # Uploads: SeaweedFS S3 gateway (prod uses its own object storage).
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: seaweedfs
+        ports:
+          - protocol: TCP
+            port: 8333
+
+  serviceAccount:
+    create: true
+    name: blue-sky-app
+    annotations:
+      # Ahead of the workload, so its imagePullSecrets exist before any pod.
+      argocd.argoproj.io/sync-wave: "-5"
+
   env:
     - name: NODE_ENV
       value: production
@@ -64,8 +89,6 @@ staging-app:
       value: Blue Sky Solutions
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
       value: staging
-    # ---- SeaweedFS S3 (in-cluster) ----
-    # Prod uses native GCS; staging uses SeaweedFS via the storage abstraction.
     - name: STORAGE_PROVIDER
       value: s3
     - name: S3_ENDPOINT
@@ -79,57 +102,65 @@ staging-app:
   envFrom:
     - secretRef:
         name: blue-sky-staging-secrets
-  # External Secrets (Bitwarden staging project)
-  externalSecrets:
-    enabled: true
-    secretName: blue-sky-staging-secrets
-    refreshInterval: 1h
-    secrets:
-      - name: MAILGUN_API_KEY
-        key: 6efa8f66-5972-4ae8-bd32-b4570120849a
-      - name: MAILGUN_DOMAIN
-        key: ff4c3f6d-54e0-4101-a998-b457012083df
-      - name: EMAIL_FROM
-        key: 1b00e0fd-a13a-4591-9d59-b45701208422
-      - name: EMAIL_TO
-        key: 42b5a1d2-fe5d-4bc6-89ef-b4570120845f
-      # Signs the server-issued form tokens (/api/form-token). The app fails
-      # CLOSED without it — minting and verification both throw — so every
-      # contact/careers post 500s. Deliberately a different value from prod:
-      # a leaked staging key must not mint tokens production accepts.
-      - name: FORM_TOKEN_SECRET
-        key: eee45cd2-7a9b-4609-8b56-b4be013e3f1f
-      # SeaweedFS S3 credentials (identity: blue-sky; scoped to blue-skysolutions-uploads)
-      - name: S3_ACCESS_KEY_ID
-        key: b13d2ad0-b08b-4521-bdf7-b4570138e7fa
-      - name: S3_SECRET_ACCESS_KEY
-        key: e3d0f504-8e53-4982-9902-b4570138e830
-      # FasterFixes feedback widget — staging only.
-      # TODO: create a "FASTERFIXES_API_KEY" secret in the blue-sky staging
-      # Bitwarden project (a96c3c80-5344-4693-b43b-b435015fc390) and replace
-      # the placeholder UUID below with the new item's id.
-      - name: FASTERFIXES_API_KEY
-        key: 3a00be9d-19fa-4ea0-9fdc-b45a00e4e5e3
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+
   livenessProbe:
     enabled: true
-    path: /api/health
-    port: 3000
+    httpGet:
+      path: /api/health
+      port: 3000
     initialDelaySeconds: 30
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
   readinessProbe:
     enabled: true
-    path: /api/health
-    port: 3000
+    httpGet:
+      path: /api/health
+      port: 3000
     initialDelaySeconds: 10
     periodSeconds: 5
-    timeoutSeconds: 3
+    timeoutSeconds: 5
     failureThreshold: 3
+
+# --- Staging-only objects (templates/) ---
+
+bitwarden:
+  projectID: "a96c3c80-5344-4693-b43b-b435015fc390"
+  organizationID: "4650c1c8-8d22-4073-8a7d-b3cf011d5ff2"
+  credentialsSecret: bitwarden-staging-blue-sky-credentials
+
+# MUST keep appName equal to the StagingSite.infraAppName in coreyalan.com's
+# admin UI for review access to resolve.
+ipAllowList:
+  appName: blue-skysolutions-com
+  sourceRange:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+
+externalSecrets:
+  secretName: blue-sky-staging-secrets
+  refreshInterval: 1h
+  secrets:
+    - name: MAILGUN_API_KEY
+      key: 6efa8f66-5972-4ae8-bd32-b4570120849a
+    - name: MAILGUN_DOMAIN
+      key: ff4c3f6d-54e0-4101-a998-b457012083df
+    - name: EMAIL_FROM
+      key: 1b00e0fd-a13a-4591-9d59-b45701208422
+    - name: EMAIL_TO
+      key: 42b5a1d2-fe5d-4bc6-89ef-b4570120845f
+    # Signs the server-issued form tokens (/api/form-token). The app fails
+    # CLOSED without it — minting and verification both throw — so every
+    # contact/careers post 500s. Deliberately a different value from prod:
+    # a leaked staging key must not mint tokens production accepts.
+    - name: FORM_TOKEN_SECRET
+      key: eee45cd2-7a9b-4609-8b56-b4be013e3f1f
+    # SeaweedFS S3 credentials (identity: blue-sky; scoped to blue-skysolutions-uploads)
+    - name: S3_ACCESS_KEY_ID
+      key: b13d2ad0-b08b-4521-bdf7-b4570138e7fa
+    - name: S3_SECRET_ACCESS_KEY
+      key: e3d0f504-8e53-4982-9902-b4570138e830
+    # FasterFixes feedback widget — staging only.
+    - name: FASTERFIXES_API_KEY
+      key: 3a00be9d-19fa-4ea0-9fdc-b45a00e4e5e3

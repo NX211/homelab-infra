@@ -1,0 +1,37 @@
+# system-upgrade-controller and the k3s upgrade plans. The controller comes
+# straight from its upstream release assets; Renovate moves both URLs together.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://github.com/rancher/system-upgrade-controller/releases/download/v0.19.2/crd.yaml
+  - https://github.com/rancher/system-upgrade-controller/releases/download/v0.19.2/system-upgrade-controller.yaml
+  - plans.yaml
+patches:
+  # The drain jobs' kubectl. Upstream ships v1.30.3 (still in v0.20.2), which
+  # falls further outside kubectl's one-minor skew with every k3s upgrade.
+  # Pin it to the minor the cluster is upgrading FROM and move it with each
+  # plan bump: one minor from both the old and the new API server throughout
+  # the hop, whichever image a drain job happens to start with.
+  - target:
+      kind: ConfigMap
+      name: default-controller-env
+    patch: |-
+      - op: replace
+        path: /data/SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE
+        value: rancher/kubectl:v1.34.9
+# The controller reads that ConfigMap through envFrom, so it only sees a change
+# after a restart. Copying the image into the pod template makes every change
+# roll the controller as part of the same sync.
+replacements:
+  - source:
+      kind: ConfigMap
+      name: default-controller-env
+      fieldPath: data.SYSTEM_UPGRADE_JOB_KUBECTL_IMAGE
+    targets:
+      - select:
+          kind: Deployment
+          name: system-upgrade-controller
+        fieldPaths:
+          - spec.template.metadata.annotations.[upgrade.coreyalan.com/kubectl-image]
+        options:
+          create: true
