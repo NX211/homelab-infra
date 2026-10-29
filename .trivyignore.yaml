@@ -36,6 +36,13 @@ misconfigurations:
     paths:
       - "ar-token-refresher/rbac.yaml"
       - "tekton/chains/rbac.yaml"
+  # The artifact-registry-token store's reader Role: `get` on one Secret by
+  # resourceName (the ESO-minted Artifact Registry token it serves). KSV-0113
+  # does not evaluate resourceNames, so it flags any Secrets grant. The file
+  # holds only this Role, its ServiceAccount and binding.
+  - id: KSV-0113
+    paths:
+      - "external-secrets-operator/manifests/artifact-registry-token-rbac.yaml"
   # prisma-engines + maven mirrors pull the upstream nginx-unprivileged image
   # from docker.io (same as the sibling verdaccio proxy). No ghcr re-mirror yet;
   # accepted, path-scoped. All other KSV findings on these files are hardened.

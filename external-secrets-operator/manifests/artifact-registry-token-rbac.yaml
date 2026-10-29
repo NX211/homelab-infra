@@ -1,0 +1,36 @@
+# Identity for the artifact-registry-token ClusterSecretStore
+# (artifact-registry-generator.yaml): `get` on exactly the token Secret, by
+# name. It cannot list, watch or write, and cannot read any other Secret in
+# external-secrets-system. Kept in its own file so the Trivy KSV-0113
+# exception in .trivyignore.yaml covers only this Role.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: artifact-registry-token-reader
+  namespace: external-secrets-system
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: artifact-registry-token-reader
+  namespace: external-secrets-system
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["artifact-registry-token"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: artifact-registry-token-reader
+  namespace: external-secrets-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: artifact-registry-token-reader
+subjects:
+  - kind: ServiceAccount
+    name: artifact-registry-token-reader
+    namespace: external-secrets-system
