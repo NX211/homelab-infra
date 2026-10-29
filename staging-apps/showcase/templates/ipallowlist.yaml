@@ -1,0 +1,27 @@
+{{- if .Values.ipAllowList.enabled }}
+# Reviewer IP allowlist for staging.showcase.coreyalan.com, applied through
+# nextjs-app's ingress.middlewares. The allowlist-reconciler owns sourceRange at
+# runtime (base ∪ reviewer IPs from coreyalan.com); the Argo Application
+# ignores that field. It finds the base ConfigMap by label and patches the
+# Middleware in this namespace (listed in its NAMESPACES).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: showcase-staging-ipallowlist
+spec:
+  ipAllowList:
+    sourceRange:
+      {{- toYaml .Values.ipAllowList.sourceRange | nindent 6 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: showcase-staging-allowlist-base
+  labels:
+    allowlist.coreyalan.com/managed: "true"
+data:
+  app: {{ .Values.ipAllowList.appName | quote }}
+  middleware: showcase-staging-ipallowlist
+  enabled: "true"
+  baseSourceRange: {{ .Values.ipAllowList.sourceRange | toJson | quote }}
+{{- end }}
