@@ -89,6 +89,13 @@ function timingSafeEqual(a, b) {
 
 // ── Kubernetes REST helper ────────────────────────────────────────────────
 
+// Bounded so a hung apiserver connection (e.g. mid control-plane upgrade)
+// fails the one app instead of stalling the whole serialized loop.
+const K8S_TIMEOUT_MS = 15000;
+const ACK_TIMEOUT_MS = 10000;
+// The server caps the reason at 500 chars; stay under it.
+const MAX_ERROR_LENGTH = 500;
+
 function k8sRequest(method, path, body, contentType = 'application/json') {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
@@ -119,6 +126,9 @@ function k8sRequest(method, path, body, contentType = 'application/json') {
       }
     );
     req.on('error', reject);
+    req.setTimeout(K8S_TIMEOUT_MS, () => {
+      req.destroy(new Error(`k8s ${method} ${path} timed out after ${K8S_TIMEOUT_MS}ms`));
+    });
     if (data) req.write(data);
     req.end();
   });
@@ -168,12 +178,21 @@ async function fetchDesiredState(app) {
   return res.json();
 }
 
-async function ack(app, version, appliedHash, result) {
+async function ack(app, version, appliedHash, result, error) {
   try {
     const res = await fetch(`${CONFIG.baseUrl}/api/internal/staging-allowlist/ack`, {
       method: 'POST',
       headers: { authorization: `Bearer ${CONFIG.internalToken}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ app, version, appliedAt: new Date().toISOString(), appliedHash, result }),
+      body: JSON.stringify({
+        app,
+        version,
+        appliedAt: new Date().toISOString(),
+        appliedHash,
+        result,
+        // The failure reason otherwise lives only in this pod's stdout.
+        ...(error ? { error: String(error).slice(0, MAX_ERROR_LENGTH) } : {}),
+      }),
+      signal: AbortSignal.timeout(ACK_TIMEOUT_MS),
     });
 
     // fetch only rejects on transport failure, so without this a 401 or a 500
@@ -181,9 +200,9 @@ async function ack(app, version, appliedHash, result) {
     // coreyalan never records the applied version and its entries sit PENDING.
     // fetchDesiredState above already guards its response; this path did not.
     //
-    // Deliberately does NOT retry. reconcileConfigMap acks on every poll, even
-    // when the middleware is already in sync, so the next pass re-acks on its
-    // own — a retry here would only duplicate that.
+    // Deliberately does NOT retry. reconcileConfigMap re-acks on the next poll
+    // until coreyalan reports this version as applied, so a retry here would
+    // only duplicate that.
     if (!res.ok) {
       // 4xx will not self-heal (wrong token, rejected payload) and needs a
       // human; 5xx is transient and the next poll should carry it.
@@ -237,6 +256,12 @@ function isPublicHostCidr(cidr) {
 
 // ── Reconcile ─────────────────────────────────────────────────────────────
 
+// coreyalan returns the version it last recorded as applied; once that equals
+// the desired version, an in-sync ack would change nothing.
+function needsAck(desired) {
+  return desired.appliedVersion !== desired.version;
+}
+
 async function reconcileConfigMap(cm) {
   const data = cm.data || {};
   if (data.enabled === 'false') return;
@@ -281,8 +306,10 @@ async function reconcileConfigMap(cm) {
   try {
     const current = (await getMiddlewareSourceRange(namespace, middleware)).sort();
     if (JSON.stringify(current) === JSON.stringify(merged)) {
-      // Already in sync; still ack so coreyalan records the confirmed version.
-      await ack(app, desired.version, appliedHash, 'ok');
+      // In sync. Ack only until coreyalan has recorded this version: acking on
+      // every poll anyway cost a row lock, an audit row and a WORM mirror
+      // object per app every 20s, and overlapping acks timed out on that lock.
+      if (needsAck(desired)) await ack(app, desired.version, appliedHash, 'ok');
       return;
     }
     await patchMiddlewareSourceRange(namespace, middleware, merged);
@@ -290,7 +317,7 @@ async function reconcileConfigMap(cm) {
     await ack(app, desired.version, appliedHash, 'ok');
   } catch (error) {
     log('error', 'apply failed', { app, error: String(error) });
-    await ack(app, desired.version, appliedHash, 'error');
+    await ack(app, desired.version, appliedHash, 'error', String(error));
   }
 }
 
@@ -303,6 +330,30 @@ async function reconcileAll() {
   } catch (error) {
     log('error', 'reconcileAll failed', { error: String(error) });
   }
+}
+
+// All reconcile work runs one pass at a time. setInterval does not wait for a
+// slow pass (one 503'd ack could take 15s+), and the push webhook ran
+// concurrently with the poll, so two passes could ack the same app at once and
+// contend for its state-row lock on coreyalan.
+let queue = Promise.resolve();
+let passQueued = false;
+
+function serialized(fn) {
+  const run = queue.then(fn);
+  queue = run.catch(() => {});
+  return run;
+}
+
+// At most one full pass waits in the queue; extra ticks while one is pending
+// are dropped, since that pass will see the latest state anyway.
+function scheduleReconcileAll() {
+  if (passQueued) return queue;
+  passQueued = true;
+  return serialized(async () => {
+    passQueued = false;
+    await reconcileAll();
+  });
 }
 
 async function reconcileOneApp(app) {
@@ -341,8 +392,13 @@ const server = http.createServer(async (req, res) => {
       // ignore — fall through to full reconcile
     }
     res.writeHead(202).end('accepted');
-    if (payload.app) reconcileOneApp(payload.app).catch(e => log('error', 'push reconcile failed', { error: String(e) }));
-    else reconcileAll();
+    if (payload.app) {
+      serialized(() => reconcileOneApp(payload.app)).catch(e =>
+        log('error', 'push reconcile failed', { error: String(e) })
+      );
+    } else {
+      scheduleReconcileAll();
+    }
     return;
   }
 
@@ -355,5 +411,5 @@ server.listen(CONFIG.port, () => log('info', 'reconciler started', {
   port: CONFIG.port,
 }));
 
-reconcileAll();
-setInterval(reconcileAll, CONFIG.pollIntervalMs);
+scheduleReconcileAll();
+setInterval(scheduleReconcileAll, CONFIG.pollIntervalMs);

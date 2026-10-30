@@ -13,27 +13,37 @@ import { dirname, join } from 'node:path';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'index.mjs');
 
-function extractAck() {
+function extract(signature) {
   const src = readFileSync(SRC, 'utf8');
-  const start = src.indexOf('async function ack(');
-  assert.ok(start > -1, 'ack() not found in src/index.mjs');
+  const start = src.indexOf(signature);
+  assert.ok(start > -1, `${signature} not found in src/index.mjs`);
   let depth = 0;
   for (let j = src.indexOf('{', start); j < src.length; j++) {
     if (src[j] === '{') depth++;
     else if (src[j] === '}' && --depth === 0) return src.slice(start, j + 1);
   }
-  throw new Error('unbalanced braces in ack()');
+  throw new Error(`unbalanced braces in ${signature}`);
 }
 
-const ackSrc = extractAck();
+const ackSrc = extract('async function ack(');
+const needsAckSrc = extract('function needsAck(');
 
 function harness(fetchImpl) {
   const logs = [];
   const CONFIG = { baseUrl: 'http://fake', internalToken: 'token' };
   const log = (level, msg, extra = {}) => logs.push({ level, msg, ...extra });
-  const ack = new Function('CONFIG', 'log', 'fetch', `${ackSrc}; return ack;`)(CONFIG, log, fetchImpl);
+  const ack = new Function(
+    'CONFIG',
+    'log',
+    'fetch',
+    'ACK_TIMEOUT_MS',
+    'MAX_ERROR_LENGTH',
+    `${ackSrc}; return ack;`
+  )(CONFIG, log, fetchImpl, 10000, 500);
   return { ack, logs };
 }
+
+const needsAck = new Function(`${needsAckSrc}; return needsAck;`)();
 
 const status = (code) => async () => ({ ok: code >= 200 && code < 300, status: code });
 
@@ -86,4 +96,41 @@ test('every log line carries the app and version needed to act on it', async () 
   await ack('coreyalan', 42, 'hash', 'ok');
   assert.equal(logs[0].app, 'coreyalan');
   assert.equal(logs[0].version, 42);
+});
+
+test('a failed apply sends its reason, truncated to the server cap', async () => {
+  let body;
+  const { ack } = harness(async (_url, init) => {
+    body = JSON.parse(init.body);
+    return { ok: true, status: 200 };
+  });
+  await ack('coreyalan', 7, 'hash', 'error', 'x'.repeat(800));
+  assert.equal(body.result, 'error');
+  assert.equal(body.error.length, 500);
+});
+
+test('a successful ack sends no error field', async () => {
+  let body;
+  const { ack } = harness(async (_url, init) => {
+    body = JSON.parse(init.body);
+    return { ok: true, status: 200 };
+  });
+  await ack('coreyalan', 7, 'hash', 'ok');
+  assert.equal('error' in body, false);
+});
+
+test('the ack request is bounded by a timeout', async () => {
+  let init;
+  const { ack } = harness(async (_url, i) => {
+    init = i;
+    return { ok: true, status: 200 };
+  });
+  await ack('coreyalan', 7, 'hash', 'ok');
+  assert.ok(init.signal instanceof AbortSignal);
+});
+
+test('an in-sync app is acked only until coreyalan records the version', () => {
+  assert.equal(needsAck({ version: 5, appliedVersion: null }), true);
+  assert.equal(needsAck({ version: 5, appliedVersion: 4 }), true);
+  assert.equal(needsAck({ version: 5, appliedVersion: 5 }), false);
 });
