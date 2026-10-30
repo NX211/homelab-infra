@@ -94,7 +94,7 @@ chrome:
     # the `release` tag so browser upgrades are a reviewable commit.
     # https://docs.karakeep.app/administration/chrome-image-migration
     repository: ghcr.io/karakeep-app/karakeep-chrome
-    tag: "151.0.7922.47-r1"
+    tag: "156.0.8078.47-r1"
     pullPolicy: IfNotPresent
   service:
     port: 9222
