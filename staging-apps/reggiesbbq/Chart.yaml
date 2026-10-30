@@ -5,7 +5,7 @@ type: application
 # 2.0.0: moved from the staging-app chart to nextjs-app (the chart prod
 # renders, published as an OCI artifact), in its own namespace (X4 app parity).
 version: 2.0.0
-appVersion: "0.16.0"
+appVersion: "0.17.0"
 maintainers:
   - name: Homelab Admin
 dependencies:
