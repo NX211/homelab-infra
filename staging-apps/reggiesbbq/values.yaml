@@ -146,6 +146,12 @@ nextjs-app:
       value: production
     - name: APP_ENV
       value: staging
+    # Sentry environment for server/edge events. Staging runs the prod image,
+    # so without this its events fall through to the build-time value and are
+    # filed as `production` (REGGIESBBQ-WEB-6/-A/-B came from staging). Peer
+    # staging apps all set it.
+    - name: SENTRY_ENVIRONMENT
+      value: staging
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.reggiesbbqonline.com
     - name: DATABASE_CONNECTION_LIMIT
