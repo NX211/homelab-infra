@@ -71,7 +71,7 @@ lidatube:
   enabled: true
   image:
     repository: thewicklowwolf/lidatube
-    tag: "0.2.56"
+    tag: "0.2.58"
     pullPolicy: IfNotPresent
   service:
     port: 5000
