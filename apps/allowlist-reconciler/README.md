@@ -23,11 +23,15 @@ IP). See `docs/staging-access/PLAN.md` in the coreyalan.com repo for the design.
    Skips the patch when already in sync.
 4. **Ack** — `POST /api/internal/staging-allowlist/ack` so coreyalan flips the
    reviewer's grant to ACTIVE (their page unlocks) and records the applied
-   version/hash.
+   version/hash. An in-sync app is acked only until coreyalan reports that
+   version as applied (`appliedVersion` in the desired state); a failed apply
+   is acked with `result: error` and the failure reason.
 
 Triggers: a 20s poll loop **plus** a push webhook (`POST /reconcile`, Bearer
 `RECONCILER_WEBHOOK_TOKEN`) that coreyalan calls on every change for near-instant
-apply. Fail-safe: any error leaves the Middleware at its last value — failures
+apply. Both run through one queue, so passes never overlap; extra poll ticks
+while a pass is pending are dropped. Kubernetes calls time out after 15s and
+acks after 10s. Fail-safe: any error leaves the Middleware at its last value — failures
 only ever *block* reviewers, never widen access.
 
 ## Why Argo doesn't fight it
