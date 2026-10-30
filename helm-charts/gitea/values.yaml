@@ -2,7 +2,7 @@
 
 image:
   repository: gitea/gitea
-  tag: "1.27.3-rootless"
+  tag: "28.2.0-rootless"
   pullPolicy: IfNotPresent
 
 replicaCount: 1
