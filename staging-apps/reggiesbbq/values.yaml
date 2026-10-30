@@ -15,7 +15,7 @@ nextjs-app:
   crons:
     enabled: true
     suspend: false
-    image: curlimages/curl:8.21.0
+    image: curlimages/curl:8.23.0
     baseUrl: http://reggiesbbq-staging:3000
     secretName: reggiesbbq-staging-secrets
     secretTokenKey: ADMIN_API_KEY
