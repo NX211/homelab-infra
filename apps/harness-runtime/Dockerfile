@@ -6,7 +6,7 @@
 # fleet's `engines: node >=24` — a real build/boot, not an engine-warning
 # approximation. Chromium comes from Playwright 1.55.0 so it matches the
 # playwright MODULE the fetch task vendors onto the workspace.
-FROM node:24-bookworm
+FROM node:26-bookworm
 
 # git/curl/openssl are in node:24-bookworm; python3 (the harness's inline
 # JSON/parse blocks) and ca-certificates are added explicitly.
