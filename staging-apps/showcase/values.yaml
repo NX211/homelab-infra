@@ -15,7 +15,7 @@ nextjs-app:
   image:
     repository: us-central1-docker.pkg.dev/coreyalan-showcase/showcase/showcase-web
     pullPolicy: IfNotPresent
-    digest: "sha256:320881b7de028a4f083763058e4441d4581b6ec24347e1010adf1a42dca69c8c" # written by gitops-staging-update.yml
+    digest: "sha256:80d4bd1594f4d41ef5a4688349fd2d66250532d3af2714ca81514094579b713c" # written by gitops-staging-update.yml
   # ESO keeps this secret current (templates/image-pull.yaml); also on the
   # ServiceAccount, so the migrate Job pulls with it.
   imagePullSecrets:
@@ -62,7 +62,7 @@ nextjs-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/coreyalan-showcase/showcase/showcase-web-migrate
-    digest: "sha256:f3f10ae2847a3b8871b87462284f95c3e15790d48a07a5bd676705e293e74c72" # written by gitops-staging-update.yml
+    digest: "sha256:0db69fa3907e7a543495e7dac2c5bc506c6376ea881082049e5557d58475db41" # written by gitops-staging-update.yml
   # kube-prometheus-stack scrapes through a PodMonitor; there is no Alloy here.
   metrics:
     enabled: true
