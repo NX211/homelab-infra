@@ -31,7 +31,7 @@ nextjs-app:
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
-    digest: "sha256:1efd4dab8d97d2d73cac6499c13e8c7971b54917cda906cc3628f09eaae1db7c" # written by gitops-staging-update.yml
+    digest: "sha256:367a44d0ce1458c67678f42dec10b390a9c62b3e669a1cbd109f88db52eedaee" # written by gitops-staging-update.yml
   # ESO keeps this secret current (templates/image-pull.yaml); also on the
   # ServiceAccount, so the migrate Job pulls with it.
   imagePullSecrets:
@@ -77,7 +77,7 @@ nextjs-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
-    digest: "sha256:60b761d90f6757b97ce8b91d48b89ad88d1d959278ee8674d486f145ac8fdbbf" # written by gitops-staging-update.yml
+    digest: "sha256:f62f8661e1f7fcf5beb1326a3d4031898de27426c490c5044e06f3227f3a5aed" # written by gitops-staging-update.yml
   authRateLimit:
     enabled: true
     paths:
