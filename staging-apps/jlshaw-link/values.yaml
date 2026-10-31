@@ -102,6 +102,13 @@ staging-app:
     # if/when it has a separate host; otherwise leave at prod.
     - name: COREYALAN_API_URL
       value: https://coreyalan.com
+    # Showcase demo service. The app has no default URL on purpose (the client
+    # creates, shares and deletes real demos), so staging must name the
+    # staging service explicitly, never prod. SHOWCASE_API_KEY is not mapped
+    # yet: the provisioning island only projects jlshaw's credential into prod
+    # Showcase, so no staging key exists until that is extended.
+    - name: SHOWCASE_API_URL
+      value: https://staging.showcase.coreyalan.com
     # Object storage. Prod uses native GCS (Workload Identity) for the member
     # resource library, course resources and certificates; staging has no GCP
     # identity, so it uses the in-cluster SeaweedFS S3 gateway instead. The
