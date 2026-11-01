@@ -42,6 +42,8 @@ metadata:
   name: verdaccio-untrusted
   namespace: build-registry-proxy
   labels: { app: verdaccio-untrusted, app.kubernetes.io/name: verdaccio }
+  # NPM_TOKEN is read at pod start; restart when the uplink secret rotates.
+  annotations: { reloader.stakater.com/auto: "true" }
 spec:
   replicas: 1
   selector:
@@ -49,6 +51,8 @@ spec:
   template:
     metadata:
       labels: { app: verdaccio-untrusted, app.kubernetes.io/name: verdaccio }
+      # Bumped to roll the pods onto a rotated uplink token.
+      annotations: { build-registry-proxy/npm-uplink-rotated: "2026-11-01" }
     spec:
       enableServiceLinks: false     # avoid VERDACCIO_PORT=tcp://... injection
       securityContext: { runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001 }
@@ -90,6 +94,8 @@ metadata:
   name: verdaccio-trusted
   namespace: build-registry-proxy
   labels: { app: verdaccio-trusted, app.kubernetes.io/name: verdaccio }
+  # NPM_TOKEN is read at pod start; restart when the uplink secret rotates.
+  annotations: { reloader.stakater.com/auto: "true" }
 spec:
   replicas: 1
   selector:
@@ -97,6 +103,8 @@ spec:
   template:
     metadata:
       labels: { app: verdaccio-trusted, app.kubernetes.io/name: verdaccio }
+      # Bumped to roll the pods onto a rotated uplink token.
+      annotations: { build-registry-proxy/npm-uplink-rotated: "2026-11-01" }
     spec:
       enableServiceLinks: false
       securityContext: { runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001 }
