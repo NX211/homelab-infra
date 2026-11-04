@@ -215,6 +215,15 @@ staging-app:
         key: 20ec28f3-7431-495f-aa61-b48d00ea8432
       - name: SIGNWELL_WEBHOOK_ID
         key: 67b640b6-0692-4a7a-b459-b48d00ea846c
+      # Capturly (training testimonial video). Both created as random
+      # placeholders — replace the VALUES in Bitwarden: the API key from the
+      # client's Capturly workspace, the webhook secret from registering
+      # https://<staging-host>/api/webhooks/capturly. Video stays off until the
+      # key is a real cap_live_/cap_test_ key; stars + text work regardless.
+      - name: CAPTURLY_API_KEY
+        key: 6a032554-d719-416e-befd-b4f8014f8ce1
+      - name: CAPTURLY_WEBHOOK_SECRET
+        key: c303349d-33a4-4a09-b7ce-b4f8014f8d19
   resources:
     requests:
       cpu: 100m
