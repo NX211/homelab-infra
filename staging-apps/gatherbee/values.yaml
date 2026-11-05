@@ -163,8 +163,6 @@ nextjs-app:
       value: production
     - name: APP_ENV
       value: staging
-    - name: APP_URL
-      value: https://staging.gatherbee.org
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.gatherbee.org
     - name: DATABASE_CONNECTION_LIMIT
