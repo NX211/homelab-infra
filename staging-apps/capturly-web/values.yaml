@@ -260,6 +260,8 @@ staging-app:
     - name: license-revocation-prune
       schedule: "10 3 * * *"
       endpoint: http://capturly-web-staging:3000/api/cron/license-revocation-prune
+      image: curlimages/curl:8.23.0
     - name: session-expiry
       schedule: "*/30 * * * *"
       endpoint: http://capturly-web-staging:3000/api/cron/session-expiry
+      image: curlimages/curl:8.23.0
