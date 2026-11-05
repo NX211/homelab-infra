@@ -305,8 +305,6 @@ staging-app:
         key: c12aff01-fed3-4ae4-ab14-b43501627431
       - name: KEILA_PROJECT_ID
         key: 4ca41ab1-017e-4b05-8398-b435016276cb
-      - name: SENTRY_DSN
-        key: e559f17f-b877-4e25-9596-b43501627970
       - name: GCP_PROJECT_NUMBER
         key: d526f0af-09ef-483b-af04-b43501627c0b
       # redis-ng Sentinel auth — same value as STAGING_REDIS_NG_PASSWORD. The app
