@@ -2119,14 +2119,29 @@ spec:
                 type: array
               deliveryGeneration:
                 description: |-
-                  DeliveryGeneration is the generation the outstanding delivery carries. An older one cannot
-                  satisfy the current generation, however it resolves.
+                  DeliveryGeneration is the generation the outstanding delivery carries. An older one with
+                  different workloads cannot satisfy the current generation, however it resolves.
                 format: int64
                 type: integer
+              deliveryMode:
+                description: |-
+                  DeliveryMode is the StateStore delivery mode of the latest delivery, including one still outstanding or rejected; empty means the built-in mode.
+                  Kratix delivers the WorkPlacement again when its StateStore's delivery mode differs.
+                type: string
               deliveryReceipt:
                 description: |-
                   DeliveryReceipt identifies a write the StateStore's writer accepted but has not delivered.
                   It is set while WriteSucceeded is Unknown and cleared once the delivery resolves.
+                type: string
+              deliveryURL:
+                description: |-
+                  DeliveryURL links to the latest delivery of these workloads, such as a pull request.
+                  Empty when the StateStore has no delivery mode.
+                type: string
+              deliveryWorkloadsHash:
+                description: |-
+                  DeliveryWorkloadsHash identifies the workloads the outstanding or rejected delivery carries.
+                  Rejected workloads are not delivered again until they change.
                 type: string
               versionID:
                 description: |-
@@ -2318,6 +2333,45 @@ spec:
                   - reason
                   - status
                   - type
+                  type: object
+                type: array
+              workPlacementStatuses:
+                description: |-
+                  Write state of each WorkPlacement of this Work, sorted by WorkPlacement name.
+                  WorkPlacements that are being deleted are not listed.
+                items:
+                  description: WorkPlacementWriteStatus is the write state of one
+                    WorkPlacement of a Work.
+                  properties:
+                    deliveryURL:
+                      description: |-
+                        Link to the latest delivery of the WorkPlacement's workloads, such as a pull request.
+                        Empty when the Destination's StateStore has no delivery mode.
+                      type: string
+                    destination:
+                      description: Name of the Destination the WorkPlacement writes
+                        to
+                      type: string
+                    message:
+                      description: Message of the WorkPlacement's WriteSucceeded condition
+                      type: string
+                    name:
+                      description: Name of the WorkPlacement
+                      type: string
+                    reason:
+                      description: Reason of the WorkPlacement's WriteSucceeded condition
+                      type: string
+                    status:
+                      description: |-
+                        Status of the WorkPlacement's WriteSucceeded condition: True, False or Unknown.
+                        Empty when the WorkPlacement has not been written yet.
+                      type: string
+                  required:
+                  - destination
+                  - message
+                  - name
+                  - reason
+                  - status
                   type: object
                 type: array
               workPlacements:
@@ -2670,7 +2724,7 @@ subjects:
 ---
 apiVersion: v1
 data:
-  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:f61f2d4c4ac4028279d44da5ea2e89f0ad088982c6e07e5b374b24efbde18e1c
+  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:2301a6ceda14636c50ed12653ac585a239ded76d24f430b2307855cd9e826428
 kind: ConfigMap
 metadata:
   labels:
@@ -2762,7 +2816,7 @@ spec:
             configMapKeyRef:
               key: PIPELINE_ADAPTER_IMG
               name: kratix-platform-pipeline-adapter-config
-        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:f61f2d4c4ac4028279d44da5ea2e89f0ad088982c6e07e5b374b24efbde18e1c
+        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:2301a6ceda14636c50ed12653ac585a239ded76d24f430b2307855cd9e826428
         livenessProbe:
           httpGet:
             path: /healthz
