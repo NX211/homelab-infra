@@ -60,6 +60,14 @@ staging-app:
       # appName MUST equal the StagingSite.infraAppName entered in the admin UI.
       reconcilerManaged: true
       appName: dispatchr-social
+  # Keyless GCP for the web pods, the same way the worker federates: its own
+  # KSA impersonates the staging Pub/Sub SA (publisher on job-queue-staging
+  # only). platform-infra homelab-wif.tf allows this subject.
+  gcpWorkloadIdentity:
+    enabled: true
+    ksaName: dispatchr-web
+    audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+    impersonateServiceAccount: dispatchr-social-worker-stg@dispatchr-social.iam.gserviceaccount.com
   env:
     - name: NODE_ENV
       value: production
@@ -67,6 +75,12 @@ staging-app:
       value: https://staging.dispatchr.social
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
       value: staging
+    # Web-created jobs publish to the dedicated staging queue. Unset, the topic
+    # defaults to `job-queue`, prod's name, so this must never be dropped.
+    - name: GCP_PROJECT_ID
+      value: dispatchr-social
+    - name: PUBSUB_TOPIC_NAME
+      value: job-queue-staging
     # Redis Sentinel (prod parity — same redis-ng-sentinel endpoint as prod)
     - name: REDIS_SENTINEL_HOST
       value: redis-ng-sentinel.redis.svc.cluster.local
@@ -238,11 +252,10 @@ staging-app:
       audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
       impersonateServiceAccount: dispatchr-social-worker-stg@dispatchr-social.iam.gserviceaccount.com
     env:
-      - name: GCP_PROJECT_ID
-        value: dispatchr-social
-      # ISOLATED staging queue — never prod's job-queue/worker-sub.
-      - name: PUBSUB_TOPIC_NAME
-        value: job-queue-staging
+      # GCP_PROJECT_ID and PUBSUB_TOPIC_NAME (job-queue-staging) are inherited
+      # from the web env above; set here too, they rendered twice and a duplicate
+      # env name breaks the strategic-merge apply. ISOLATED staging queue, never
+      # prod's job-queue/worker-sub.
       - name: PUBSUB_SUBSCRIPTION_NAME
         value: worker-sub-staging
       - name: WORKER_MAX_CONCURRENT
