@@ -228,6 +228,9 @@ worker:
 # - name: session-expiry
 #   schedule: "*/30 * * * *"
 #   endpoint: http://capturly-web-staging:3000/api/cron/session-expiry
+# Default image for httpCronJobs entries without their own `image`. Kept here
+# rather than inline in the template so Renovate can see and bump it.
+httpCronJobImage: curlimages/curl:8.23.0
 httpCronJobs: []
 
 # ServiceMonitor for the app's /metrics. OPT-IN (default off): the Next.js apps
