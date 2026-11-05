@@ -1,77 +1,88 @@
-# Accepted misconfigurations. Scope each to its path so the CRITICAL gate still
-# catches new findings elsewhere.
+# Accepted misconfigurations, each scoped to its path so the same rule still
+# fires anywhere else. Every entry carries a statement (why it is acceptable and
+# what ends it) and an expired_at at most 90 days out; once it lapses Trivy
+# reports the finding again and the PR lint fails until the entry is renewed or
+# removed on purpose. Dates stay unquoted: Trivy rejects a quoted one.
 misconfigurations:
-  # Kratix platform controller (vendored install manifest). Its manager
-  # ClusterRole must manage tenant Secrets and bind/escalate Roles to provision
-  # tenants — that is the controller's job. Accepted, path-scoped.
-  # KSV-0014: the vendored file deliberately has no readOnlyRootFilesystem,
-  # because it is a pristine copy of upstream's release asset that
-  # .github/workflows/kratix-revendor.yml overwrites wholesale. The hardening is
-  # applied by kratix/kustomization.yaml instead, which is what ArgoCD renders
-  # and deploys. Trivy scans the file, not the rendered output, so it sees the
-  # unpatched form.
-  #
-  # This exception is only safe while that overlay exists. Verify with:
-  #   kubectl kustomize kratix | trivy config -
-  # which should report no KSV-0014. Previously the patch was inline in
-  # install.yaml and this gate was the tripwire for a re-vendor silently
-  # dropping it; the overlay removes that failure mode by construction.
   - id: KSV-0014
     paths:
       - "kratix/install.yaml"
+    statement: >-
+      kratix/install.yaml is a pristine copy of the upstream Kratix release asset
+      that kratix-revendor.yml overwrites wholesale, so it has no
+      readOnlyRootFilesystem. kratix/kustomization.yaml patches it in, and that
+      rendered output is what ArgoCD deploys (`kubectl kustomize kratix | trivy
+      config -` reports no KSV-0014). Valid only while that overlay exists; ends
+      if the overlay is dropped or upstream ships the setting.
+    expired_at: 2027-01-30
   - id: KSV-0041
     paths:
       - "kratix/install.yaml"
+    statement: >-
+      Vendored Kratix platform-manager ClusterRole: the controller must manage
+      tenant Secrets to provision tenants, which is its job. Ends when upstream
+      Kratix narrows the role or the controller is removed.
+    expired_at: 2027-01-30
   - id: KSV-0050
     paths:
       - "kratix/install.yaml"
-  # ar-token-refresher's Role must create/update the pull-secret it writes into
-  # each consuming namespace — that is the whole point of the component (same as
-  # the accepted staging/provisioning Roles). chains-token-refresher is the same
-  # shape: it exists to write one Secret, and RBAC cannot scope `create` by
-  # resourceName, so the verb has to be namespace-wide. Its update/patch ARE
-  # name-scoped, so it cannot touch the operator's signing-secrets.
-  # Accepted, path-scoped.
+    statement: >-
+      Vendored Kratix platform-manager ClusterRole: the controller must bind and
+      escalate Roles to provision tenants, which is its job. Ends when upstream
+      Kratix narrows the role or the controller is removed.
+    expired_at: 2027-01-30
   - id: KSV-0113
     paths:
       - "ar-token-refresher/rbac.yaml"
       - "tekton/chains/rbac.yaml"
-  # The artifact-registry-token store's reader Role: `get` on one Secret by
-  # resourceName (the ESO-minted Artifact Registry token it serves). KSV-0113
-  # does not evaluate resourceNames, so it flags any Secrets grant. The file
-  # holds only this Role, its ServiceAccount and binding.
+    statement: >-
+      ar-token-refresher must create/update the pull secret it writes into each
+      consuming namespace, and chains-token-refresher exists to write one Secret.
+      RBAC cannot scope `create` by resourceName, so that verb is namespace-wide;
+      update/patch are name-scoped, so neither can touch other Secrets. Ends for
+      ar-token-refresher when its remaining namespaces (staging, provisioning,
+      capturly-live) move to ESO GCRAccessToken tokens and it is deleted.
+    expired_at: 2027-01-30
   - id: KSV-0113
     paths:
       - "external-secrets-operator/manifests/artifact-registry-token-rbac.yaml"
-  # prisma-engines + maven mirrors pull the upstream nginx-unprivileged image
-  # from docker.io (same as the sibling verdaccio proxy). No ghcr re-mirror yet;
-  # accepted, path-scoped. All other KSV findings on these files are hardened.
+    statement: >-
+      The artifact-registry-token store's reader Role grants only `get` on the
+      one ESO-minted Artifact Registry token Secret, by resourceName. KSV-0113
+      does not evaluate resourceNames, so it flags any Secrets grant. Ends when
+      the rule honours resourceNames or the scoped store is replaced.
+    expired_at: 2027-01-30
   - id: KSV-0125
     paths:
       - "build-registry-proxy/prisma-mirror.yaml"
       - "build-registry-proxy/maven-mirror.yaml"
-      # alpine/k8s — the same image ar-token-refresher already runs for the same
-      # STS-exchange job. No ghcr re-mirror yet; accepted, path-scoped.
       - "tekton/chains/refresher.yaml"
-  # KSV-0109/KSV-01010 flag the chains-token-refresher ConfigMap as "storing
-  # secrets". It stores the refresh *script*; the matches are shell identifiers
-  # and literals in that source — subjectToken, AUTH_B64, oidc-token, SECRET
-  # (a Secret *name*), SIGNER_SA (a service-account email) and the '{auths' of
-  # the dockerconfigjson it builds at runtime. No credential is committed: every
-  # token in this component is minted in-cluster and written to a Secret that is
-  # deliberately not in git. Accepted, path-scoped — narrowly, so the same rules
-  # still fire on any other manifest.
+    statement: >-
+      The prisma-engines and maven mirrors pull nginxinc/nginx-unprivileged and
+      chains-token-refresher pulls alpine/k8s from docker.io (the same images the
+      sibling verdaccio proxy and ar-token-refresher already run); every other
+      KSV finding on these files is hardened. Ends when these images are
+      re-mirrored to a trusted registry (ghcr/Artifact Registry).
+    expired_at: 2027-01-30
   - id: KSV-0109
     paths:
       - "tekton/chains/refresher.yaml"
+    statement: >-
+      The chains-token-refresher ConfigMap holds the refresh script, not a
+      credential; the matches are shell identifiers and literals (subjectToken,
+      AUTH_B64, oidc-token, a Secret name, a service-account email). Every token
+      is minted in-cluster into a Secret that is not in git. Ends if the script
+      moves out of the ConfigMap or the component is retired.
+    expired_at: 2027-01-30
   - id: KSV-01010
     paths:
       - "tekton/chains/refresher.yaml"
-      # Matches the literal string "service_account_impersonation_url" in the
-      # Kyverno ADC config — a URL naming *which* account to impersonate, not a
-      # credential. An external_account config is designed to be non-secret:
-      # holding no key material is the entire reason it exists in place of a
-      # service-account key, which is what the org policy bans. The only thing
-      # resembling a credential is the path to a projected token the kubelet
-      # writes at runtime.
       - "kyverno-policies-business/registry-auth-adc.yaml"
+    statement: >-
+      Both match non-secret text: the chains-token-refresher script's shell
+      identifiers and the '{auths' of the dockerconfigjson it builds at runtime,
+      and the Kyverno external_account ADC's service_account_impersonation_url,
+      which names an account to impersonate and holds no key material (that is
+      why it replaces a banned SA key). Ends if either file gains real key
+      material or the components are retired.
+    expired_at: 2027-01-30
