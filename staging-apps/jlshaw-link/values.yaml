@@ -173,6 +173,10 @@ staging-app:
         key: 6aa33b1f-6133-42da-aa73-b42200fec4c5
       - name: API_KEY_HASH_SECRET
         key: 5aa854b6-bcd6-41bb-8f89-b43000efdc6b
+      # AES-256-GCM key for stored API keys (src/lib/crypto/encrypt.ts throws
+      # without it). Staging's own value, created 2026-06-09 and never mapped.
+      - name: ENCRYPTION_KEY
+        key: 8dce6f63-6e55-4db7-959b-b464015eff4d
       # Mailgun sandbox (staging standard): delivers only to the sandbox's
       # authorized recipients, and From must sit on the sandbox domain or the
       # real domain's DMARC p=reject drops it. No signing/admin key mapped, so

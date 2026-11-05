@@ -86,6 +86,19 @@ staging-app:
       value: "true"
     - name: S3_BUCKET_NAME
       value: dispatchr-social-uploads
+    # Invitation links (admin invitations routes); same value as
+    # NEXT_PUBLIC_APP_URL, matching prod.
+    - name: APP_URL
+      value: https://staging.dispatchr.social
+    # Prisma pool ceiling (packages/db resolve-url.ts). Unset, Prisma sizes the
+    # pool from the node's CPU count, not the container's; matches the other
+    # staging apps.
+    - name: DATABASE_CONNECTION_LIMIT
+      value: "3"
+    # Explicit, matching prod (report | enforce | off): a security setting
+    # should not rest on the code default.
+    - name: CSRF_PROTECTION
+      value: enforce
   envFrom:
     - secretRef:
         name: dispatchr-staging-secrets

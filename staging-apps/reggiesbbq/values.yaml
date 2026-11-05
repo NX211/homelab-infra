@@ -156,6 +156,10 @@ nextjs-app:
       value: https://staging.reggiesbbqonline.com
     - name: DATABASE_CONNECTION_LIMIT
       value: "3"
+    # Explicit, matching prod (report | enforce | off): a security setting
+    # should not rest on the code default.
+    - name: CSRF_PROTECTION
+      value: enforce
     - name: REDIS_SENTINEL_HOST
       value: redis-ng-sentinel.redis.svc.cluster.local
     - name: REDIS_SENTINEL_PORT
