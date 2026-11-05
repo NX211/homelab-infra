@@ -185,7 +185,7 @@ spec:
           # debian13 base: debian12's libssl3 3.0.18 carries CVE-2026-31789
           # (critical) with no rebuilt distroless image available.
           # renovate: datasource=docker depName=gcr.io/distroless/nodejs22-debian13
-          image: gcr.io/distroless/nodejs22-debian13@sha256:f643bc05bdcf5a8d98442e8a2a5c7a3a4c3a0e3bc4cdc5f10557d47f1ddd5812
+          image: gcr.io/distroless/nodejs22-debian13@sha256:8ad697a6d7880bda8248a86a1df5b54e4993479931148f863e8a57ab66c95d24
           command: ["/nodejs/bin/node", "/app/server.mjs"]
           ports:
             - containerPort: 8080
