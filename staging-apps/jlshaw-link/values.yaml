@@ -27,11 +27,11 @@ staging-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web-migrate
-    digest: "sha256:58a724e844dc84861416ab69a8bad3dfafa4b1fa4c540a0fe970ad20782173f2" # Updated by CI/CD
+    digest: "sha256:7b8b1a1f2e3e54c780333943fc49beebfdda182fb683ea5cea75fcad288c084f" # Updated by CI/CD
   image:
     repository: us-central1-docker.pkg.dev/jl-shaw-486618/jlshaw/jlshaw-web
     pullPolicy: IfNotPresent
-    digest: "sha256:72c6693f74325297f64dab0b6a0481186355493e8e63d83c72d1840cd393fdb6" # Updated by CI/CD
+    digest: "sha256:fb15f13e9d4ca14aa6ae617c6e19793e372d302412f1ebac22c2245650d3cf98" # Updated by CI/CD
   imagePullSecrets:
     - name: gcr-pull-secret-jlshaw
   # GCP Artifact Registry pull secret (synced from Bitwarden via ESO)
@@ -215,6 +215,15 @@ staging-app:
         key: 20ec28f3-7431-495f-aa61-b48d00ea8432
       - name: SIGNWELL_WEBHOOK_ID
         key: 67b640b6-0692-4a7a-b459-b48d00ea846c
+      # Capturly (training testimonial video). Both created as random
+      # placeholders — replace the VALUES in Bitwarden: the API key from the
+      # client's Capturly workspace, the webhook secret from registering
+      # https://<staging-host>/api/webhooks/capturly. Video stays off until the
+      # key is a real cap_live_/cap_test_ key; stars + text work regardless.
+      - name: CAPTURLY_API_KEY
+        key: 6a032554-d719-416e-befd-b4f8014f8ce1
+      - name: CAPTURLY_WEBHOOK_SECRET
+        key: c303349d-33a4-4a09-b7ce-b4f8014f8d19
   resources:
     requests:
       cpu: 100m
