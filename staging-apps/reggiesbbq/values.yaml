@@ -31,7 +31,9 @@ nextjs-app:
       - {name: refund-claims, schedule: "*/10 * * * *", path: /api/cron/refund-claims, method: POST}
       # Restaurant and counter terminal (reggiesbbq #174, #191, #195).
       - {name: printer-health, schedule: "*/5 * * * *", path: /api/cron/printer-health, method: POST}
-      - {name: fire-scheduled-tickets, schedule: "* * * * *", path: /api/cron/fire-scheduled-tickets, method: POST}
+      # No retries: the route takes no lock, so a retry overlapping a slow run
+      # could queue a ticket twice; the next minute picks up anything missed.
+      - {name: fire-scheduled-tickets, schedule: "* * * * *", path: /api/cron/fire-scheduled-tickets, method: POST, backoffLimit: 0}
       - {name: unforwarded-terminal-cards, schedule: "20 * * * *", path: /api/cron/unforwarded-terminal-cards, method: POST}
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
