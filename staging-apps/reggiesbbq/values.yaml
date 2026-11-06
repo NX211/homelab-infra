@@ -10,6 +10,10 @@ nextjs-app:
   # Every object keeps the reggiesbbq-staging name (Service, TLS secret; Port
   # maps reports by this prefix).
   fullnameOverride: reggiesbbq-staging
+  # Reloader watches referenced Secrets + ConfigMaps and rolls this Deployment
+  # when any change, so a new Bitwarden key reaches the pods without a restart.
+  deploymentAnnotations:
+    reloader.stakater.com/auto: "true"
   # Prod's routes and schedules (the app's cron-manifest.json), against staging data and test-mode
   # third parties (Stripe test, Shippo test, Mailgun).
   crons:
