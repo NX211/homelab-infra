@@ -10,7 +10,7 @@ nextjs-app:
   # Every object keeps the reggiesbbq-staging name (Service, TLS secret; Port
   # maps reports by this prefix).
   fullnameOverride: reggiesbbq-staging
-  # Prod's five routes and schedules, against staging data and test-mode
+  # Prod's routes and schedules (the app's cron-manifest.json), against staging data and test-mode
   # third parties (Stripe test, Shippo test, Mailgun).
   crons:
     enabled: true
@@ -28,6 +28,11 @@ nextjs-app:
       - {name: marketing-campaigns, schedule: "*/5 * * * *", path: /api/cron/marketing-campaigns, method: POST}
       - {name: weekly-report, schedule: "0 14 * * 2", path: /api/cron/weekly-report}
       - {name: purge-expired-data, schedule: "30 3 * * *", path: /api/cron/purge-expired-data}
+      - {name: refund-claims, schedule: "*/10 * * * *", path: /api/cron/refund-claims, method: POST}
+      # Restaurant and counter terminal (reggiesbbq #174, #191, #195).
+      - {name: printer-health, schedule: "*/5 * * * *", path: /api/cron/printer-health, method: POST}
+      - {name: fire-scheduled-tickets, schedule: "* * * * *", path: /api/cron/fire-scheduled-tickets, method: POST}
+      - {name: unforwarded-terminal-cards, schedule: "20 * * * *", path: /api/cron/unforwarded-terminal-cards, method: POST}
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
@@ -311,3 +316,15 @@ externalSecrets:
     # password redis-ng itself uses. Keep the two equal.
     - name: REDIS_PASSWORD
       key: 0363c4fe-ebc4-4902-9e48-b4f101251729
+    # Counter terminal (docs/pos-api.md in the app). One Ed25519 pair signs
+    # the device bearer and employee session tokens; each is the PEM base64
+    # on one line. Staging-only pair (created 2026-11-06); rotating it signs
+    # every terminal out. Unset, /api/pos answers 503 POS_NOT_CONFIGURED.
+    - name: POS_TOKEN_PRIVATE_KEY
+      key: f42e52c2-6b97-415a-9784-b4fa014a1c21
+    - name: POS_TOKEN_PUBLIC_KEY
+      key: 93fc14f3-f421-4632-9eab-b4fa014a1c51
+    # Stripe TEST-mode Terminal Location the staging S700 registers to.
+    # Unset, /api/pos/terminal answers 503 and the terminal takes cash only.
+    - name: STRIPE_TERMINAL_LOCATION_ID
+      key: 1ccb028b-8ff5-43a5-9ccf-b4fa014a3c12
