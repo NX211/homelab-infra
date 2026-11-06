@@ -269,8 +269,8 @@ staging-app:
       - name: NAMECOM_WEBHOOK_SECRET
         key: 217a2a7b-6dc0-4b69-9417-b43501625eb9
       # Platform & Admin
-      - name: GITHUB_TOKEN
-        key: e21c6d90-eaec-4970-acb7-b43501626151
+      # No GitHub credentials on staging (decided 2026-11-05): the PAT that sat
+      # here is gone, and GitHub features stay prod-only (prod uses the App).
       - name: ARGOCD_SERVER_URL
         key: e138031d-643d-48a4-9dd8-b435016263ed
       - name: ARGOCD_AUTH_TOKEN

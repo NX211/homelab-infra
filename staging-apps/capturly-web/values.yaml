@@ -185,11 +185,18 @@ staging-app:
         key: 948b44b3-783b-4988-9e02-b48601755ec6
       - name: CALENDAR_TOKEN_ENC_KEY
         key: 75967583-1a02-4c71-96bb-b48601755f05
-      # Desktop license signing (Ed25519 keypair, distinct from prod)
-      - name: LICENSE_PRIVATE_KEY
-        key: 5b2ce9b6-1332-479d-a239-b456015c3743
-      - name: LICENSE_PUBLIC_KEY
-        key: d9997ba3-8fe0-40f0-9361-b456015c39e9
+      # Desktop license signing (Ed25519, distinct from prod), in the JWK form
+      # apps/web/src/lib/license/keys.ts reads. Same key as the old PEM pair
+      # (LICENSE_PRIVATE_KEY / LICENSE_PUBLIC_KEY, which the code no longer reads),
+      # so licenses already issued on staging still verify.
+      - name: LICENSE_SIGNING_JWK
+        key: f9b26033-9f18-40ba-8313-b4f901805f8d
+      - name: LICENSE_JWKS
+        key: b20cffce-4935-45ae-a613-b4f901805fc7
+      # HMAC secret for campaign links (campaignKeys.ts throws without it).
+      # Never rotate without re-issuing outstanding campaign links.
+      - name: CAMPAIGN_JOIN_KEY_SECRET
+        key: 679b8c35-9918-44e9-b8af-b4f901805ff8
       # Cron bearer (only consumed if a scheduler hits /api/cron/* in staging)
       - name: CRON_SECRET
         key: 7ec4273f-e202-42bc-b8b4-b456015c3c7e

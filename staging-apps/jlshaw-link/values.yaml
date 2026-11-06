@@ -80,6 +80,10 @@ staging-app:
     # fallback inside getAppUrl(); the effective runtime value is APP_URL above.
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.jlshawconsulting.com
+    # Contact-form mail goes to the operator inbox, never the client's real one
+    # (the code falls back to contact@jlshawconsulting.com).
+    - name: CONTACT_FORM_TO
+      value: contact@coreyalan.com
     - name: NEXT_PUBLIC_SENTRY_ENVIRONMENT
       value: staging
     # Redis (redis-ng Sentinel). jlshaw's client (src/lib/redis/client.ts) takes
@@ -173,6 +177,11 @@ staging-app:
         key: 6aa33b1f-6133-42da-aa73-b42200fec4c5
       - name: API_KEY_HASH_SECRET
         key: 5aa854b6-bcd6-41bb-8f89-b43000efdc6b
+      # Google sign-in. Staging's own OAuth client (redirect URI differs from prod).
+      - name: GOOGLE_CLIENT_ID
+        key: 1e5029bb-a94d-4df3-9093-b4640160936f
+      - name: GOOGLE_CLIENT_SECRET
+        key: 3f29dbe0-70a9-475e-be0d-b4640160a958
       # AES-256-GCM key for stored API keys (src/lib/crypto/encrypt.ts throws
       # without it). Staging's own value, created 2026-06-09 and never mapped.
       - name: ENCRYPTION_KEY
