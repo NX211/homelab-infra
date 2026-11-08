@@ -165,6 +165,12 @@ nextjs-app:
       value: staging
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.reggiesbbqonline.com
+    # The restaurant ordering site's staging host (apps/web/src/lib/site.ts),
+    # routed to these same pods by extraHosts below; prod uses
+    # order.reggiesbbq.com. Never indexed here: APP_ENV=staging turns indexing
+    # off whatever RESTAURANT_INDEXABLE says, and it is left unset anyway.
+    - name: RESTAURANT_SITE_URL
+      value: https://staging.reggiesbbq.com
     - name: DATABASE_CONNECTION_LIMIT
       value: "3"
     # Explicit, matching prod (report | enforce | off): a security setting
@@ -208,6 +214,17 @@ nextjs-app:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+# Extra public hosts on the same pods (templates/extra-hosts-ingressroute.yaml,
+# the same template as prod's helm-charts/reggiesbbq): an IngressRoute, a
+# Let's Encrypt Certificate and the auth rate-limit routes per entry, behind
+# the same ingress.middlewares as the primary host (so the reviewer allowlist,
+# when on, covers it too). DNS: the A record in platform-infra
+# terraform/environments/prod/reggiesbbq-com-dns.tf (homelab IP) plus the
+# split-horizon entry in coredns/configmap.yaml. Each host must also be a
+# *_SITE_URL origin in env above, or the app 404s it.
+extraHosts:
+  - name: restaurant
+    host: staging.reggiesbbq.com
 # --- Staging-only objects (templates/) ---
 bitwarden:
   projectID: "1700bcb5-dffc-4270-9683-b4b70185464d" # Staging - Reggie's BBQ
