@@ -39,6 +39,12 @@ nextjs-app:
       # could queue a ticket twice; the next minute picks up anything missed.
       - {name: fire-scheduled-tickets, schedule: "* * * * *", path: /api/cron/fire-scheduled-tickets, method: POST, backoffLimit: 0}
       - {name: unforwarded-terminal-cards, schedule: "20 * * * *", path: /api/cron/unforwarded-terminal-cards, method: POST}
+      # Restaurant release (reggiesbbq #202): counter loose ends and lapsed
+      # 86s, the daily gift-card books check, and the Deliverect heartbeat and
+      # catch-up (a no-op while DELIVERECT_* is a placeholder).
+      - {name: pos-sweeps, schedule: "*/10 * * * *", path: /api/cron/pos-sweeps, method: POST}
+      - {name: gift-card-liability, schedule: "15 9 * * *", path: /api/cron/gift-card-liability, method: POST}
+      - {name: deliverect-sync, schedule: "*/10 * * * *", path: /api/cron/deliverect-sync, method: POST}
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
