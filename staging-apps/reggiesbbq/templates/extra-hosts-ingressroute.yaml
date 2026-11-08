@@ -1,0 +1,98 @@
+{{- /*
+Extra public hosts served by the same pods: one IngressRoute and one
+cert-manager Certificate (HTTP-01, the app's ClusterIssuer) per entry in
+.Values.extraHosts. The base nextjs-app chart serves exactly one
+ingress.host, so a second site needs this loop; the shape is
+platform-infra helm-charts/coreyalan-com/templates/regional-ingressroute.yaml;
+the same file serves prod (platform-infra) and staging (homelab-infra).
+
+The app tells the sites apart by Host header (apps/web/src/lib/site.ts,
+RESTAURANT_SITE_URL), so every extra host here MUST also be the origin of a
+*_SITE_URL env var, or the middleware's host allowlist answers it with 404.
+
+Each host also gets the base chart's per-IP auth rate limits
+(nextjs-app.authRateLimit.paths): the restaurant host serves /signin and
+/api/auth/* too, and the base chart only emits those routes for ingress.host.
+Middlewares are referenced by name — they live in this namespace already
+(Traefik does not have allowCrossNamespace enabled). ingress.middlewares (if
+any) apply here exactly as on the primary host.
+*/}}
+{{- $app := index .Values "nextjs-app" -}}
+{{- if and .Values.extraHosts $app.ingress.enabled }}
+{{- $svc := $app.fullnameOverride | default (printf "%s-nextjs-app" .Release.Name) -}}
+{{- $port := $app.service.port -}}
+{{- $issuer := $app.ingress.clusterIssuer -}}
+{{- $middlewares := $app.ingress.middlewares -}}
+{{- range .Values.extraHosts }}
+{{- $name := printf "%s-%s" $svc (required "extraHosts[].name is required" .name) -}}
+{{- $host := required "extraHosts[].host is required" .host -}}
+{{- $tls := printf "%s-tls" $name }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $name }}
+  labels:
+    app.kubernetes.io/name: nextjs-app
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`{{ $host }}`)
+      kind: Rule
+      {{- with $middlewares }}
+      middlewares:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      services:
+        - name: {{ $svc }}
+          port: {{ $port }}
+  tls:
+    secretName: {{ $tls }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $tls }}
+  labels:
+    app.kubernetes.io/name: nextjs-app
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+spec:
+  secretName: {{ $tls }}
+  issuerRef:
+    name: {{ $issuer }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ $host }}
+{{- if and $app.authRateLimit.enabled $app.authRateLimit.paths }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ printf "%s-auth-rate-limit" $name | trunc 63 | trimSuffix "-" }}
+  labels:
+    app.kubernetes.io/name: nextjs-app
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    {{- range $app.authRateLimit.paths }}
+    - match: Host(`{{ $host }}`) && {{ ternary "PathPrefix" "Path" (default false .prefixMatch) }}(`{{ .path }}`)
+      kind: Rule
+      priority: 100
+      middlewares:
+        - name: {{ printf "auth-%s" .tier }}
+        {{- with $middlewares }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      services:
+        - name: {{ $svc }}
+          port: {{ $port }}
+    {{- end }}
+  tls:
+    secretName: {{ $tls }}
+{{- end }}
+{{- end }}
+{{- end }}
