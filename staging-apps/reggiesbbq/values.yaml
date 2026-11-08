@@ -357,3 +357,31 @@ externalSecrets:
     # Unset, /api/pos/terminal answers 503 and the terminal takes cash only.
     - name: STRIPE_TERMINAL_LOCATION_ID
       key: 1ccb028b-8ff5-43a5-9ccf-b4fa014a3c12
+    # Uber Direct courier delivery (created 2026-11-08). All four seeded as
+    # PLACEHOLDER, which the app reads as unset, so the restaurant checkout
+    # offers pickup only and the webhook answers 404 until real test
+    # credentials replace them in Bitwarden.
+    - name: UBER_DIRECT_CUSTOMER_ID
+      key: 0984125d-29ee-4cc1-93da-b4fc01617b94
+    - name: UBER_DIRECT_CLIENT_ID
+      key: 447db0f5-335d-46c0-b73a-b4fc01617be3
+    - name: UBER_DIRECT_CLIENT_SECRET
+      key: 36aaf5f4-2952-4933-80eb-b4fc01617c1a
+    - name: UBER_DIRECT_WEBHOOK_SIGNING_KEY
+      key: 9a098340-9b97-4480-81aa-b4fc01617c63
+    # Deliverect (DoorDash / Uber Eats), seeded as PLACEHOLDER (2026-11-08):
+    # off until real values land. DELIVERECT_ENV and
+    # DELIVERECT_WEBHOOK_BASE_URL are deliberately not mapped yet: they are an
+    # enum and a URL, so a placeholder would fail env validation at boot. Map
+    # DELIVERECT_ENV (=staging) together with the real client credentials.
+    - name: DELIVERECT_CLIENT_ID
+      key: 575dc814-befa-4b6d-8c7e-b4fc01617cc4
+    - name: DELIVERECT_CLIENT_SECRET
+      key: 181c21e3-85e8-44ca-8c06-b4fc01617d40
+    - name: DELIVERECT_WEBHOOK_SECRET
+      key: 8636b9fe-57a4-46f7-902e-b4fc01617dad
+    # Signs the loyalty and promo QR codes (apps/web/src/lib/loyalty/qr.ts),
+    # so rotating AUTH_SECRET no longer voids printed codes. Real random value
+    # (2026-11-08). Setting or changing it voids every QR code already issued.
+    - name: LOYALTY_QR_SECRET
+      key: 42c80f8b-bfb7-45cf-b845-b4fc01617e26
