@@ -88,6 +88,12 @@ staging-app:
       value: "26379"
     - name: REDIS_SENTINEL_MASTER
       value: mymaster
+    # Standalone redis-apps (N7, prod parity). Releases that read REDIS_HOST
+    # use it and ignore REDIS_SENTINEL_*, which go once every release has it.
+    - name: REDIS_HOST
+      value: redis-apps.redis.svc.cluster.local
+    - name: REDIS_PORT
+      value: "6379"
     # ---- SeaweedFS S3 endpoint (in-cluster) ----
     # App code uses these when STORAGE_PROVIDER=s3. Prod uses native GCS.
     - name: STORAGE_PROVIDER
@@ -231,7 +237,7 @@ staging-app:
     failureThreshold: 3
   # Background worker + cron tier — mirrors prod, but on the ISOLATED staging
   # Pub/Sub queue (job-queue-staging / worker-sub-staging, NOT prod's). The
-  # worker inherits the web env (Redis Sentinel) + envFrom (DATABASE_URL,
+  # worker inherits the web env (Redis) + envFrom (DATABASE_URL,
   # REDIS_PASSWORD) and adds the Pub/Sub vars + a mounted SA-key file.
   worker:
     enabled: true
