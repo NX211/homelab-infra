@@ -84,6 +84,12 @@ staging-app:
       value: "26379"
     - name: REDIS_SENTINEL_MASTER
       value: mymaster
+    # Standalone redis-apps (N7, prod parity). Releases that read REDIS_HOST
+    # use it and ignore REDIS_SENTINEL_*, which go once every release has it.
+    - name: REDIS_HOST
+      value: redis-apps.redis.svc.cluster.local
+    - name: REDIS_PORT
+      value: "6379"
     - name: GCS_STORE_ASSETS_BUCKET
       value: coreyalan-store-assets-staging
     # ---- SeaweedFS S3 endpoint (in-cluster) ----
