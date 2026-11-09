@@ -332,25 +332,16 @@ spec:
                   Defaults to the Destination name
                 type: string
               stateStoreRef:
-                description: Reference to the StateStore used to persist resources
-                  for this Destination
+                description: Reference to the StateStore (GitStateStore or BucketStateStore)
+                  used to persist resources for this Destination
                 properties:
-                  apiVersion:
-                    default: platform.kratix.io/v1alpha1
-                    description: APIVersion of the StateStore resource. Defaults to
-                      platform.kratix.io/v1alpha1
-                    type: string
-                    x-kubernetes-validations:
-                    - message: stateStoreRef.apiVersion is immutable
-                      rule: self == oldSelf
                   kind:
-                    description: |-
-                      Kind of the StateStore resource. Kratix manages BucketStateStore and GitStateStore.
-                      Any other Kind must be managed by its own controller.
+                    description: Kind of the StateStore resource. Must be either BucketStateStore
+                      or GitStateStore
+                    enum:
+                    - BucketStateStore
+                    - GitStateStore
                     type: string
-                    x-kubernetes-validations:
-                    - message: stateStoreRef.kind is immutable
-                      rule: self == oldSelf
                   name:
                     description: Name of the StateStore resource
                     type: string
@@ -2119,14 +2110,33 @@ spec:
                 type: array
               deliveryGeneration:
                 description: |-
-                  DeliveryGeneration is the generation the outstanding delivery carries. An older one cannot
-                  satisfy the current generation, however it resolves.
+                  DeliveryGeneration is the generation the outstanding delivery carries. An older one with
+                  different workloads cannot satisfy the current generation, however it resolves.
                 format: int64
                 type: integer
+              deliveryMode:
+                description: |-
+                  DeliveryMode is the StateStore delivery mode of the latest delivery, including one still outstanding or rejected; empty means the built-in mode.
+                  Kratix delivers the WorkPlacement again when its StateStore's delivery mode differs.
+                type: string
               deliveryReceipt:
                 description: |-
                   DeliveryReceipt identifies a write the StateStore's writer accepted but has not delivered.
                   It is set while WriteSucceeded is Unknown and cleared once the delivery resolves.
+                type: string
+              deliveryRemoval:
+                description: DeliveryRemoval is true when the pending or rejected
+                  delivery removes this WorkPlacement's files.
+                type: boolean
+              deliveryURL:
+                description: |-
+                  DeliveryURL links to the latest delivery of these workloads, such as a pull request.
+                  Empty when the StateStore has no delivery mode.
+                type: string
+              deliveryWorkloadsHash:
+                description: |-
+                  DeliveryWorkloadsHash identifies the workloads the outstanding or rejected delivery carries.
+                  Rejected workloads are not delivered again until they change.
                 type: string
               versionID:
                 description: |-
@@ -2320,6 +2330,45 @@ spec:
                   - type
                   type: object
                 type: array
+              workPlacementStatuses:
+                description: |-
+                  Write state of each WorkPlacement of this Work, sorted by WorkPlacement name.
+                  WorkPlacements that are being deleted are not listed.
+                items:
+                  description: WorkPlacementWriteStatus is the write state of one
+                    WorkPlacement of a Work.
+                  properties:
+                    deliveryURL:
+                      description: |-
+                        Link to the latest delivery of the WorkPlacement's workloads, such as a pull request.
+                        Empty when the Destination's StateStore has no delivery mode.
+                      type: string
+                    destination:
+                      description: Name of the Destination the WorkPlacement writes
+                        to
+                      type: string
+                    message:
+                      description: Message of the WorkPlacement's WriteSucceeded condition
+                      type: string
+                    name:
+                      description: Name of the WorkPlacement
+                      type: string
+                    reason:
+                      description: Reason of the WorkPlacement's WriteSucceeded condition
+                      type: string
+                    status:
+                      description: |-
+                        Status of the WorkPlacement's WriteSucceeded condition: True, False or Unknown.
+                        Empty when the WorkPlacement has not been written yet.
+                      type: string
+                  required:
+                  - destination
+                  - message
+                  - name
+                  - reason
+                  - status
+                  type: object
+                type: array
               workPlacements:
                 description: Number of WorkPlacements currently scheduled for this
                   Work
@@ -2386,20 +2435,6 @@ rules:
   verbs:
   - create
   - patch
----
-aggregationRule:
-  clusterRoleSelectors:
-  - matchLabels:
-      kratix.io/aggregate-to-kratix: "true"
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/component: kratix-manager
-    app.kubernetes.io/instance: kratix-platform
-    app.kubernetes.io/part-of: kratix
-  name: kratix-platform-aggregated-role
-rules: []
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -2624,23 +2659,6 @@ metadata:
     app.kubernetes.io/component: kratix-manager
     app.kubernetes.io/instance: kratix-platform
     app.kubernetes.io/part-of: kratix
-  name: kratix-platform-aggregated-rolebinding
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: kratix-platform-aggregated-role
-subjects:
-- kind: ServiceAccount
-  name: kratix-platform-controller-manager
-  namespace: kratix-platform-system
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  labels:
-    app.kubernetes.io/component: kratix-manager
-    app.kubernetes.io/instance: kratix-platform
-    app.kubernetes.io/part-of: kratix
   name: kratix-platform-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -2670,7 +2688,7 @@ subjects:
 ---
 apiVersion: v1
 data:
-  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:f61f2d4c4ac4028279d44da5ea2e89f0ad088982c6e07e5b374b24efbde18e1c
+  PIPELINE_ADAPTER_IMG: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:b7dd0f905ad528d1f2b5b94ec7e271fba4094e6d5bbf3214b45f8afe479c27aa
 kind: ConfigMap
 metadata:
   labels:
@@ -2762,7 +2780,7 @@ spec:
             configMapKeyRef:
               key: PIPELINE_ADAPTER_IMG
               name: kratix-platform-pipeline-adapter-config
-        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:f61f2d4c4ac4028279d44da5ea2e89f0ad088982c6e07e5b374b24efbde18e1c
+        image: syntasso-community.docker.reo.dev/syntasso/kratix-platform@sha256:b7dd0f905ad528d1f2b5b94ec7e271fba4094e6d5bbf3214b45f8afe479c27aa
         livenessProbe:
           httpGet:
             path: /healthz
