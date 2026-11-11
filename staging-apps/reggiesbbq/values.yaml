@@ -33,6 +33,9 @@ nextjs-app:
       - {name: weekly-report, schedule: "0 14 * * 2", path: /api/cron/weekly-report}
       - {name: purge-expired-data, schedule: "30 3 * * *", path: /api/cron/purge-expired-data}
       - {name: refund-claims, schedule: "*/10 * * * *", path: /api/cron/refund-claims, method: POST}
+      # Customer app sign-in housekeeping (reggiesbbq #210): expired DPoP replay rows,
+      # codes, refresh tokens and sessions. No-op until the app sign-in is configured.
+      - {name: native-auth-purge, schedule: "*/15 * * * *", path: /api/cron/native-auth-purge, method: POST}
       # Restaurant and counter terminal (reggiesbbq #174, #191, #195).
       - {name: printer-health, schedule: "*/5 * * * *", path: /api/cron/printer-health, method: POST}
       # No retries: the route takes no lock, so a retry overlapping a slow run
