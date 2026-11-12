@@ -10,7 +10,11 @@ nextjs-app:
   # Every object keeps the reggiesbbq-staging name (Service, TLS secret; Port
   # maps reports by this prefix).
   fullnameOverride: reggiesbbq-staging
-  # Prod's five routes and schedules, against staging data and test-mode
+  # Reloader watches referenced Secrets + ConfigMaps and rolls this Deployment
+  # when any change, so a new Bitwarden key reaches the pods without a restart.
+  deploymentAnnotations:
+    reloader.stakater.com/auto: "true"
+  # Prod's routes and schedules (the app's cron-manifest.json), against staging data and test-mode
   # third parties (Stripe test, Shippo test, Mailgun).
   crons:
     enabled: true
@@ -28,10 +32,26 @@ nextjs-app:
       - {name: marketing-campaigns, schedule: "*/5 * * * *", path: /api/cron/marketing-campaigns, method: POST}
       - {name: weekly-report, schedule: "0 14 * * 2", path: /api/cron/weekly-report}
       - {name: purge-expired-data, schedule: "30 3 * * *", path: /api/cron/purge-expired-data}
+      - {name: refund-claims, schedule: "*/10 * * * *", path: /api/cron/refund-claims, method: POST}
+      # Customer app sign-in housekeeping (reggiesbbq #210): expired DPoP replay rows,
+      # codes, refresh tokens and sessions. No-op until the app sign-in is configured.
+      - {name: native-auth-purge, schedule: "*/15 * * * *", path: /api/cron/native-auth-purge, method: POST}
+      # Restaurant and counter terminal (reggiesbbq #174, #191, #195).
+      - {name: printer-health, schedule: "*/5 * * * *", path: /api/cron/printer-health, method: POST}
+      # No retries: the route takes no lock, so a retry overlapping a slow run
+      # could queue a ticket twice; the next minute picks up anything missed.
+      - {name: fire-scheduled-tickets, schedule: "* * * * *", path: /api/cron/fire-scheduled-tickets, method: POST, backoffLimit: 0}
+      - {name: unforwarded-terminal-cards, schedule: "20 * * * *", path: /api/cron/unforwarded-terminal-cards, method: POST}
+      # Restaurant release (reggiesbbq #202): counter loose ends and lapsed
+      # 86s, the daily gift-card books check, and the Deliverect heartbeat and
+      # catch-up (a no-op while DELIVERECT_* is a placeholder).
+      - {name: pos-sweeps, schedule: "*/10 * * * *", path: /api/cron/pos-sweeps, method: POST}
+      - {name: gift-card-liability, schedule: "15 9 * * *", path: /api/cron/gift-card-liability, method: POST}
+      - {name: deliverect-sync, schedule: "*/10 * * * *", path: /api/cron/deliverect-sync, method: POST}
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
-    digest: "sha256:367a44d0ce1458c67678f42dec10b390a9c62b3e669a1cbd109f88db52eedaee" # written by gitops-staging-update.yml
+    digest: "sha256:b12dc0f803ddc5909f96174ea3bb4565fea66014c86592d4571c1d50a13a3cd0" # written by gitops-staging-update.yml
   # ESO keeps this secret current (templates/image-pull.yaml); also on the
   # ServiceAccount, so the migrate Job pulls with it.
   imagePullSecrets:
@@ -77,7 +97,7 @@ nextjs-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
-    digest: "sha256:f62f8661e1f7fcf5beb1326a3d4031898de27426c490c5044e06f3227f3a5aed" # written by gitops-staging-update.yml
+    digest: "sha256:8b9c782f4492e6d4d02f97f83c74a429986b7255da425b68d6cb17a14442fc07" # written by gitops-staging-update.yml
   authRateLimit:
     enabled: true
     paths:
@@ -154,14 +174,30 @@ nextjs-app:
       value: staging
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.reggiesbbqonline.com
+    # The restaurant ordering site's staging host (apps/web/src/lib/site.ts),
+    # routed to these same pods by extraHosts below; prod uses
+    # order.reggiesbbq.com. Never indexed here: APP_ENV=staging turns indexing
+    # off whatever RESTAURANT_INDEXABLE says, and it is left unset anyway.
+    - name: RESTAURANT_SITE_URL
+      value: https://staging.reggiesbbq.com
     - name: DATABASE_CONNECTION_LIMIT
       value: "3"
+    # Explicit, matching prod (report | enforce | off): a security setting
+    # should not rest on the code default.
+    - name: CSRF_PROTECTION
+      value: enforce
     - name: REDIS_SENTINEL_HOST
       value: redis-ng-sentinel.redis.svc.cluster.local
     - name: REDIS_SENTINEL_PORT
       value: "26379"
     - name: REDIS_SENTINEL_MASTER
       value: mymaster
+    # Standalone redis-apps (N7, prod parity). Releases that read REDIS_HOST
+    # use it and ignore REDIS_SENTINEL_*, which go once every release has it.
+    - name: REDIS_HOST
+      value: redis-apps.redis.svc.cluster.local
+    - name: REDIS_PORT
+      value: "6379"
     - name: STORAGE_PROVIDER
       value: s3
     - name: S3_ENDPOINT
@@ -193,6 +229,17 @@ nextjs-app:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+# Extra public hosts on the same pods (templates/extra-hosts-ingressroute.yaml,
+# the same template as prod's helm-charts/reggiesbbq): an IngressRoute, a
+# Let's Encrypt Certificate and the auth rate-limit routes per entry, behind
+# the same ingress.middlewares as the primary host (so the reviewer allowlist,
+# when on, covers it too). DNS: the A record in platform-infra
+# terraform/environments/prod/reggiesbbq-com-dns.tf (homelab IP) plus the
+# split-horizon entry in coredns/configmap.yaml. Each host must also be a
+# *_SITE_URL origin in env above, or the app 404s it.
+extraHosts:
+  - name: restaurant
+    host: staging.reggiesbbq.com
 # --- Staging-only objects (templates/) ---
 bitwarden:
   projectID: "1700bcb5-dffc-4270-9683-b4b70185464d" # Staging - Reggie's BBQ
@@ -307,3 +354,43 @@ externalSecrets:
     # password redis-ng itself uses. Keep the two equal.
     - name: REDIS_PASSWORD
       key: 0363c4fe-ebc4-4902-9e48-b4f101251729
+    # Counter terminal (docs/pos-api.md in the app). One Ed25519 pair signs
+    # the device bearer and employee session tokens; each is the PEM base64
+    # on one line. Staging-only pair (created 2026-11-06); rotating it signs
+    # every terminal out. Unset, /api/pos answers 503 POS_NOT_CONFIGURED.
+    - name: POS_TOKEN_PRIVATE_KEY
+      key: f42e52c2-6b97-415a-9784-b4fa014a1c21
+    - name: POS_TOKEN_PUBLIC_KEY
+      key: 93fc14f3-f421-4632-9eab-b4fa014a1c51
+    # Stripe TEST-mode Terminal Location the staging S700 registers to.
+    # Unset, /api/pos/terminal answers 503 and the terminal takes cash only.
+    - name: STRIPE_TERMINAL_LOCATION_ID
+      key: 1ccb028b-8ff5-43a5-9ccf-b4fa014a3c12
+    # Uber Direct courier delivery (created 2026-11-08). All four seeded as
+    # PLACEHOLDER, which the app reads as unset, so the restaurant checkout
+    # offers pickup only and the webhook answers 404 until real test
+    # credentials replace them in Bitwarden.
+    - name: UBER_DIRECT_CUSTOMER_ID
+      key: 0984125d-29ee-4cc1-93da-b4fc01617b94
+    - name: UBER_DIRECT_CLIENT_ID
+      key: 447db0f5-335d-46c0-b73a-b4fc01617be3
+    - name: UBER_DIRECT_CLIENT_SECRET
+      key: 36aaf5f4-2952-4933-80eb-b4fc01617c1a
+    - name: UBER_DIRECT_WEBHOOK_SIGNING_KEY
+      key: 9a098340-9b97-4480-81aa-b4fc01617c63
+    # Deliverect (DoorDash / Uber Eats), seeded as PLACEHOLDER (2026-11-08):
+    # off until real values land. DELIVERECT_ENV and
+    # DELIVERECT_WEBHOOK_BASE_URL are deliberately not mapped yet: they are an
+    # enum and a URL, so a placeholder would fail env validation at boot. Map
+    # DELIVERECT_ENV (=staging) together with the real client credentials.
+    - name: DELIVERECT_CLIENT_ID
+      key: 575dc814-befa-4b6d-8c7e-b4fc01617cc4
+    - name: DELIVERECT_CLIENT_SECRET
+      key: 181c21e3-85e8-44ca-8c06-b4fc01617d40
+    - name: DELIVERECT_WEBHOOK_SECRET
+      key: 8636b9fe-57a4-46f7-902e-b4fc01617dad
+    # Signs the loyalty and promo QR codes (apps/web/src/lib/loyalty/qr.ts),
+    # so rotating AUTH_SECRET no longer voids printed codes. Real random value
+    # (2026-11-08). Setting or changing it voids every QR code already issued.
+    - name: LOYALTY_QR_SECRET
+      key: 42c80f8b-bfb7-45cf-b845-b4fc01617e26

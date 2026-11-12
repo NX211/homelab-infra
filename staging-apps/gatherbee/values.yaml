@@ -163,8 +163,6 @@ nextjs-app:
       value: production
     - name: APP_ENV
       value: staging
-    - name: APP_URL
-      value: https://staging.gatherbee.org
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.gatherbee.org
     - name: DATABASE_CONNECTION_LIMIT
@@ -175,6 +173,12 @@ nextjs-app:
       value: "26379"
     - name: REDIS_SENTINEL_MASTER
       value: mymaster
+    # Standalone redis-apps (N7, prod parity). Releases that read REDIS_HOST
+    # use it and ignore REDIS_SENTINEL_*, which go once every release has it.
+    - name: REDIS_HOST
+      value: redis-apps.redis.svc.cluster.local
+    - name: REDIS_PORT
+      value: "6379"
     # Support tickets go to staging coreyalan.com; COREYALAN_API_KEY is a staging
     # v1 key for the gatherbee tenant (Bitwarden).
     - name: COREYALAN_API_URL

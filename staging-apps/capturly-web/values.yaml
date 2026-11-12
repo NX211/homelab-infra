@@ -115,6 +115,12 @@ staging-app:
       value: "26379"
     - name: REDIS_SENTINEL_MASTER
       value: mymaster
+    # Standalone redis-apps (N7, prod parity). Releases that read REDIS_HOST
+    # use it and ignore REDIS_SENTINEL_*, which go once every release has it.
+    - name: REDIS_HOST
+      value: redis-apps.redis.svc.cluster.local
+    - name: REDIS_PORT
+      value: "6379"
   envFrom:
     - secretRef:
         name: capturly-web-staging-secrets
@@ -178,6 +184,12 @@ staging-app:
         key: fd98d9bf-a76e-4fdb-b402-b456015c3211
       - name: STUDIO_GUEST_INVITES_ENABLED
         key: a792bedc-b944-4c98-a33f-b456015c34b0
+      # Cloudflare Calls TURN — a staging TURN app, separate from prod's
+      # (lib/turnCredentials.ts mints short-lived ICE credentials with these).
+      - name: CLOUDFLARE_TURN_KEY_ID
+        key: 4294afef-2e61-4922-a516-b50000f13d57
+      - name: CLOUDFLARE_TURN_API_TOKEN
+        key: b935aec4-b68b-42c7-a906-b50000f123dc
       # Scheduled sessions — HMAC secret for calendar-invite join links
       # (rotating invalidates outstanding links) + AES-256-GCM key for
       # Google Calendar OAuth tokens at rest (lib/crypto/tokenVault.ts)
@@ -185,11 +197,18 @@ staging-app:
         key: 948b44b3-783b-4988-9e02-b48601755ec6
       - name: CALENDAR_TOKEN_ENC_KEY
         key: 75967583-1a02-4c71-96bb-b48601755f05
-      # Desktop license signing (Ed25519 keypair, distinct from prod)
-      - name: LICENSE_PRIVATE_KEY
-        key: 5b2ce9b6-1332-479d-a239-b456015c3743
-      - name: LICENSE_PUBLIC_KEY
-        key: d9997ba3-8fe0-40f0-9361-b456015c39e9
+      # Desktop license signing (Ed25519, distinct from prod), in the JWK form
+      # apps/web/src/lib/license/keys.ts reads. Same key as the old PEM pair
+      # (LICENSE_PRIVATE_KEY / LICENSE_PUBLIC_KEY, which the code no longer reads),
+      # so licenses already issued on staging still verify.
+      - name: LICENSE_SIGNING_JWK
+        key: f9b26033-9f18-40ba-8313-b4f901805f8d
+      - name: LICENSE_JWKS
+        key: b20cffce-4935-45ae-a613-b4f901805fc7
+      # HMAC secret for campaign links (campaignKeys.ts throws without it).
+      # Never rotate without re-issuing outstanding campaign links.
+      - name: CAMPAIGN_JOIN_KEY_SECRET
+        key: 679b8c35-9918-44e9-b8af-b4f901805ff8
       # Cron bearer (only consumed if a scheduler hits /api/cron/* in staging)
       - name: CRON_SECRET
         key: 7ec4273f-e202-42bc-b8b4-b456015c3c7e
