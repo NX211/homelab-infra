@@ -1,0 +1,77 @@
+{{- if .Values.redisApps.enabled }}
+---
+# redis-apps: the shared app Redis — one standalone pod with AOF on a disk,
+# mirroring prod (platform-infra helm-charts/redis/templates/redis-apps.yaml,
+# N7 2026-11-09). Replaces redis-ng's Sentinel set for the prod-parity apps.
+# Difference from prod: local-path is node-local (prod uses a regional PD),
+# so the pod is pinned to the storage node.
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: Redis
+metadata:
+  name: redis-apps
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSecurityContext:
+    runAsUser: 1000
+    runAsNonRoot: true
+    fsGroup: 1000
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  redisConfig:
+    additionalRedisConfig: redis-apps-additional-config
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v8.10.1
+    imagePullPolicy: IfNotPresent
+    redisSecret:
+      name: redis-credentials
+      key: redis-password
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  redisExporter:
+    enabled: true
+    image: quay.io/opstree/redis-exporter:v1.89.0
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  # Setting storage turns on the operator's persistence (AOF + RDB in /data).
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: {{ .Values.redisApps.storage.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.redisApps.storage.size }}
+  {{- with .Values.redisApps.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-apps-additional-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: redis-apps
+    app.kubernetes.io/component: cache
+data:
+  redis-additional.conf: |
+    maxmemory {{ .Values.redisApps.maxmemory }}
+    maxmemory-policy allkeys-lru
+    appendfsync everysec
+{{- end }}

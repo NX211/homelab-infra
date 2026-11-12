@@ -1,8 +1,9 @@
 apiVersion: v2
 name: redis
-description: Operator-managed Redis (OT-CONTAINER-KIT) — redis-ng Sentinel cache (prod parity) + redis-shared persistent store for homelab apps
+description: Operator-managed Redis (OT-CONTAINER-KIT) — redis-apps app store (prod parity), redis-ng Sentinel (retiring) + redis-shared persistent store for homelab apps
 type: application
 # 2.0.0: replaced the hand-rolled standalone StatefulSet with OT-CONTAINER-KIT
 # operator CRs, to mirror the prod data plane (platform-infra/helm-charts/redis).
-version: 2.0.0
+# 2.1.0: added redis-apps (standalone + AOF) beside redis-ng, mirroring prod.
+version: 2.1.0
 appVersion: "8.6.2"

@@ -32,3 +32,16 @@ redisShared:
   # local-path is node-local; pin to the storage node so the PVC stays put.
   nodeSelector:
     kubernetes.io/hostname: greytalon
+
+# redis-apps: standalone Redis with AOF — the prod-parity apps' Redis
+# (REDIS_HOST=redis-apps.redis.svc.cluster.local), mirroring prod. redis-ng
+# above is retired once every app release reads REDIS_HOST.
+redisApps:
+  enabled: true
+  maxmemory: "384mb"
+  storage:
+    size: "1Gi"
+    storageClass: "local-path"
+  # local-path is node-local; pin to the storage node so the PVC stays put.
+  nodeSelector:
+    kubernetes.io/hostname: greytalon
