@@ -33,6 +33,9 @@ nextjs-app:
       - {name: weekly-report, schedule: "0 14 * * 2", path: /api/cron/weekly-report}
       - {name: purge-expired-data, schedule: "30 3 * * *", path: /api/cron/purge-expired-data}
       - {name: refund-claims, schedule: "*/10 * * * *", path: /api/cron/refund-claims, method: POST}
+      # Customer app sign-in housekeeping (reggiesbbq #210): expired DPoP replay rows,
+      # codes, refresh tokens and sessions. No-op until the app sign-in is configured.
+      - {name: native-auth-purge, schedule: "*/15 * * * *", path: /api/cron/native-auth-purge, method: POST}
       # Restaurant and counter terminal (reggiesbbq #174, #191, #195).
       - {name: printer-health, schedule: "*/5 * * * *", path: /api/cron/printer-health, method: POST}
       # No retries: the route takes no lock, so a retry overlapping a slow run
@@ -48,7 +51,7 @@ nextjs-app:
   image:
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web
     pullPolicy: IfNotPresent
-    digest: "sha256:dfb7c6960f884446bac18b7be684078c9e01ca32cb46e9c709b1a80b53e595aa" # written by gitops-staging-update.yml
+    digest: "sha256:b12dc0f803ddc5909f96174ea3bb4565fea66014c86592d4571c1d50a13a3cd0" # written by gitops-staging-update.yml
   # ESO keeps this secret current (templates/image-pull.yaml); also on the
   # ServiceAccount, so the migrate Job pulls with it.
   imagePullSecrets:
@@ -94,7 +97,7 @@ nextjs-app:
   migration:
     enabled: true
     repository: us-central1-docker.pkg.dev/reggiesbbq/reggiesbbq/reggiesbbq-web-migrate
-    digest: "sha256:ab3add5c9029813fb7bfb5448305391bcbc75eba3c4a6e864f79b0bda2adc012" # written by gitops-staging-update.yml
+    digest: "sha256:8b9c782f4492e6d4d02f97f83c74a429986b7255da425b68d6cb17a14442fc07" # written by gitops-staging-update.yml
   authRateLimit:
     enabled: true
     paths:
@@ -189,6 +192,12 @@ nextjs-app:
       value: "26379"
     - name: REDIS_SENTINEL_MASTER
       value: mymaster
+    # Standalone redis-apps (N7, prod parity). Releases that read REDIS_HOST
+    # use it and ignore REDIS_SENTINEL_*, which go once every release has it.
+    - name: REDIS_HOST
+      value: redis-apps.redis.svc.cluster.local
+    - name: REDIS_PORT
+      value: "6379"
     - name: STORAGE_PROVIDER
       value: s3
     - name: S3_ENDPOINT
