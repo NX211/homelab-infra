@@ -184,6 +184,12 @@ staging-app:
         key: fd98d9bf-a76e-4fdb-b402-b456015c3211
       - name: STUDIO_GUEST_INVITES_ENABLED
         key: a792bedc-b944-4c98-a33f-b456015c34b0
+      # Cloudflare Calls TURN — a staging TURN app, separate from prod's
+      # (lib/turnCredentials.ts mints short-lived ICE credentials with these).
+      - name: CLOUDFLARE_TURN_KEY_ID
+        key: 4294afef-2e61-4922-a516-b50000f13d57
+      - name: CLOUDFLARE_TURN_API_TOKEN
+        key: b935aec4-b68b-42c7-a906-b50000f123dc
       # Scheduled sessions — HMAC secret for calendar-invite join links
       # (rotating invalidates outstanding links) + AES-256-GCM key for
       # Google Calendar OAuth tokens at rest (lib/crypto/tokenVault.ts)
