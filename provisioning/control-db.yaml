@@ -33,7 +33,7 @@ spec:
   # risk tracked as Port exemption exempt-provisioning-db-perl (expires
   # 2026-12-15), ref platform-infra#3649.
   # renovate: datasource=docker depName=ghcr.io/cloudnative-pg/postgresql
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.15-system-trixie
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.16-system-trixie
   storage:
     size: 2Gi
     storageClass: local-path
