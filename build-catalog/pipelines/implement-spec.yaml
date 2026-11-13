@@ -1466,7 +1466,7 @@ spec:
           # the container runs non-root (alpine postgres uid 70) with no
           # volume gymnastics.
           - name: postgres
-            image: docker.io/library/postgres:16-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
+            image: docker.io/library/postgres:16-alpine@sha256:f377d590e5474681d4d7838635031a2b50647923b7abfa803ce9b5ff35d5c663
             securityContext:
               runAsUser: 70
               runAsNonRoot: true
