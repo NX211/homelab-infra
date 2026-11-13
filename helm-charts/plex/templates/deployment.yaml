@@ -55,12 +55,14 @@ spec:
             port: 32400
           initialDelaySeconds: 30
           periodSeconds: 30
+          timeoutSeconds: 5
         readinessProbe:
           httpGet:
             path: /identity
             port: 32400
           initialDelaySeconds: 15
           periodSeconds: 10
+          timeoutSeconds: 5
         volumeMounts:
         - name: config
           mountPath: /config

@@ -63,11 +63,12 @@ env:
   PGID: "8675309"
   VERSION: docker
 
-# Resource limits
+# Resource limits. No GPU on blacktalon, so transcodes are CPU-only and
+# were pinned at the old 4-core cap.
 resources:
   requests:
-    cpu: 1000m
+    cpu: 2000m
     memory: 2Gi
   limits:
-    cpu: 4000m
+    cpu: 8000m
     memory: 8Gi
