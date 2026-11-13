@@ -45,14 +45,15 @@ ssoAutoRedirect:
   enabled: true
   startPath: /sso/OID/start/authelia
 
-# Resource limits
+# Resource limits. No GPU on blacktalon, so transcodes and IntroSkipper's
+# ffmpeg analysis are CPU-only; 4Gi/4 cores OOM-killed during the nightly scan.
 resources:
   requests:
-    cpu: 500m
-    memory: 512Mi
+    cpu: 1000m
+    memory: 2Gi
   limits:
-    cpu: 4000m
-    memory: 4Gi
+    cpu: 8000m
+    memory: 8Gi
 
 # Watchstate sidecar service
 watchstate:
