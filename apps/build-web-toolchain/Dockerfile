@@ -1,4 +1,4 @@
-# Generic web/nextjs build toolchain (Node 22 + pnpm), used as the step image for
+# Generic web/nextjs build toolchain (Node 26 + pnpm), used as the step image for
 # the nextjs-build `web-ci` task across projects. Tools are PRE-BAKED so steps run
 # WITHOUT root at runtime (no `corepack enable`, which writes to /usr/local) —
 # required once set-security-context (H1) forces runAsNonRoot on all steps.
@@ -15,7 +15,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libsecret-1-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g pnpm@9.15.9 node-gyp \
+RUN npm install -g pnpm@10.34.5 node-gyp \
     && npm cache clean --force \
     && chmod -R a+rX /usr/local/lib/node_modules
 
@@ -41,3 +41,9 @@ RUN node-gyp install --devdir=/opt/node-gyp \
 # electron ships a large runtime binary the web lint/type-check/build/test never
 # executes, downloaded from a CDN the sandbox can't reach; skip that download.
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+
+# A step image, never a long-running service: nothing to health-check. Steps run
+# non-root under Tekton's set-security-context; default to the base image's
+# unprivileged `node` user (uid 1000) too.
+HEALTHCHECK NONE
+USER 1000:1000
