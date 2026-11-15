@@ -41,3 +41,9 @@ RUN node-gyp install --devdir=/opt/node-gyp \
 # electron ships a large runtime binary the web lint/type-check/build/test never
 # executes, downloaded from a CDN the sandbox can't reach; skip that download.
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
+
+# A step image, never a long-running service: nothing to health-check. Steps run
+# non-root under Tekton's set-security-context; default to the base image's
+# unprivileged `node` user (uid 1000) too.
+HEALTHCHECK NONE
+USER 1000:1000
