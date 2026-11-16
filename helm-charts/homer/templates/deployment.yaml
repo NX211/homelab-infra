@@ -27,7 +27,7 @@ spec:
       {{- if .Values.gitRepo.enabled }}
       initContainers:
       - name: git-clone
-        image: alpine/git:v2.54.0
+        image: alpine/git:v2.54.1
         command:
         - sh
         - -c

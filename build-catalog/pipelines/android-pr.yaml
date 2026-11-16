@@ -40,7 +40,7 @@ spec:
             optional: true
         steps:
           - name: git-clone
-            image: alpine/git:2.54.0
+            image: alpine/git:v2.54.1
             script: |
               #!/bin/sh
               set -eu

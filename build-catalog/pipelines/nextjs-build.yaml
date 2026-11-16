@@ -33,7 +33,7 @@ spec:
             optional: true
         steps:
           - name: git-clone
-            image: alpine/git:2.54.0
+            image: alpine/git:v2.54.1
             # Same reasoning as web-ci.yaml's checks step: a zero request is what
             # makes a pod kubelet's first eviction victim under DiskPressure.
             computeResources:
