@@ -3,7 +3,7 @@
 # Image configuration
 image:
   repository: lscr.io/linuxserver/lidarr
-  tag: "3.1.6.5079-ls48"
+  tag: "3.1.6.5079-ls49"
   pullPolicy: IfNotPresent
 
 # Service configuration
