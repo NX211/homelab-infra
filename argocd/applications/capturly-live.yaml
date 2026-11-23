@@ -22,6 +22,12 @@ spec:
     repoURL: https://github.com/NX211/homelab-infra.git
     targetRevision: HEAD
     path: helm-charts/capturly-live
+    helm:
+      # The signaling server ships as its own Application
+      # (capturly-live-signaling.yaml) so Port grades it as its own service.
+      valuesObject:
+        signaling:
+          enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: capturly-live
