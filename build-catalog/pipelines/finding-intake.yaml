@@ -1,0 +1,284 @@
+---
+# finding-intake — turn a production Sentry finding into a root-cause request
+# on the Findings board. Phase 2b of per-finding remediation (platform-infra
+# terraform/environments/prod/port-findings.tf): when a finding crosses the
+# analysis gate, Port's finding_intake_dispatch automation POSTs here through
+# PaC /incoming (.tekton/finding-intake-incoming.yaml in platform-infra).
+#
+# No agent runs here; this is plumbing with three refusals:
+#   budget     the month's agent spend on finding issues (agentRun.cost_usd
+#              where task is <rca_repo>#<rca_issue_number>) plus one more plan
+#              would cross monthly-budget -> task parked
+#   public     the service repo is public: Sentry context is never published
+#              to a public issue -> task parked
+#   done       the task already has a card, or is no longer open -> no-op
+# Otherwise it stages bounded, credential-scrubbed Sentry context into one
+# GitHub issue (label `finding`, idempotent on a body marker), puts it on the
+# org project titled "Findings" at Ready to plan, and records issue + card on
+# the task. That write is what dispatches the plan-issue lane (Port
+# finding_plan_dispatch), so the plan run carries a Port run id and its cost
+# lands on agentRun.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: finding-intake
+spec:
+  params:
+    - { name: task-id,        type: string }                                # aiAgentTask id, e.g. sentry-7821273006
+    - { name: service,        type: string }                                # Port service id
+    - { name: port-run-id,    type: string, default: "" }
+    - { name: monthly-budget, type: string, default: "50" }
+    - { name: plan-budget,    type: string, default: "5" }
+    - { name: github-org,     type: string, default: "Corey-Alan-Consulting" }
+    - { name: sentry-org,     type: string, default: "corey-alan-llc" }
+    - { name: board-title,    type: string, default: "Findings" }
+    - name: toolchain-image
+      type: string
+      default: docker.io/library/node:22-bookworm
+  workspaces:
+    - name: github-app    # Scaffolder app: issue + card on the service repo
+    - name: port          # client-id / client-secret
+    - name: sentry        # token: event:read on the Sentry org
+  tasks:
+    - name: intake
+      workspaces:
+        - { name: github-app, workspace: github-app }
+        - { name: port, workspace: port }
+        - { name: sentry, workspace: sentry }
+      taskSpec:
+        workspaces:
+          - { name: github-app }
+          - { name: port }
+          - { name: sentry }
+        steps:
+          - name: intake
+            image: $(params.toolchain-image)
+            env:
+              # Webhook params bound as env, never as $(params.*) in the script
+              # (see heal-rule.yaml).
+              - { name: HOME,       value: /tmp/home }
+              - { name: TASK,       value: $(params.task-id) }
+              - { name: SERVICE,    value: $(params.service) }
+              - { name: RUN_ID,     value: $(params.port-run-id) }
+              - { name: CAP,        value: $(params.monthly-budget) }
+              - { name: PLAN_COST,  value: $(params.plan-budget) }
+              - { name: GH_ORG,     value: $(params.github-org) }
+              - { name: SENTRY_ORG, value: $(params.sentry-org) }
+              - { name: BOARD,      value: $(params.board-title) }
+              - { name: APP_KEY,    value: $(workspaces.github-app.path)/app-private-key }
+              - { name: APP_ID_F,   value: $(workspaces.github-app.path)/app-id }
+              - { name: PORT_WS,    value: $(workspaces.port.path) }
+              - { name: SENTRY_WS,  value: $(workspaces.sentry.path) }
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              python3 - <<'PY'
+              import base64, datetime as dt, json, os, re, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
+
+              E = os.environ
+              TASK, SERVICE, RUN_ID = E["TASK"], E["SERVICE"], E["RUN_ID"]
+              GH, PORT, SENTRY = "https://api.github.com", "https://api.port.io/v1", "https://sentry.io/api/0"
+              if not re.fullmatch(r"sentry-[0-9]{1,20}", TASK) or not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", SERVICE) \
+                      or not re.fullmatch(r"[A-Za-z0-9_-]{0,80}", RUN_ID):
+                  sys.exit("::error:: invalid params")
+              CAP, PLAN_COST = float(E["CAP"]), float(E["PLAN_COST"])
+
+              def req(method, url, headers, payload=None):
+                  r = urllib.request.Request(url, method=method, headers={"Content-Type": "application/json", **headers},
+                                             data=json.dumps(payload).encode() if payload is not None else None)
+                  with urllib.request.urlopen(r, timeout=30) as resp:
+                      raw = resp.read()
+                      return json.loads(raw) if raw else {}
+
+              cred = {"clientId": open(E["PORT_WS"] + "/client-id").read().strip(),
+                      "clientSecret": open(E["PORT_WS"] + "/client-secret").read().strip()}
+              ptok = req("POST", f"{PORT}/auth/access_token", {}, cred)["accessToken"]
+              port = lambda m, p, b=None: req(m, PORT + p, {"Authorization": f"Bearer {ptok}"}, b)
+
+              def report(ok, label):
+                  if not RUN_ID:
+                      return
+                  try:
+                      port("PATCH", f"/actions/runs/{RUN_ID}", {"status": "SUCCESS" if ok else "FAILURE", "statusLabel": label[:120]})
+                  except Exception as e:
+                      print("Port run PATCH failed (non-fatal):", e)
+
+              def done(label, props=None):
+                  if props:
+                      port("PATCH", f"/blueprints/aiAgentTask/entities/{TASK}", {"properties": props})
+                  print(label); report(True, label); sys.exit(0)
+
+              def park(note):
+                  done("parked: " + note, {"analysis_state": "parked", "analysis_note": note})
+
+              def search(bp, rules):
+                  ents = port("POST", f"/blueprints/{bp}/entities/search",
+                              {"query": {"combinator": "and", "rules": rules}, "limit": 1000}).get("entities", [])
+                  if len(ents) >= 1000:
+                      raise RuntimeError(f"{bp} search hit the 1000 cap; refusing to undercount spend")
+                  return ents
+
+              # Untrusted text from Sentry: credential shapes out, length bounded.
+              SECRETS = [r"\b(sk|rk|pk)_(live|test)_[A-Za-z0-9]{6,}", r"\bgh[pousr]_[A-Za-z0-9]{20,}", r"\bgithub_pat_[A-Za-z0-9_]{20,}",
+                         r"\bAKIA[0-9A-Z]{16}\b", r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
+                         r"(?i)bearer\s+[A-Za-z0-9._~+/-]{12,}", r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
+                         r"\b[A-Fa-f0-9]{32,}\b"]
+              # Opaque blobs only in free text: a long path segment is not a secret.
+              BLOB = r"\b[A-Za-z0-9+/_-]{40,}={0,2}"
+              def clean(s, n=300, text=True):
+                  s = str(s or "")
+                  for pat in SECRETS + ([BLOB] if text else []):
+                      s = re.sub(pat, "[redacted]", s)
+                  # Backticks would break the code fence; HTML comments could forge
+                  # the plan lane's <!-- plan:start --> markers.
+                  s = s.replace("`", "'").replace("<!--", "<! --").replace("-->", "-- >").strip()
+                  return s if len(s) <= n else s[:n] + "…"
+
+              try:
+                  task = port("GET", f"/blueprints/aiAgentTask/entities/{TASK}")["entity"]
+                  tp = task.get("properties") or {}
+                  if tp.get("finding_kind") != "sentry" or tp.get("state") != "open":
+                      done(f"task is {tp.get('state')!r}: nothing to do")
+                  if tp.get("rca_item_id"):
+                      done("task already has a Findings card")
+                  if ((task.get("relations") or {}).get("service")) != SERVICE:
+                      sys.exit("::error:: task does not belong to the requested service")
+                  issue_id = (tp.get("finding_key") or "").removeprefix("sentry:")
+                  if not re.fullmatch(r"[0-9]{1,20}", issue_id):
+                      sys.exit("::error:: task has no Sentry issue id")
+                  repo = ((port("GET", f"/blueprints/service/entities/{SERVICE}")["entity"].get("properties") or {})
+                          .get("github_repository_id") or "")
+                  if not re.fullmatch(r"[A-Za-z0-9]+([._-][A-Za-z0-9]+)*", repo):
+                      park("service has no GitHub repository")
+
+                  # --- budget: this month's agent spend on finding issues -----
+                  month = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-01T00:00:00Z")
+                  now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                  keys = {f"{(t.get('properties') or {}).get('rca_repo')}#{(t.get('properties') or {}).get('rca_issue_number')}"
+                          for t in search("aiAgentTask", [{"property": "finding_kind", "operator": "=", "value": "sentry"},
+                                                          {"property": "rca_item_id", "operator": "isNotEmpty"}])}
+                  runs = search("agentRun", [{"property": "started_at", "operator": "between", "value": {"from": month, "to": now}}])
+                  spent = sum(float((r.get("properties") or {}).get("cost_usd") or 0) for r in runs
+                              if (r.get("properties") or {}).get("task") in keys)
+                  if spent + PLAN_COST > CAP:
+                      park(f"monthly analysis budget: ${spent:.2f} of ${CAP:.0f} spent; a plan can cost ${PLAN_COST:.0f}")
+                  print(f"budget: ${spent:.2f} of ${CAP:.0f} spent this month")
+
+                  # --- GitHub App tokens --------------------------------------
+                  def b64url(b): return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+                  def jwt():
+                      t = int(time.time())
+                      head = b64url(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
+                      body = b64url(json.dumps({"iat": t - 60, "exp": t + 540, "iss": open(E["APP_ID_F"]).read().strip()}).encode())
+                      sig = subprocess.run(["openssl", "dgst", "-sha256", "-sign", E["APP_KEY"], "-binary"],
+                                           input=f"{head}.{body}".encode(), capture_output=True, check=True).stdout
+                      return f"{head}.{body}.{b64url(sig)}"
+                  org = E["GH_ORG"]
+                  gh_app = lambda m, p, b=None: req(m, GH + p, {"Authorization": f"Bearer {jwt()}", "Accept": "application/vnd.github+json"}, b)
+                  inst = gh_app("GET", f"/repos/{org}/{repo}/installation")["id"]
+                  gtok = gh_app("POST", f"/app/installations/{inst}/access_tokens",
+                                {"permissions": {"issues": "write", "metadata": "read", "organization_projects": "write"},
+                                 "repositories": [repo]})["token"]
+                  gh = lambda m, p, b=None: req(m, GH + p, {"Authorization": f"Bearer {gtok}", "Accept": "application/vnd.github+json"}, b)
+                  def gql(q, v):
+                      out = gh("POST", "/graphql", {"query": q, "variables": v})
+                      if out.get("errors"):
+                          raise RuntimeError("GraphQL: " + json.dumps(out["errors"])[:500])
+                      return out["data"]
+
+                  if not gh("GET", f"/repos/{org}/{repo}").get("private"):
+                      park("public repository: Sentry context is not published to a public issue")
+
+                  boards = [p for p in gql("query($o:String!){ organization(login:$o){ projectsV2(first:50){ nodes { id title closed "
+                                           "field(name:\"Status\"){ ... on ProjectV2SingleSelectField { id options { id name } } } } } } }",
+                                           {"o": org})["organization"]["projectsV2"]["nodes"]
+                            if p["title"] == E["BOARD"] and not p["closed"]]
+                  if len(boards) != 1:
+                      raise RuntimeError(f"expected one open org project titled {E['BOARD']!r}, found {len(boards)}")
+                  board = boards[0]
+                  ready = next((o["id"] for o in (board.get("field") or {}).get("options", []) if o["name"] == "Ready to plan"), None)
+                  if not ready:
+                      raise RuntimeError(f"{E['BOARD']!r} has no 'Ready to plan' status")
+
+                  # --- the issue: reuse one this task already opened ----------
+                  marker = f"<!-- finding:{TASK} -->"
+                  issue = next((i for i in gh("GET", f"/repos/{org}/{repo}/issues?labels=finding&state=all&per_page=100")
+                                if marker in (i.get("body") or "")), None)
+                  if issue is None:
+                      stok = open(E["SENTRY_WS"] + "/token").read().strip()
+                      sentry = lambda p: req("GET", SENTRY + p, {"Authorization": f"Bearer {stok}"})
+                      si = sentry(f"/organizations/{E['SENTRY_ORG']}/issues/{issue_id}/")
+                      try:
+                          ev = sentry(f"/organizations/{E['SENTRY_ORG']}/issues/{issue_id}/events/latest/")
+                      except urllib.error.HTTPError:
+                          ev = {}
+                      tags = {t.get("key"): t.get("value") for t in ev.get("tags") or []}
+                      lines = []
+                      for entry in ev.get("entries") or []:
+                          if entry.get("type") != "exception":
+                              continue
+                          for exc in (entry.get("data") or {}).get("values") or []:
+                              lines.append(f"{clean(exc.get('type'), 120)}: {clean(exc.get('value'), 300)}")
+                              frames = ((exc.get("stacktrace") or {}).get("frames") or [])[-30:]
+                              for f in reversed(frames):
+                                  where = f"{clean(f.get('filename') or f.get('module'), 160, text=False)}:{f.get('lineNo') or '?'}"
+                                  lines.append(f"  at {where} in {clean(f.get('function'), 120, text=False)}{'  [app]' if f.get('inApp') else ''}")
+                                  if f.get("inApp") and f.get("context"):
+                                      cur = next((c[1] for c in f["context"] if c and c[0] == f.get("lineNo")), None)
+                                      if cur:
+                                          lines.append(f"      > {clean(cur, 160)}")
+                      route = clean((tags.get("transaction") or tags.get("url") or "").split("?")[0], 200)
+                      body = "\n".join([
+                          marker,
+                          "Production error reported by Sentry and opened by the findings intake (Port task "
+                          f"`{TASK}`). The plan lane writes the root cause and fix plan below; a person decides from there.",
+                          "",
+                          "## What Sentry saw",
+                          f"- **Issue:** [{clean(si.get('title'), 200)}]({si.get('permalink') or tp.get('link') or ''})",
+                          f"- **Volume:** {si.get('count', '?')} events, {si.get('userCount', 0)} users; first seen "
+                          f"{(si.get('firstSeen') or '?')[:10]}, last seen {(si.get('lastSeen') or '?')[:10]}",
+                          f"- **Level / culprit:** {clean(si.get('level'), 20)} in `{clean(si.get('culprit'), 200)}`",
+                          f"- **Release (latest event):** `{clean(tags.get('release'), 80)}`" + (f"; route `{route}`" if route else ""),
+                          "",
+                          "### Exception (latest event, innermost frame first)",
+                          "```text",
+                          *(lines[:80] or ["(no stack trace on the latest event)"]),
+                          "```",
+                          "",
+                          "## What to plan",
+                          "Find the root cause of this production error and plan the fix.",
+                          "- Start from the `[app]` frames; confirm the cause in this repository's code and cite files and lines.",
+                          "- If the cause is not in this repository's code (configuration, credentials, an external service, "
+                          "infrastructure), say so plainly and plan the operational fix instead. Do not invent a code change.",
+                          "- A code fix names the files to change and includes a test that reproduces this error before the fix.",
+                          "- If the honest answer is that the error is expected and should be ignored, say so and why.",
+                      ])
+                      have = {l["name"] for l in gh("GET", f"/repos/{org}/{repo}/labels?per_page=100")}
+                      if "finding" not in have:
+                          gh("POST", f"/repos/{org}/{repo}/labels",
+                             {"name": "finding", "color": "d93f0b", "description": "Production finding (Sentry) under root-cause analysis"})
+                      issue = gh("POST", f"/repos/{org}/{repo}/issues",
+                                 {"title": "Finding: " + clean(si.get("title") or task.get("title"), 200), "body": body, "labels": ["finding"]})
+                      print(f"opened {repo}#{issue['number']}")
+                  else:
+                      print(f"reusing {repo}#{issue['number']}")
+
+                  # --- the card: on the Findings board at Ready to plan --------
+                  item = gql("mutation($p:ID!,$c:ID!){ addProjectV2ItemById(input:{projectId:$p, contentId:$c}){ item { id } } }",
+                             {"p": board["id"], "c": issue["node_id"]})["addProjectV2ItemById"]["item"]["id"]
+                  gql("mutation($p:ID!,$i:ID!,$f:ID!,$o:String!){ updateProjectV2ItemFieldValue(input:{projectId:$p, itemId:$i, "
+                      "fieldId:$f, value:{ singleSelectOptionId:$o }}){ projectV2Item { id } } }",
+                      {"p": board["id"], "i": item, "f": board["field"]["id"], "o": ready})
+                  done(f"dispatched: {repo}#{issue['number']} on {E['BOARD']}",
+                       {"analysis_state": "dispatched", "analysis_note": f"Root-cause issue {repo}#{issue['number']} on the {E['BOARD']} board.",
+                        "rca_repo": repo, "rca_issue_number": issue["number"], "rca_issue_url": issue["html_url"], "rca_item_id": item})
+              except SystemExit:
+                  raise
+              except Exception as e:
+                  msg = str(e)
+                  if isinstance(e, urllib.error.HTTPError):
+                      msg = f"HTTP {e.code} on {e.url.split('?')[0]}"
+                  print("::error::", msg)
+                  report(False, "intake failed: " + msg)
+                  sys.exit(1)
+              PY

@@ -436,3 +436,25 @@ spec:
   data:
     - secretKey: token
       remoteRef: { key: eba845cf-3e78-4fda-bc60-b4e8002e7956 }   # SCAFFOLDER_SENTRY_TOKEN (Build Platform)
+---
+# Sentry read token for finding-intake (build-catalog/pipelines/finding-intake.yaml):
+# reads one issue and its latest event to stage into the root-cause issue.
+# Sentry internal integration with Issue & Event: Read only, so this namespace
+# cannot change Sentry state (archiving noise is Port's job, with its own token).
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: scaffolder-sentry-findings
+  namespace: scaffolder
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-build-platform
+    kind: ClusterSecretStore
+  target:
+    name: scaffolder-sentry-findings
+    creationPolicy: Owner
+    template: { engineVersion: v2 }
+  data:
+    - secretKey: token
+      remoteRef: { key: BWS_ID_PENDING }   # SCAFFOLDER_SENTRY_FINDINGS_TOKEN (Build Platform)
