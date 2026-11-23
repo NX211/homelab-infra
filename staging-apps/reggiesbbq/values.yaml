@@ -174,6 +174,11 @@ nextjs-app:
       value: staging
     - name: NEXT_PUBLIC_APP_URL
       value: https://staging.reggiesbbqonline.com
+    # The shipping store's own address (apps/web/src/lib/site.ts). Staging
+    # would fall back to NEXTAUTH_URL without it; set to match prod, where
+    # the app requires it while shipping is on.
+    - name: SHIPPING_SITE_URL
+      value: https://staging.reggiesbbqonline.com
     # The restaurant ordering site's staging host (apps/web/src/lib/site.ts),
     # routed to these same pods by extraHosts below; prod uses
     # order.reggiesbbq.com. Never indexed here: APP_ENV=staging turns indexing
