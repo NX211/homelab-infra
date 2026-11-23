@@ -1,3 +1,4 @@
+{{- if .Values.signaling.enabled }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -98,7 +99,7 @@ spec:
     - name: {{ include "capturly-live.fullname" . }}-signaling
       port: {{ .Values.signaling.service.port }}
   tls:
-    secretName: {{ include "capturly-live.fullname" . }}-signaling-tls
+    secretName: {{ .Values.signaling.tlsSecretName | default (printf "%s-signaling-tls" (include "capturly-live.fullname" .)) }}
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -108,9 +109,10 @@ metadata:
     app.kubernetes.io/name: capturly-live-signaling
     {{- include "capturly-live.labels" . | nindent 4 }}
 spec:
-  secretName: {{ include "capturly-live.fullname" . }}-signaling-tls
+  secretName: {{ .Values.signaling.tlsSecretName | default (printf "%s-signaling-tls" (include "capturly-live.fullname" .)) }}
   issuerRef:
     name: {{ .Values.clusterIssuer }}
     kind: ClusterIssuer
   dnsNames:
     - {{ .Values.signaling.host }}
+{{- end }}
