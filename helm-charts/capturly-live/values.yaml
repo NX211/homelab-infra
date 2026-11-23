@@ -13,7 +13,11 @@ clusterIssuer: letsencrypt-prod
 # refreshed every 30 min). Empty string skips imagePullSecrets injection.
 imagePullSecret: gcr-pull-secret-capturly-live
 
+# Each component can be switched off so one release can carry a subset: the
+# signaling server is its own Argo Application (capturly-live-signaling) so
+# Port grades it as its own service.
 web:
+  enabled: true
   host: live.capturly.app
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/live-capturly-app
@@ -30,7 +34,12 @@ web:
       memory: 128Mi
 
 signaling:
+  enabled: true
   host: wss.live.capturly.app
+  # Empty = <fullname>-signaling-tls. The capturly-live-signaling release sets
+  # the name the secret had under the capturly-live release, so the cert is
+  # adopted rather than re-issued when the component moved between releases.
+  tlsSecretName: ""
   image:
     repository: us-central1-docker.pkg.dev/capturly-app/capturly/capturly-live-signaling
     tag: "latest"  # Updated by CI/CD to a sha tag once the publish workflow runs
