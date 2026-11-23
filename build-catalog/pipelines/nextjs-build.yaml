@@ -90,6 +90,11 @@ spec:
               # there, and it meant a failed checkout left the DEFAULT BRANCH in
               # the workspace while the run reported a passing check — a green
               # tick for code that was never built.
+
+              # This step runs as root (alpine/git), but web-ci's checks step runs
+              # as the toolchain image's non-root uid 1000, which must write
+              # node_modules into every workspace package. Hand it the checkout.
+              chown -R 1000:1000 .
     - name: checks
       runAfter: [clone]
       taskRef:
