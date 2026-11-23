@@ -3,7 +3,7 @@
 # Main app image
 image:
   repository: ghcr.io/karakeep-app/karakeep
-  tag: "0.34.1"
+  tag: "0.35.0"
   pullPolicy: IfNotPresent
 
 # Service configuration
@@ -94,7 +94,7 @@ chrome:
     # the `release` tag so browser upgrades are a reviewable commit.
     # https://docs.karakeep.app/administration/chrome-image-migration
     repository: ghcr.io/karakeep-app/karakeep-chrome
-    tag: "157.0.8103.38-r1"
+    tag: "157.0.8103.78-r1"
     pullPolicy: IfNotPresent
   service:
     port: 9222

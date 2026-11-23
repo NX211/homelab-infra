@@ -1,0 +1,46 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: capturly-live-signaling
+  namespace: argocd
+  # Its own Application so Port grades the signaling server as its own
+  # service: Port derives an Argo app's `service` from this label, and while
+  # signaling shipped inside capturly-live the capturly-live-signaling service
+  # had no Argo app and argo_apps_all_healthy could never pass for it.
+  labels:
+    app.kubernetes.io/part-of: capturly-live-signaling
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NX211/homelab-infra.git
+    targetRevision: HEAD
+    path: helm-charts/capturly-live
+    helm:
+      # Only the signaling server: web and coturn ship with capturly-live.
+      valuesObject:
+        web:
+          enabled: false
+        coturn:
+          enabled: false
+        signaling:
+          # The secret the capturly-live release issued; adopting it avoids a
+          # new ACME order (and a TLS gap on wss.live.capturly.app) on handoff.
+          tlsSecretName: capturly-live-signaling-tls
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: capturly-live
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
