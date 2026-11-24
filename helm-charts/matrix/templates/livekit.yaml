@@ -27,9 +27,9 @@ spec:
         livekit-keys.yaml: {{ `"{{ .apiKey }}: {{ .apiSecret }}"` }}
   data:
     - secretKey: apiKey
-      remoteRef: { key: livekit-api-key, property: value }
+      remoteRef: { key: 2a7e7c76-c814-4e2d-9986-b47000098389 }   # livekit-api-key
     - secretKey: apiSecret
-      remoteRef: { key: livekit-api-secret, property: value }
+      remoteRef: { key: f0485fa7-54b5-4a6f-88a9-b470000983dc }   # livekit-api-secret
 ---
 apiVersion: v1
 kind: ConfigMap
