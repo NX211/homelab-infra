@@ -82,6 +82,16 @@ spec:
           replicas: 1
         reportsController:
           replicas: 1
+          # The chart's 128Mi limit cannot hold ~1,400 PolicyReports: the
+          # controller sat at ~114Mi re-reading its own binary pages, ~4.2k major
+          # faults/s and ~300MB/s of disk reads on blacktalon
+          # (NodeMemoryMajorPagesFaults, 20-30% iowait).
+          resources:
+            limits:
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
           # The SAME Artifact Registry auth the admission controller has above,
           # and for the same reason — but this controller is the one whose
           # verdict is durable.
