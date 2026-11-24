@@ -25,8 +25,9 @@ nextjs-app:
     successfulJobsHistoryLimit: 3
     failedJobsHistoryLimit: 3
     backoffLimit: 2
+    # No reconcile-email-webhooks here: staging sends from a Mailgun sandbox
+    # domain with no real admin key, so it 401'd every hour and never succeeded.
     jobs:
-      - {name: reconcile-email-webhooks, schedule: "0 * * * *", path: /api/cron/reconcile-email-webhooks}
       - {name: waitlist-holds, schedule: "*/15 * * * *", path: /api/cron/waitlist-holds}
       - {name: class-meetings, schedule: "30 3 * * *", path: /api/cron/class-meetings}
       - {name: retention-sweep, schedule: "15 2 * * *", path: /api/cron/retention-sweep}
