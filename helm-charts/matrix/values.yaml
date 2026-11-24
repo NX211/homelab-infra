@@ -46,7 +46,7 @@ redis:
   image: redis:8-alpine
   maxmemory: "256mb"
   authSecretName: matrix-redis-auth
-  passwordRemoteKey: synapse-redis-password
+  passwordRemoteKey: 1e67194e-488f-471e-815a-b46f018a6f74   # synapse-redis-password
   resources:
     requests:
       cpu: 25m
@@ -56,23 +56,23 @@ redis:
       memory: 320Mi
 
 # --------------------------------------------------------------------------
-# Databases provisioned by the db-init Job. Passwords come from Bitwarden via
-# ESO (Bitwarden key snake_case -> secrets-vault secret kebab-case -> value).
+# Databases provisioned by the db-init Job. Passwords come from the Homelab
+# Bitwarden project via ESO; *RemoteKey values are Bitwarden item IDs.
 # --------------------------------------------------------------------------
 databases:
   synapse:
     user: synapse
     name: synapse
     secretName: matrix-synapse-db
-    passwordRemoteKey: synapse-db-password
+    passwordRemoteKey: a9cbff42-ca0f-4853-8d73-b46f0186b020   # synapse-db-password
   mas:
     user: mas
     name: mas
     secretName: matrix-mas-db
-    passwordRemoteKey: mas-db-password
+    passwordRemoteKey: 7bbcb1c0-f4b6-4f64-84e2-b46f0186b06d   # mas-db-password
 
 externalSecrets:
-  storeName: kubernetes-backend
+  storeName: bitwarden-secrets-manager
   refreshInterval: 1h
 
 # --------------------------------------------------------------------------
