@@ -43,9 +43,7 @@ spec:
               enabled: false
   data:
     - secretKey: token
-      remoteRef:
-        key: draupnir-access-token
-        property: value
+      remoteRef: { key: b59703af-a38e-4995-9496-b470000ab4dc }   # draupnir-access-token
 ---
 apiVersion: apps/v1
 kind: Deployment
