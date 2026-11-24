@@ -64,11 +64,13 @@ nextjs-app:
     repository: us-central1-docker.pkg.dev/coreyalan-showcase/showcase/showcase-web-migrate
     digest: "sha256:422c13d7673300d80927ae3e0a298141c3ed895a99f1b7bf08b55fa8a2a15e4a" # written by gitops-staging-update.yml
   # kube-prometheus-stack scrapes through a PodMonitor; there is no Alloy here.
+  # Off until the showcase app serves /metrics on 9464: nothing listens there
+  # (connection refused), so the PodMonitor only produced a permanent TargetDown.
   metrics:
-    enabled: true
+    enabled: false
     scraperNamespace: monitoring
     podMonitor:
-      enabled: true
+      enabled: false
   networkPolicy:
     ingressControllerNamespace: default
     # Pub/Sub, Google STS and the push-token certs.
