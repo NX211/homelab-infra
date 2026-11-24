@@ -19,7 +19,7 @@ staging-app:
   database:
     enabled: true
     superuser:
-      create: true # jlshaw owns the shared postgres-superuser-staging secret
+      create: false # templates/postgres-superuser-staging.yaml owns the shared secret
     userKey: 5a530cc9-c13a-4f00-8551-b423015eb89f # jlshaw db username
     passwordKey: 2327039d-c642-4f08-969a-b423015f0f23 # jlshaw db password
     nameKey: 6dc3af9c-d88e-42b6-85b6-b423015f56ee # jlshaw db name

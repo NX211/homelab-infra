@@ -1,0 +1,22 @@
+---
+# Shared staging Postgres superuser password, used by every staging app's
+# db-init Job. Rendered here rather than by the vendored staging-app 0.8.2
+# (superuser.create: false) so it reads Bitwarden by ID without pulling the
+# chart forward.
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: postgres-superuser-staging
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: bitwarden-secrets-manager
+    kind: ClusterSecretStore
+  target:
+    name: postgres-superuser-staging
+    creationPolicy: Owner
+  data:
+    - secretKey: password
+      remoteRef: { key: 525408a1-ca0f-4a93-8fbc-b3d000fdc0db }   # postgres-root-password
