@@ -45,14 +45,17 @@ spec:
                     requests:
                       storage: 50Gi
 
-            # Resource limits
+            # Resource limits. ~470k head series do not fit in 2Gi: pinned at the
+            # cgroup limit, the kernel kept evicting Prometheus's mmapped chunks
+            # (~5.5k major faults/s on blacktalon) and kube-apiserver-burnrate
+            # took ~58s per run, missing evaluations. blacktalon has 125Gi.
             resources:
               requests:
                 cpu: 200m
-                memory: 512Mi
+                memory: 3Gi
               limits:
                 cpu: 2000m
-                memory: 2Gi
+                memory: 6Gi
 
             # ServiceMonitor selectors - select all ServiceMonitors
             serviceMonitorSelectorNilUsesHelmValues: false
