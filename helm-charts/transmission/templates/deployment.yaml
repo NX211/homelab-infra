@@ -35,7 +35,7 @@ spec:
       initContainers:
       {{- if .Values.vpn.enabled }}
       - name: vpn-cluster-routes
-        image: nicolaka/netshoot:v0.16
+        image: nicolaka/netshoot:v0.17
         securityContext:
           allowPrivilegeEscalation: false
           # Needs NET_ADMIN and uid 0 to add routes; everything else is dropped.
