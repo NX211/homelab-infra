@@ -457,4 +457,4 @@ spec:
     template: { engineVersion: v2 }
   data:
     - secretKey: token
-      remoteRef: { key: BWS_ID_PENDING }   # SCAFFOLDER_SENTRY_FINDINGS_TOKEN (Build Platform)
+      remoteRef: { key: dc9e2221-dda9-4d72-b1bf-b50d0174aed2 }   # SCAFFOLDER_SENTRY_FINDINGS_TOKEN (Build Platform, event:read)
