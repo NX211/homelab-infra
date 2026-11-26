@@ -1,0 +1,20 @@
+# Weekly security scans of the staging apps (ZAP baseline, Nuclei). Plan,
+# requirement mapping and evidence layout: platform-infra security-scans.tf.
+# Digests are pinned by .github/workflows/build-security-scanners.yml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - access.yaml
+  - networkpolicy.yaml
+  - externalsecret.yaml
+  - targets.yaml
+  - scripts.yaml
+  - cronjob-zap.yaml
+  - cronjob-nuclei.yaml
+images:
+  - name: ghcr.io/nx211/zap
+    newTag: "2.17.0"
+  - name: ghcr.io/nx211/nuclei
+    newTag: "3.11.1-templates-10.5.2"
+  - name: ghcr.io/nx211/scan-uploader
+    newTag: "0.1.0"

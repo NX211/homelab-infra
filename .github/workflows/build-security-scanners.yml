@@ -1,0 +1,135 @@
+name: Build security scanners
+
+# Publishes the three images the weekly staging scans run (security-scans/):
+#   ghcr.io/nx211/zap           upstream ZAP, copied by digest
+#   ghcr.io/nx211/nuclei        Nuclei with a pinned template release baked in
+#   ghcr.io/nx211/scan-uploader evidence + Port sync (apps/scan-uploader)
+# Each is signed keyless so verify-image-signatures-business admits it in the
+# business plane, then its digest is pinned into security-scans/kustomization.yaml.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/scan-uploader/**"
+      - "security-scans/images/**"
+      - ".github/workflows/build-security-scanners.yml"
+
+concurrency:
+  group: build-security-scanners
+  cancel-in-progress: false
+
+env:
+  ZAP_SOURCE: ghcr.io/zaproxy/zaproxy@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af # 2.17.0
+  ZAP_IMAGE: ghcr.io/nx211/zap
+  ZAP_TAG: "2.17.0"
+  NUCLEI_IMAGE: ghcr.io/nx211/nuclei
+  NUCLEI_TAG: "3.11.1-templates-10.5.2"
+  UPLOADER_IMAGE: ghcr.io/nx211/scan-uploader
+  UPLOADER_TAG: "0.1.0"
+  KUSTOMIZATION: security-scans/kustomization.yaml
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # keyless cosign signing (OIDC)
+    steps:
+      - name: Mint app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          app-id: ${{ secrets.GITOPS_APP_ID }}
+          private-key: ${{ secrets.GITOPS_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Test uploader
+        working-directory: apps/scan-uploader
+        run: python3 -m unittest -v test_uploader
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push uploader
+        id: uploader
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: apps/scan-uploader
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ env.UPLOADER_IMAGE }}:${{ env.UPLOADER_TAG }}
+
+      - name: Build & push nuclei
+        id: nuclei
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: security-scans/images/nuclei
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ env.NUCLEI_IMAGE }}:${{ env.NUCLEI_TAG }}
+
+      # No rebuild: the upstream index is copied as-is, so the signature vouches
+      # for exactly the bytes ZAP published at that digest.
+      - name: Copy zap
+        id: zap
+        run: |
+          docker buildx imagetools create --tag "${ZAP_IMAGE}:${ZAP_TAG}" "$ZAP_SOURCE"
+          digest=$(docker buildx imagetools inspect "${ZAP_IMAGE}:${ZAP_TAG}" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Sign images (keyless, by digest)
+        env:
+          D_UPLOADER: ${{ steps.uploader.outputs.digest }}
+          D_NUCLEI: ${{ steps.nuclei.outputs.digest }}
+          D_ZAP: ${{ steps.zap.outputs.digest }}
+        run: |
+          cosign sign --yes "${UPLOADER_IMAGE}@${D_UPLOADER}"
+          cosign sign --yes "${NUCLEI_IMAGE}@${D_NUCLEI}"
+          cosign sign --yes "${ZAP_IMAGE}@${D_ZAP}"
+
+      - uses: mikefarah/yq@c14f446382944492701b16c1ddb48bb9dbe683e3 # v4
+
+      - name: Pin digests into the kustomization
+        env:
+          D_UPLOADER: ${{ steps.uploader.outputs.digest }}
+          D_NUCLEI: ${{ steps.nuclei.outputs.digest }}
+          D_ZAP: ${{ steps.zap.outputs.digest }}
+        run: |
+          yq -i '
+            (.images[] | select(.name == strenv(UPLOADER_IMAGE))) |= (.newTag = strenv(UPLOADER_TAG) | .digest = strenv(D_UPLOADER)) |
+            (.images[] | select(.name == strenv(NUCLEI_IMAGE)))   |= (.newTag = strenv(NUCLEI_TAG)   | .digest = strenv(D_NUCLEI)) |
+            (.images[] | select(.name == strenv(ZAP_IMAGE)))      |= (.newTag = strenv(ZAP_TAG)      | .digest = strenv(D_ZAP))
+          ' "$KUSTOMIZATION"
+
+      - name: Commit pin-back
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- "$KUSTOMIZATION"; then
+            echo "No change; digests already pinned."
+            exit 0
+          fi
+          git add "$KUSTOMIZATION"
+          git commit -m "chore(security-scans): pin scanner image digests"
+          for attempt in 1 2 3 4 5; do
+            if git push; then exit 0; fi
+            echo "push rejected (attempt ${attempt}); rebasing onto origin/main"
+            git pull --rebase origin main
+          done
+          echo "::error::pin-back push failed after 5 attempts"; exit 1
