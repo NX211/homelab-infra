@@ -35,17 +35,18 @@ spec:
             seccompProfile: { type: RuntimeDefault }
           initContainers:
             - name: scan
-              image: ghcr.io/nx211/nuclei
+              image: ghcr.io/nx211/nuclei:3.11.1-templates-10.5.2
               command: [sh, /scripts/nuclei.sh]
               env:
                 - { name: REPORTS_DIR, value: /reports }
                 - { name: HOME, value: /home/scanner }
               securityContext:
                 allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
                 capabilities: { drop: [ALL] }
               resources:
                 requests: { cpu: 250m, memory: 512Mi }
-                limits: { memory: 2Gi }
+                limits: { cpu: '2', memory: 2Gi }
               volumeMounts:
                 - { name: reports, mountPath: /reports }
                 - { name: targets, mountPath: /config, readOnly: true }
@@ -55,7 +56,7 @@ spec:
                 - { name: tmp, mountPath: /tmp }
           containers:
             - name: upload
-              image: ghcr.io/nx211/scan-uploader
+              image: ghcr.io/nx211/scan-uploader:0.1.0
               env:
                 - { name: TOOL, value: nuclei }
                 - { name: REQUIREMENTS, value: "VUL-2.8" }
@@ -69,7 +70,7 @@ spec:
                 capabilities: { drop: [ALL] }
               resources:
                 requests: { cpu: 50m, memory: 64Mi }
-                limits: { memory: 256Mi }
+                limits: { cpu: 500m, memory: 256Mi }
               volumeMounts:
                 - { name: reports, mountPath: /reports, readOnly: true }
                 - { name: targets, mountPath: /config, readOnly: true }

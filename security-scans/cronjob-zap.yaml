@@ -35,17 +35,18 @@ spec:
             seccompProfile: { type: RuntimeDefault }
           initContainers:
             - name: scan
-              image: ghcr.io/nx211/zap
+              image: ghcr.io/nx211/zap:2.17.0
               command: [bash, /scripts/zap.sh]
               env:
                 - { name: REPORTS_DIR, value: /reports }
                 - { name: HOME, value: /home/zap }
               securityContext:
                 allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
                 capabilities: { drop: [ALL] }
               resources:
                 requests: { cpu: 500m, memory: 1Gi }
-                limits: { memory: 3Gi }
+                limits: { cpu: '2', memory: 3Gi }
               volumeMounts:
                 - { name: reports, mountPath: /reports }
                 - { name: targets, mountPath: /config, readOnly: true }
@@ -55,7 +56,7 @@ spec:
                 - { name: tmp, mountPath: /tmp }
           containers:
             - name: upload
-              image: ghcr.io/nx211/scan-uploader
+              image: ghcr.io/nx211/scan-uploader:0.1.0
               env:
                 - { name: TOOL, value: zap }
                 - { name: REQUIREMENTS, value: "SDP-5.3,VUL-2.8" }
@@ -69,7 +70,7 @@ spec:
                 capabilities: { drop: [ALL] }
               resources:
                 requests: { cpu: 50m, memory: 64Mi }
-                limits: { memory: 256Mi }
+                limits: { cpu: 500m, memory: 256Mi }
               volumeMounts:
                 - { name: reports, mountPath: /reports, readOnly: true }
                 - { name: targets, mountPath: /config, readOnly: true }
