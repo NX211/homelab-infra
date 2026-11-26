@@ -103,7 +103,7 @@ jobs:
           cosign sign --yes "${NUCLEI_IMAGE}@${D_NUCLEI}"
           cosign sign --yes "${ZAP_IMAGE}@${D_ZAP}"
 
-      - uses: mikefarah/yq@c14f446382944492701b16c1ddb48bb9dbe683e3 # v4
+      - uses: mikefarah/yq@f2944b823f84906a127dbd29e4c2a3e60c4e550e # v4
 
       - name: Pin digests into the kustomization
         env:
