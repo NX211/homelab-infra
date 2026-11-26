@@ -14,7 +14,10 @@ resources:
 images:
   - name: ghcr.io/nx211/zap
     newTag: "2.17.0"
+    digest: sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af
   - name: ghcr.io/nx211/nuclei
     newTag: "3.11.1-templates-10.5.2"
+    digest: sha256:e3c5422a8d9d6b23daded431e44800e52d94770a383dd881da5d310a24cdc6d7
   - name: ghcr.io/nx211/scan-uploader
     newTag: "0.1.0"
+    digest: sha256:d09e900f8005fa3e5573f597b478030586f34c69694d02edc8f92bd1e1a3e88f
