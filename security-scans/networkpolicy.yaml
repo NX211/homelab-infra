@@ -1,0 +1,57 @@
+---
+# The scanners share a cluster with the media stack, Gitea, ArgoCD and the
+# scaffolder. Nothing may connect in, and out they reach only:
+#   - cluster DNS
+#   - Traefik (default ns; pod ports 8000/8443 after DNAT), i.e. the staging
+#     hosts through the real ingress path
+#   - the API server (uploader state ConfigMap, Argo app images)
+#   - public HTTPS (STS, Cloud Storage, Port webhook ingest) -- never a private
+#     range, so no other in-cluster or LAN service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: security-scans
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scanner-egress
+  namespace: security-scans
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - { protocol: TCP, port: 8000 }
+        - { protocol: TCP, port: 8443 }
+    - to:
+        - ipBlock: { cidr: 10.20.0.250/32 } # k3s API server (blacktalon)
+      ports:
+        - { protocol: TCP, port: 6443 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16]
+      ports:
+        - { protocol: TCP, port: 443 }

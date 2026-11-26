@@ -1,0 +1,54 @@
+---
+# Scanner loops. Each target gets REPORTS_DIR/<app>/ with the tool's raw output,
+# scan.log and status.json; the loop itself always exits 0 so the uploader runs
+# and records a failed target as failed evidence rather than nothing.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scan-scripts
+  namespace: security-scans
+data:
+  zap.sh: |
+    #!/bin/bash
+    # ZAP baseline (SDP-5.3): spider + passive scan only. It never submits
+    # forms or sends attack payloads, so it is safe against every staging app.
+    set -u
+    version=$(ls /zap/zap-*.jar 2>/dev/null | sed -E 's#.*/zap-(.*)\.jar#\1#' | head -1)
+    while IFS=$'\t' read -r app url; do
+      [ -n "$app" ] || continue
+      d="${REPORTS_DIR}/${app}"; mkdir -p "$d"
+      rm -f /zap/wrk/report.json /zap/wrk/report.html
+      start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      timeout 2400 zap-baseline.py -t "$url" -m "${SPIDER_MINUTES:-5}" -T 30 \
+        -J report.json -r report.html > "$d/scan.log" 2>&1
+      rc=$?
+      cp /zap/wrk/report.json /zap/wrk/report.html "$d/" 2>/dev/null
+      printf '{"app":"%s","target":"%s","tool_version":"%s","started_at":"%s","finished_at":"%s","exit_code":%d}\n' \
+        "$app" "$url" "$version" "$start" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$rc" > "$d/status.json"
+      echo "[$app] zap-baseline exit $rc"
+    done < /config/targets.tsv
+    exit 0
+  nuclei.sh: |
+    #!/bin/sh
+    # Nuclei (VUL-2.8) against staging only: exposure, misconfiguration, CVE
+    # and default-login templates; dos, intrusive and fuzz excluded. -ni turns
+    # off interactsh, so no out-of-band callback ever leaves for a third party.
+    set -u
+    version=$(nuclei -version 2>&1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    templates=$(cat /opt/nuclei-templates/VERSION)
+    tab=$(printf '\t')
+    while IFS="$tab" read -r app url; do
+      [ -n "$app" ] || continue
+      d="${REPORTS_DIR}/${app}"; mkdir -p "$d"
+      : > "$d/results.jsonl"
+      start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+      timeout 3600 nuclei -u "$url" -t /opt/nuclei-templates \
+        -tags exposure,misconfig,cve,default-login -etags dos,intrusive,fuzz \
+        -rate-limit 10 -concurrency 5 -timeout 10 -retries 1 \
+        -ni -duc -jsonl -o "$d/results.jsonl" -no-color > /dev/null 2> "$d/scan.log"
+      rc=$?
+      printf '{"app":"%s","target":"%s","tool_version":"%s","templates_version":"%s","started_at":"%s","finished_at":"%s","exit_code":%d}\n' \
+        "$app" "$url" "$version" "$templates" "$start" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$rc" > "$d/status.json"
+      echo "[$app] nuclei exit $rc"
+    done < /config/targets.tsv
+    exit 0

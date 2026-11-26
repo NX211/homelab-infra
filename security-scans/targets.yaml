@@ -1,0 +1,32 @@
+---
+# The staging apps the weekly scans cover. `app` is the staging-apps/<app> and
+# Argo `staging-<app>` name; `service` is the Port service the findings attach to
+# (and the gate in platform-infra promote.yml reads). Hosts resolve in-cluster to
+# Traefik (coredns split-horizon), so scans take the real ingress path.
+# targets.tsv carries the same rows for the shell scanners: keep both in step.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scan-targets
+  namespace: security-scans
+data:
+  targets.json: |
+    [
+      {"app": "blue-skysolutions-com", "service": "blue-skysolutions-com", "url": "https://staging.blue-skysolutions.com"},
+      {"app": "capturly-web", "service": "capturly-app", "url": "https://staging.capturly.app"},
+      {"app": "coreyalan-com", "service": "coreyalan-com", "url": "https://staging.coreyalan.com"},
+      {"app": "dispatchr-social", "service": "dispatchr-social", "url": "https://staging.dispatchr.social"},
+      {"app": "gatherbee", "service": "gatherbee", "url": "https://staging.gatherbee.org"},
+      {"app": "jlshaw-link", "service": "jlshaw-link", "url": "https://staging.jlshawconsulting.com"},
+      {"app": "reggiesbbq", "service": "reggiesbbq", "url": "https://staging.reggiesbbqonline.com"},
+      {"app": "showcase", "service": "showcase", "url": "https://staging.showcase.coreyalan.com"}
+    ]
+  targets.tsv: |
+    blue-skysolutions-com	https://staging.blue-skysolutions.com
+    capturly-web	https://staging.capturly.app
+    coreyalan-com	https://staging.coreyalan.com
+    dispatchr-social	https://staging.dispatchr.social
+    gatherbee	https://staging.gatherbee.org
+    jlshaw-link	https://staging.jlshawconsulting.com
+    reggiesbbq	https://staging.reggiesbbqonline.com
+    showcase	https://staging.showcase.coreyalan.com

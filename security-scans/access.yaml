@@ -1,0 +1,75 @@
+---
+# One identity for the scan pods. Its Kubernetes token is NOT automounted: the
+# uploader container alone mounts it (cronjobs), so the scanners never hold it.
+# Its projected GCP token federates (platform-infra homelab-wif.tf) to the
+# direct principal that may only create objects in the evidence bucket.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scan-uploader
+  namespace: security-scans
+automountServiceAccountToken: false
+---
+# First-seen dates and the open set per tool, written by the uploader.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: scan-state
+  namespace: security-scans
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [scan-state-zap, scan-state-nuclei]
+    verbs: [get, patch]
+  # create cannot be limited by name; the namespace holds nothing else writable.
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scan-state
+  namespace: security-scans
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: scan-state
+subjects:
+  - kind: ServiceAccount
+    name: scan-uploader
+    namespace: security-scans
+---
+# The deployed images of each scanned app, recorded in the evidence manifest.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: security-scans-read-staging-apps
+  namespace: argocd
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [applications]
+    resourceNames:
+      - staging-blue-skysolutions-com
+      - staging-capturly-web
+      - staging-coreyalan-com
+      - staging-dispatchr-social
+      - staging-gatherbee
+      - staging-jlshaw-link
+      - staging-reggiesbbq
+      - staging-showcase
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: security-scans-read-staging-apps
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: security-scans-read-staging-apps
+subjects:
+  - kind: ServiceAccount
+    name: scan-uploader
+    namespace: security-scans

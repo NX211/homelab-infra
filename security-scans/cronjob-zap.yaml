@@ -1,0 +1,100 @@
+---
+# Weekly ZAP baseline of every staging app (SDP-5.3, VUL-2.8). The scan runs as
+# an init container, then the uploader stores the evidence and syncs findings.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: zap-baseline
+  namespace: security-scans
+spec:
+  schedule: "0 6 * * 0"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 28800
+      ttlSecondsAfterFinished: 1209600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: zap-baseline
+            app.kubernetes.io/part-of: security-scans
+        spec:
+          serviceAccountName: scan-uploader
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile: { type: RuntimeDefault }
+          initContainers:
+            - name: scan
+              image: ghcr.io/nx211/zap:2.17.0
+              command: [bash, /scripts/zap.sh]
+              env:
+                - { name: REPORTS_DIR, value: /reports }
+                - { name: HOME, value: /home/zap }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              resources:
+                requests: { cpu: 500m, memory: 1Gi }
+                limits: { cpu: '2', memory: 3Gi }
+              volumeMounts:
+                - { name: reports, mountPath: /reports }
+                - { name: targets, mountPath: /config, readOnly: true }
+                - { name: scripts, mountPath: /scripts, readOnly: true }
+                - { name: wrk, mountPath: /zap/wrk }
+                - { name: home, mountPath: /home/zap }
+                - { name: tmp, mountPath: /tmp }
+          containers:
+            - name: upload
+              image: ghcr.io/nx211/scan-uploader:0.1.0
+              env:
+                - { name: TOOL, value: zap }
+                - { name: REQUIREMENTS, value: "SDP-5.3,VUL-2.8" }
+                - { name: EVIDENCE_BUCKET, value: platform-infra-prod-compliance-evidence }
+                - { name: WIF_AUDIENCE, value: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc }
+                - name: RUN_ID
+                  valueFrom: { fieldRef: { fieldPath: "metadata.labels['batch.kubernetes.io/job-name']" } }
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              resources:
+                requests: { cpu: 50m, memory: 64Mi }
+                limits: { cpu: 500m, memory: 256Mi }
+              volumeMounts:
+                - { name: reports, mountPath: /reports, readOnly: true }
+                - { name: targets, mountPath: /config, readOnly: true }
+                - { name: port, mountPath: /secrets/port, readOnly: true }
+                - { name: gcp-token, mountPath: /var/run/gcp, readOnly: true }
+                - { name: kube-token, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true }
+          volumes:
+            - { name: reports, emptyDir: {} }
+            - { name: wrk, emptyDir: {} }
+            - { name: home, emptyDir: {} }
+            - { name: tmp, emptyDir: {} }
+            - { name: targets, configMap: { name: scan-targets } }
+            - { name: scripts, configMap: { name: scan-scripts } }
+            - { name: port, secret: { secretName: security-scans-port } }
+            - name: gcp-token
+              projected:
+                sources:
+                  - serviceAccountToken:
+                      audience: //iam.googleapis.com/projects/861533890029/locations/global/workloadIdentityPools/homelab-staging/providers/k3s-oidc
+                      expirationSeconds: 3600
+                      path: token
+            - name: kube-token
+              projected:
+                sources:
+                  - serviceAccountToken: { expirationSeconds: 3600, path: token }
+                  - configMap: { name: kube-root-ca.crt, items: [{ key: ca.crt, path: ca.crt }] }
+                  - downwardAPI: { items: [{ path: namespace, fieldRef: { fieldPath: metadata.namespace } }] }

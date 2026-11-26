@@ -86,3 +86,36 @@ misconfigurations:
       why it replaces a banned SA key). Ends if either file gains real key
       material or the components are retired.
     expired_at: 2027-01-30
+  - id: KSV-0036
+    paths:
+      - "security-scans/cronjob-zap.yaml"
+      - "security-scans/cronjob-nuclei.yaml"
+    statement: >-
+      automountServiceAccountToken is false for the whole pod; the uploader
+      container alone mounts a projected Kubernetes token (for two name-scoped
+      state ConfigMaps and get on eight staging Argo apps) and a GCP-audience
+      token that can only create evidence objects. The scanner containers hold
+      neither. Ends if the uploader stops needing the API (state moved out of
+      ConfigMaps).
+    expired_at: 2027-02-20
+  - id: KSV-0049
+    paths:
+      - "security-scans/access.yaml"
+    statement: >-
+      The scan uploader keeps first-seen dates in two ConfigMaps: get/patch are
+      scoped by resourceName to scan-state-zap and scan-state-nuclei, and only
+      `create` is namespace-wide because RBAC cannot scope it by name; the
+      namespace holds no other workload. Ends if the state moves elsewhere.
+    expired_at: 2027-02-20
+  - id: KSV-0125
+    paths:
+      - "security-scans/cronjob-zap.yaml"
+      - "security-scans/cronjob-nuclei.yaml"
+    statement: >-
+      Every image is ghcr.io/nx211/*, built or digest-copied, keyless-signed and
+      digest-pinned by build-security-scanners.yml; Kyverno
+      restrict-image-registries-business and verify-image-signatures-business
+      enforce both in this business-plane namespace. Trivy's default trusted
+      list does not include ghcr.io. Ends when the scanners move to Artifact
+      Registry or the rule's trusted list includes ghcr.io/nx211.
+    expired_at: 2027-02-20
