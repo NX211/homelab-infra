@@ -278,6 +278,16 @@ spec:
               # AGENT_GUARD_ALLOW: the repo's guard-paths hook (framework/agents/
               # hooks) refuses .github/ edits in headless sessions; workflow
               # fixes are this lane's job, so lift that one class here.
+              # stdout is the json file, so without this an auth, API or CLI
+              # failure leaves an empty step log (as implement-spec's agent_diag).
+              agent_failed() {
+                node -e 'try { const r = JSON.parse(require("fs").readFileSync(process.argv[1]));
+                  console.log(`::error:: agent failed: is_error=${r.is_error} subtype=${r.subtype} api_error=${r.api_error_status} turns=${r.num_turns}`);
+                  if (r.result) console.log(String(r.result).slice(0, 500));
+                } catch (e) { console.log("::error:: agent failed with no output json"); }' "${WS}/agent-out.json"
+                tail -n 8 /tmp/agent-err.log 2>/dev/null | sed 's/^/  /'
+                exit "$1"
+              }
               AGENT_GUARD_ALLOW=github claude -p "$(cat <<'PROMPT'
               You are remediating failing engineering-standard checks in an existing
               application repository. Your working directory IS that repository.
@@ -325,7 +335,7 @@ spec:
               PROMPT
               )" --permission-mode acceptEdits --add-dir "${WS}" \
                 --max-turns "$(params.max-turns)" --max-budget-usd "$(params.budget)" \
-                --output-format json > "${WS}/agent-out.json"
+                --output-format json > "${WS}/agent-out.json" 2>/tmp/agent-err.log || agent_failed $?
 
               # `[ -f ]` is TRUE for a symlink to a regular file, so it cannot be
               # the only guard: the agent could point SUMMARY.md at another file

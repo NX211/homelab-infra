@@ -287,6 +287,16 @@ spec:
               if [ -e /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
                 echo "::error:: a service-account token is mounted in the agent pod — refusing (check taskRunSpecs)"; exit 1
               fi
+              # stdout is the json file, so without this an auth, API or CLI
+              # failure leaves an empty step log (as implement-spec's agent_diag).
+              agent_failed() {
+                node -e 'try { const r = JSON.parse(require("fs").readFileSync(process.argv[1]));
+                  console.log(`::error:: agent failed: is_error=${r.is_error} subtype=${r.subtype} api_error=${r.api_error_status} turns=${r.num_turns}`);
+                  if (r.result) console.log(String(r.result).slice(0, 500));
+                } catch (e) { console.log("::error:: agent failed with no output json"); }' "${WS}/agent-out.json"
+                tail -n 8 /tmp/agent-err.log 2>/dev/null | sed 's/^/  /'
+                exit "$1"
+              }
               claude -p "$(cat <<'PROMPT'
               You are writing an implementation plan for one GitHub issue in the
               application repository that is your working directory. You do not
@@ -377,7 +387,7 @@ spec:
                   "Read(//var/run/**)" "Grep(//var/run/**)" "Glob(//var/run/**)" \
                   "Read(//proc/**)" "Grep(//proc/**)" "Glob(//proc/**)" \
                 --max-turns "$(params.max-turns)" --max-budget-usd "$(params.budget)" \
-                --output-format json > "${WS}/agent-out.json"
+                --output-format json > "${WS}/agent-out.json" 2>/tmp/agent-err.log || agent_failed $?
 
               if [ -L "${WS}/PLAN.md" ]; then echo "::error:: PLAN.md is a symlink"; rm -f "${WS}/PLAN.md"; exit 1; fi
               [ -f "${WS}/PLAN.md" ] || { echo "::error:: the agent wrote no PLAN.md"; exit 1; }
