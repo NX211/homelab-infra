@@ -1,0 +1,13 @@
+# Weekly CIS benchmark (kube-bench, k3s profile) of every staging node, VUL-2.7.
+# Results are collected by security-scans/cronjob-kube-bench-upload.yaml.
+# The digest is pinned by .github/workflows/build-security-scanners.yml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - access.yaml
+  - networkpolicy.yaml
+  - scripts.yaml
+  - cronjob.yaml
+images:
+  - name: ghcr.io/nx211/kube-bench
+    newTag: "e278a59"

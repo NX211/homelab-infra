@@ -1,0 +1,6 @@
+#!/bin/sh
+# The k3s checks grep `journalctl -m -u k3s ...` for the arguments k3s logged at
+# its last start. bench.sh extracts that startup window from the host journal
+# once and fails the node if it is missing; each check then reads the extract
+# instead of re-reading the whole journal (over a minute per check).
+exec cat "${K3S_STARTUP_LOG:?bench.sh sets K3S_STARTUP_LOG}"
