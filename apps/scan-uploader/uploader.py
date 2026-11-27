@@ -351,7 +351,8 @@ def bench_main(kube, token, webhook, bucket, requirements) -> int:
         "schema": 1, "tool": "kube-bench", "benchmark": first.get("benchmark"),
         "kube_bench_commit": first.get("kube_bench_commit"), "scanner_images": images,
         "cluster": cluster, "nodes": {n: {"role": d.get("role"), "targets": d.get("targets"),
-                                          "status": d.get("status"), "reason": d.get("reason")}
+                                          "status": d.get("status"), "reason": d.get("reason"),
+                                          "skipped": d.get("skipped") or []}
                                       for n, d in docs.items()},
         "run_id": run, "started_at": min((d.get("started_at") or "" for d in docs.values()), default=None),
         "finished_at": max((d.get("finished_at") or "" for d in docs.values()), default=None),
