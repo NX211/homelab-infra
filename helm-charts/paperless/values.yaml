@@ -134,7 +134,7 @@ ai:
   enabled: true
   image:
     repository: clusterzx/paperless-ai
-    tag: "4.5.2"
+    tag: "4.8.0"
     pullPolicy: IfNotPresent
   service:
     port: 3000
