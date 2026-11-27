@@ -90,6 +90,7 @@ misconfigurations:
     paths:
       - "security-scans/cronjob-zap.yaml"
       - "security-scans/cronjob-nuclei.yaml"
+      - "security-scans/cronjob-kube-bench-upload.yaml"
     statement: >-
       automountServiceAccountToken is false for the whole pod; the uploader
       container alone mounts a projected Kubernetes token (for two name-scoped
@@ -103,7 +104,7 @@ misconfigurations:
       - "security-scans/access.yaml"
     statement: >-
       The scan uploader keeps first-seen dates in two ConfigMaps: get/patch are
-      scoped by resourceName to scan-state-zap and scan-state-nuclei, and only
+      scoped by resourceName to scan-state-zap, scan-state-nuclei and scan-state-kube-bench, and only
       `create` is namespace-wide because RBAC cannot scope it by name; the
       namespace holds no other workload. Ends if the state moves elsewhere.
     expired_at: 2027-02-20
@@ -111,6 +112,7 @@ misconfigurations:
     paths:
       - "security-scans/cronjob-zap.yaml"
       - "security-scans/cronjob-nuclei.yaml"
+      - "security-scans/cronjob-kube-bench-upload.yaml"
     statement: >-
       Every image is ghcr.io/nx211/*, built or digest-copied, keyless-signed and
       digest-pinned by build-security-scanners.yml; Kyverno
@@ -118,4 +120,49 @@ misconfigurations:
       enforce both in this business-plane namespace. Trivy's default trusted
       list does not include ghcr.io. Ends when the scanners move to Artifact
       Registry or the rule's trusted list includes ghcr.io/nx211.
+    expired_at: 2027-02-20
+  - id: KSV-0010
+    paths:
+      - "security-bench/cronjob.yaml"
+    statement: >-
+      kube-bench (CIS benchmark, VUL-2.7) finds the k3s and containerd
+      processes through the host PID namespace; without it every process check
+      is skipped. The namespace is privileged on purpose and runs nothing else;
+      the pods are read-only, drop all capabilities and reach only the API
+      server. Ends if k3s exposes its runtime arguments another way.
+    expired_at: 2027-02-20
+  - id: DS-0002
+    paths:
+      - "security-scans/images/kube-bench/Dockerfile"
+    statement: >-
+      The CIS file checks stat and read root-only k3s files (keys, kubeconfigs,
+      the journal), which needs uid 0. The pod sets runAsUser 0 explicitly with
+      no capabilities, no privilege escalation and a read-only root and host
+      mounts. Ends if the benchmark can run unprivileged.
+    expired_at: 2027-02-20
+  - id: KSV-0012
+    paths:
+      - "security-bench/cronjob.yaml"
+    statement: >-
+      kube-bench reads root-only k3s files (see DS-0002), so the pod runs as
+      uid 0 with no capabilities and no privilege escalation. Ends with DS-0002.
+    expired_at: 2027-02-20
+  - id: KSV-0023
+    paths:
+      - "security-bench/cronjob.yaml"
+    statement: >-
+      The CIS file and argument checks read the k3s state, /etc/rancher and the
+      journal; all four hostPath mounts are read-only, of type Directory (never
+      created), and the pods reach only the API server. Ends with KSV-0010.
+    expired_at: 2027-02-20
+  - id: KSV-0125
+    paths:
+      - "security-bench/cronjob.yaml"
+    statement: >-
+      ghcr.io/nx211/kube-bench is built from a pinned kube-bench commit,
+      keyless-signed and digest-pinned by build-security-scanners.yml. This
+      namespace is outside the business plane, so no admission policy checks
+      the registry; the digest pin in security-bench/kustomization.yaml is the
+      control. Ends when the scanners move to Artifact Registry or the rule's
+      trusted list includes ghcr.io/nx211.
     expired_at: 2027-02-20
