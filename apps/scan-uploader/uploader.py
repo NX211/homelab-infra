@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Store one scan run as compliance evidence and sync its findings to Port.
 
-Runs after a scanner (security-scans/*-cronjob.yaml) has written, per target,
-REPORTS_DIR/<app>/status.json plus the tool's raw output. For each target it:
+ZAP and Nuclei: runs after the scanner (security-scans/cronjob-*.yaml) has
+written, per target, REPORTS_DIR/<app>/status.json plus the tool's raw output.
+kube-bench (TOOL=kube-bench): collects the newest security-bench run's per-node
+results from its pod logs, and treats the cluster as the one target; the run
+succeeded only if every node reported a completed benchmark. For each target it:
 
 1. uploads every file and then manifest.json (sha256, versions, target, deployed
    images, UTC times, severity counts, requirements) to
@@ -31,6 +34,9 @@ import urllib.request
 SEVERITIES = ["info", "low", "medium", "high", "critical"]
 # docs/vulnerability-management-policy.md VUL-3.2..3.5 (low: next routine update)
 TARGET_DAYS = {"critical": 7, "high": 30, "medium": 90}
+# docs/procedures/configuration-baseline.md: unrecorded drift is fixed within 30 days.
+TARGET_DAYS_BY_TOOL = {"kube-bench": {"medium": 30}}
+BENCH_BEGIN, BENCH_END = "-----BEGIN KUBE-BENCH RESULT-----", "-----END KUBE-BENCH RESULT-----"
 ZAP_RISK = {"0": "info", "1": "low", "2": "medium", "3": "high"}
 K8S = "https://kubernetes.default.svc"
 SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
@@ -99,6 +105,60 @@ def parse_nuclei(lines) -> list:
     return list(out.values())
 
 
+def bench_envelope(log: str):
+    """The JSON document bench.sh prints between markers, as (bytes, dict)."""
+    start, end = log.find(BENCH_BEGIN), log.rfind(BENCH_END)
+    if start < 0 or end < start:
+        raise ValueError("no kube-bench result in the pod log")
+    raw = log[start + len(BENCH_BEGIN):end].strip().encode()
+    return raw, json.loads(raw)
+
+
+def bench_checks(doc: dict):
+    for control in (doc.get("result") or {}).get("Controls") or []:
+        for section in control.get("tests") or []:
+            yield from section.get("results") or []
+
+
+def parse_kube_bench(docs: dict) -> list:
+    """Node name -> envelope -> one finding per failed CIS check, across nodes.
+
+    A FAIL is configuration drift from the benchmark: medium, fixed within 30
+    days or recorded as a deviation (exception). WARN checks are manual and
+    stay in the evidence only."""
+    out = {}
+    for node in sorted(docs):
+        for r in bench_checks(docs[node]):
+            if r.get("status") != "FAIL":
+                continue
+            rule = str(r.get("test_number"))
+            f = out.setdefault(rule, {
+                "rule_id": rule,
+                "name": f"CIS {rule} {r.get('test_desc', '')}".strip(),
+                "severity": "medium",
+                "instances": 0,
+                "cwe": "",
+                "solution": clip(r.get("remediation")),
+                "description": clip(f"{r.get('test_desc', '')}\nActual: {r.get('actual_value', '')}"),
+                "nodes": [],
+            })
+            f["instances"] += 1
+            f["nodes"].append(node)
+    for f in out.values():
+        f["example"] = ", ".join(f.pop("nodes"))[:500]
+    return list(out.values())
+
+
+def bench_totals(docs: dict) -> dict:
+    t = {"pass": 0, "fail": 0, "warn": 0, "info": 0}
+    for doc in docs.values():
+        for r in bench_checks(doc):
+            k = str(r.get("status", "")).lower()
+            if k in t:
+                t[k] += 1
+    return t
+
+
 def reconcile(tool, target, found, state, now, evidence_uri, requirements):
     """Port payload items and the next state for one successfully scanned target.
 
@@ -112,7 +172,7 @@ def reconcile(tool, target, found, state, now, evidence_uri, requirements):
             continue
         fid = f"{tool}-{slug(app)}-{slug(f['rule_id'])}"
         first = (state.get(fid) or {}).get("first_seen") or iso(now)
-        days = TARGET_DAYS.get(f["severity"])
+        days = {**TARGET_DAYS, **TARGET_DAYS_BY_TOOL.get(tool, {})}.get(f["severity"])
         target_date = iso(dt.datetime.fromisoformat(first.replace("Z", "+00:00")) + dt.timedelta(days=days)) if days else None
         item = {
             "id": fid, "title": f"{f['name']} ({app})"[:200], "tool": tool, "app": app, "service": service,
@@ -190,6 +250,17 @@ class Kube:
         self.call("PATCH", f"/api/v1/namespaces/{self.ns}/configmaps/{name}",
                   {"data": {app: json.dumps(value, sort_keys=True)}}, "application/merge-patch+json")
 
+    def pods(self, ns, selector) -> list:
+        q = urllib.parse.urlencode({"labelSelector": selector})
+        return self.call("GET", f"/api/v1/namespaces/{ns}/pods?{q}").get("items") or []
+
+    def log(self, ns, pod, container) -> str:
+        q = urllib.parse.urlencode({"container": container})
+        return self.call("GET", f"/api/v1/namespaces/{ns}/pods/{pod}/log?{q}").decode()
+
+    def nodes(self) -> list:
+        return sorted(n["metadata"]["name"] for n in self.call("GET", "/api/v1/nodes").get("items") or [])
+
     def images(self, app) -> list:
         try:
             a = self.call("GET", f"/apis/argoproj.io/v1alpha1/namespaces/argocd/applications/staging-{app}")
@@ -209,6 +280,106 @@ def succeeded(tool, status) -> bool:
     return status.get("exit_code") in ((0, 1, 2) if tool == "zap" else (0,))
 
 
+def store(token, bucket, prefix, files, manifest) -> None:
+    """Upload (name, bytes) files, then the manifest that hashes them."""
+    listed = []
+    for name, data in files:
+        ctype = "application/json" if name.endswith((".json", ".jsonl")) else (
+            "text/html" if name.endswith(".html") else "text/plain")
+        gcs_put(token, bucket, f"{prefix}/{name}", data, ctype)
+        listed.append({"name": name, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)})
+    manifest["files"] = listed
+    gcs_put(token, bucket, f"{prefix}/manifest.json",
+            json.dumps(manifest, indent=2, sort_keys=True).encode(), "application/json")
+
+
+def sync(kube, webhook, state_cm, tool, app, run, items, nxt) -> None:
+    for i in range(0, len(items), CHUNK):
+        http("POST", webhook, json.dumps({"tool": tool, "app": app, "run_id": run,
+                                          "findings": items[i:i + CHUNK]}).encode(),
+             {"Content-Type": "application/json"})
+    kube.save(state_cm, app, nxt)
+
+
+def collect_bench(kube, ns, now, max_age_hours):
+    """The newest kube-bench run: (job, {node: (raw, doc)}, scanner images, problems).
+
+    Coverage is judged against the cluster's nodes now, not the Job's status, so
+    a node that never ran or a node added since both fail the run."""
+    pods = kube.pods(ns, "app.kubernetes.io/name=kube-bench")
+    if not pods:
+        return None, {}, [], ["no kube-bench pods"]
+    job = max(pods, key=lambda p: p["metadata"]["creationTimestamp"])["metadata"]["labels"].get(
+        "batch.kubernetes.io/job-name")
+    pods = [p for p in pods if p["metadata"]["labels"].get("batch.kubernetes.io/job-name") == job]
+    oldest = min(p["metadata"]["creationTimestamp"] for p in pods)
+    problems, results, images = [], {}, set()
+    if now - dt.datetime.fromisoformat(oldest.replace("Z", "+00:00")) > dt.timedelta(hours=max_age_hours):
+        problems.append(f"newest run {job} started {oldest}, over {max_age_hours}h ago")
+    for p in pods:
+        name, node = p["metadata"]["name"], p["spec"].get("nodeName") or "unscheduled"
+        images.update(c.get("imageID", "") for c in (p.get("status") or {}).get("containerStatuses") or [])
+        if (p.get("status") or {}).get("phase") != "Succeeded":
+            problems.append(f"{node}: pod {name} is {(p.get('status') or {}).get('phase')}")
+            continue
+        try:
+            raw, doc = bench_envelope(kube.log(ns, name, "bench"))
+        except (ValueError, urllib.error.HTTPError) as e:
+            problems.append(f"{node}: {e}")
+            continue
+        if doc.get("status") != "ok":
+            problems.append(f"{node}: {doc.get('reason') or 'failed'}")
+        results[node] = (raw, doc)
+    for node in kube.nodes():
+        if node not in results:
+            problems.append(f"{node}: no result")
+    return job, results, sorted(x for x in images if x), problems
+
+
+def bench_main(kube, token, webhook, bucket, requirements) -> int:
+    cluster = os.environ["CLUSTER"]
+    ns = os.environ.get("BENCH_NAMESPACE", "security-bench")
+    state_cm, now = "scan-state-kube-bench", dt.datetime.now(dt.timezone.utc)
+    job, results, images, problems = collect_bench(kube, ns, now, int(os.environ.get("MAX_AGE_HOURS", "6")))
+    run = job or os.environ.get("RUN_ID", "manual")
+    docs = {n: d for n, (_, d) in results.items()}
+    ok = not problems
+    found = parse_kube_bench(docs) if ok else []
+    prefix = f"scans/kube-bench/{cluster}/{now:%Y-%m-%d}/{run}"
+    first = next(iter(docs.values()), {})
+    manifest = {
+        "schema": 1, "tool": "kube-bench", "benchmark": first.get("benchmark"),
+        "kube_bench_commit": first.get("kube_bench_commit"), "scanner_images": images,
+        "cluster": cluster, "nodes": {n: {"role": d.get("role"), "targets": d.get("targets"),
+                                          "status": d.get("status"), "reason": d.get("reason")}
+                                      for n, d in docs.items()},
+        "run_id": run, "started_at": min((d.get("started_at") or "" for d in docs.values()), default=None),
+        "finished_at": max((d.get("finished_at") or "" for d in docs.values()), default=None),
+        "scan_status": "succeeded" if ok else "failed", "problems": problems,
+        "requirements": requirements, "results": bench_totals(docs), "counts": counts(found),
+    }
+    try:
+        store(token, bucket, prefix, [(f"{n}.json", raw) for n, (raw, _) in sorted(results.items())], manifest)
+    except urllib.error.HTTPError as e:
+        print(f"[{cluster}] evidence upload failed: HTTP {e.code} {e.read()[:300]!r}", flush=True)
+        return 1
+    if not ok:
+        print(f"[{cluster}] run {run} incomplete; evidence stored, findings untouched: {'; '.join(problems)}", flush=True)
+        return 1
+    target = {"app": cluster, "service": None, "url": None}
+    items, nxt = reconcile("kube-bench", target, found, kube.state(state_cm).get(cluster) or {},
+                           now, f"gs://{bucket}/{prefix}/", requirements)
+    try:
+        sync(kube, webhook, state_cm, "kube-bench", cluster, run, items, nxt)
+    except urllib.error.HTTPError as e:
+        print(f"[{cluster}] Port sync failed: HTTP {e.code}; state kept for the next run", flush=True)
+        return 1
+    t = manifest["results"]
+    print(f"[{cluster}] {run}: {len(results)} nodes, pass={t['pass']} fail={t['fail']} warn={t['warn']}; "
+          f"open={len(nxt)} resolved={sum(1 for x in items if x['state'] == 'resolved')}", flush=True)
+    return 0
+
+
 def main() -> int:
     tool = os.environ["TOOL"]
     reports = os.environ.get("REPORTS_DIR", "/reports")
@@ -216,9 +387,12 @@ def main() -> int:
     requirements = [r for r in os.environ.get("REQUIREMENTS", "").split(",") if r]
     run = os.environ.get("RUN_ID", "manual")
     webhook = open(os.environ.get("PORT_WEBHOOK_URL_FILE", "/secrets/port/url")).read().strip()
-    targets = json.load(open(os.environ.get("TARGETS_FILE", "/config/targets.json")))
     kube, state_cm = Kube(), f"scan-state-{tool}"
-    state, token, failures = kube.state(state_cm), gcp_token(), 0
+    token = gcp_token()
+    if tool == "kube-bench":
+        return bench_main(kube, token, webhook, bucket, requirements)
+    targets = json.load(open(os.environ.get("TARGETS_FILE", "/config/targets.json")))
+    state, failures = kube.state(state_cm), 0
 
     for t in targets:
         app, d = t["app"], os.path.join(reports, t["app"])
@@ -236,24 +410,17 @@ def main() -> int:
         except (OSError, ValueError) as e:
             print(f"[{app}] report unreadable ({e}); treating the scan as failed", flush=True)
             ok, found = False, []
-        files = []
+        manifest = {
+            "schema": 1, "tool": tool, "tool_version": status.get("tool_version"),
+            "templates_version": status.get("templates_version"),
+            "app": app, "service": t["service"], "target": t["url"], "app_images": kube.images(app),
+            "run_id": run, "started_at": status.get("started_at"), "finished_at": status.get("finished_at"),
+            "scan_status": "succeeded" if ok else "failed", "exit_code": status.get("exit_code"),
+            "requirements": requirements, "counts": counts(found),
+        }
         try:
-            for name in sorted(os.listdir(d)):
-                data = open(os.path.join(d, name), "rb").read()
-                ctype = "application/json" if name.endswith((".json", ".jsonl")) else (
-                    "text/html" if name.endswith(".html") else "text/plain")
-                gcs_put(token, bucket, f"{prefix}/{name}", data, ctype)
-                files.append({"name": name, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)})
-            manifest = {
-                "schema": 1, "tool": tool, "tool_version": status.get("tool_version"),
-                "templates_version": status.get("templates_version"),
-                "app": app, "service": t["service"], "target": t["url"], "app_images": kube.images(app),
-                "run_id": run, "started_at": status.get("started_at"), "finished_at": status.get("finished_at"),
-                "scan_status": "succeeded" if ok else "failed", "exit_code": status.get("exit_code"),
-                "requirements": requirements, "counts": counts(found), "files": files,
-            }
-            gcs_put(token, bucket, f"{prefix}/manifest.json",
-                    json.dumps(manifest, indent=2, sort_keys=True).encode(), "application/json")
+            files = [(n, open(os.path.join(d, n), "rb").read()) for n in sorted(os.listdir(d))]
+            store(token, bucket, prefix, files, manifest)
         except urllib.error.HTTPError as e:
             print(f"[{app}] evidence upload failed: HTTP {e.code} {e.read()[:300]!r}", flush=True)
             failures += 1
@@ -264,11 +431,7 @@ def main() -> int:
             continue
         items, nxt = reconcile(tool, t, found, state.get(app) or {}, now, f"gs://{bucket}/{prefix}/", requirements)
         try:
-            for i in range(0, len(items), CHUNK):
-                http("POST", webhook, json.dumps({"tool": tool, "app": app, "run_id": run,
-                                                  "findings": items[i:i + CHUNK]}).encode(),
-                     {"Content-Type": "application/json"})
-            kube.save(state_cm, app, nxt)
+            sync(kube, webhook, state_cm, tool, app, run, items, nxt)
         except urllib.error.HTTPError as e:
             print(f"[{app}] Port sync failed: HTTP {e.code}; state kept for the next run", flush=True)
             failures += 1

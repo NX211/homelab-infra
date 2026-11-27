@@ -104,5 +104,90 @@ class Success(unittest.TestCase):
         self.assertFalse(u.succeeded("nuclei", {}))
 
 
+def bench_doc(node, status="ok", fails=("1.2.1",)):
+    results = [{"test_number": n, "test_desc": f"desc {n}", "status": "FAIL", "remediation": "fix it",
+                "actual_value": "--anonymous-auth=true"} for n in fails]
+    results += [{"test_number": "4.1.1", "test_desc": "perm", "status": "PASS"},
+                {"test_number": "5.1.1", "test_desc": "manual", "status": "WARN"}]
+    return {"node": node, "role": "agent", "benchmark": "k3s-cis-1.11", "status": status, "reason": "",
+            "started_at": "2026-12-06T05:00:01Z", "finished_at": "2026-12-06T05:00:30Z",
+            "result": {"Controls": [{"tests": [{"results": results}]}]}}
+
+
+def bench_log(doc):
+    return f"noise\n{u.BENCH_BEGIN}\n{json.dumps(doc, indent=2)}\n{u.BENCH_END}\n"
+
+
+class FakeKube:
+    def __init__(self, docs, nodes, phase="Succeeded", created="2026-12-06T05:00:00Z"):
+        self.docs, self._nodes, self.phase, self.created = docs, nodes, phase, created
+
+    def pods(self, ns, selector):
+        old = {"metadata": {"name": "old-0", "creationTimestamp": "2026-11-29T05:00:00Z",
+                            "labels": {"batch.kubernetes.io/job-name": "kube-bench-old"}},
+               "spec": {"nodeName": "a"}, "status": {"phase": "Succeeded"}}
+        return [old] + [{"metadata": {"name": f"p-{n}", "creationTimestamp": self.created,
+                                      "labels": {"batch.kubernetes.io/job-name": "kube-bench-new"}},
+                         "spec": {"nodeName": n},
+                         "status": {"phase": self.phase, "containerStatuses": [{"imageID": "ghcr.io/x@sha256:1"}]}}
+                        for n in self.docs]
+
+    def log(self, ns, pod, container):
+        return bench_log(self.docs[pod[2:]])
+
+    def nodes(self):
+        return self._nodes
+
+
+class KubeBench(unittest.TestCase):
+    def test_envelope(self):
+        raw, doc = u.bench_envelope(bench_log(bench_doc("a")))
+        self.assertEqual(doc["node"], "a")
+        self.assertEqual(json.loads(raw), doc)
+        with self.assertRaises(ValueError):
+            u.bench_envelope("kube-bench crashed")
+
+    def test_fails_aggregate_across_nodes(self):
+        f = {x["rule_id"]: x for x in u.parse_kube_bench(
+            {"b": bench_doc("b"), "a": bench_doc("a", fails=("1.2.1", "4.2.6"))})}
+        self.assertEqual(set(f), {"1.2.1", "4.2.6"}, "PASS and WARN are not findings")
+        self.assertEqual((f["1.2.1"]["instances"], f["1.2.1"]["example"]), (2, "a, b"))
+        self.assertEqual(f["1.2.1"]["severity"], "medium")
+        self.assertIn("Actual: --anonymous-auth=true", f["1.2.1"]["description"])
+
+    def test_totals(self):
+        self.assertEqual(u.bench_totals({"a": bench_doc("a"), "b": bench_doc("b")}),
+                         {"pass": 2, "fail": 2, "warn": 2, "info": 0})
+
+    def test_drift_target_is_30_days_and_no_service(self):
+        t = {"app": "homelab-staging", "service": None, "url": None}
+        items, _ = u.reconcile("kube-bench", t, u.parse_kube_bench({"a": bench_doc("a")}), {}, NOW, "gs://b/p/", ["VUL-2.7"])
+        self.assertEqual(items[0]["id"], "kube-bench-homelab-staging-1-2-1")
+        self.assertEqual(items[0]["target_date"], "2027-01-05T03:00:00Z")
+        self.assertIsNone(items[0]["service"])
+
+    def collect(self, kube):
+        return u.collect_bench(kube, "security-bench", dt.datetime(2026, 12, 6, 5, 30, tzinfo=dt.timezone.utc), 6)
+
+    def test_complete_run(self):
+        job, results, images, problems = self.collect(FakeKube({"a": bench_doc("a"), "b": bench_doc("b")}, ["a", "b"]))
+        self.assertEqual((job, sorted(results), images, problems), ("kube-bench-new", ["a", "b"], ["ghcr.io/x@sha256:1"], []))
+
+    def test_node_without_result_fails_the_run(self):
+        _, _, _, problems = self.collect(FakeKube({"a": bench_doc("a")}, ["a", "b"]))
+        self.assertEqual(problems, ["b: no result"])
+
+    def test_failed_node_and_stale_run(self):
+        _, _, _, problems = self.collect(FakeKube({"a": dict(bench_doc("a"), status="failed", reason="journal rotated")},
+                                                  ["a"], created="2026-12-05T05:00:00Z"))
+        self.assertEqual(len(problems), 2)
+        self.assertIn("a: journal rotated", problems)
+
+    def test_unfinished_pod(self):
+        _, results, _, problems = self.collect(FakeKube({"a": bench_doc("a")}, ["a"], phase="Failed"))
+        self.assertEqual(results, {})
+        self.assertIn("a: no result", problems)
+
+
 if __name__ == "__main__":
     unittest.main()

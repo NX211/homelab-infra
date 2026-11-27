@@ -1,0 +1,84 @@
+---
+# Weekly CIS benchmark of every staging node (VUL-2.7; configuration-baseline
+# procedure: monthly and after each k3s upgrade, so weekly covers both). One pod
+# per node; security-scans/cronjob-kube-bench-upload.yaml collects the results
+# 30 minutes later. kube-bench needs the host's PID namespace and read-only views
+# of the k3s state and journal, so this namespace is privileged and outside the
+# business plane; it holds nothing else.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kube-bench
+  namespace: security-bench
+spec:
+  schedule: "0 5 * * 0"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1200
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      # One pod per node (anti-affinity). A node added later shows up as
+      # missing in the uploader, which then fails the run rather than pass it.
+      completionMode: Indexed
+      completions: 4
+      parallelism: 4
+      backoffLimit: 0
+      activeDeadlineSeconds: 1200
+      ttlSecondsAfterFinished: 1209600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: kube-bench
+            app.kubernetes.io/part-of: security-bench
+        spec:
+          serviceAccountName: kube-bench
+          hostPID: true
+          restartPolicy: Never
+          tolerations:
+            - operator: Exists
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: kube-bench
+          securityContext:
+            seccompProfile: { type: RuntimeDefault }
+          containers:
+            - name: bench
+              image: ghcr.io/nx211/kube-bench:e278a59
+              command: [bash, /scripts/bench.sh]
+              env:
+                - name: NODE_NAME
+                  valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+                - { name: HOME, value: /tmp } # kubectl's discovery cache
+              # Root to read root-only k3s files; no capabilities, nothing writable
+              # on the host.
+              securityContext:
+                runAsUser: 0
+                runAsNonRoot: false
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: { drop: [ALL] }
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { cpu: 500m, memory: 512Mi }
+              volumeMounts:
+                - { name: work, mountPath: /work }
+                - { name: tmp, mountPath: /tmp }
+                - { name: scripts, mountPath: /scripts, readOnly: true }
+                - { name: k3s, mountPath: /var/lib/rancher/k3s, readOnly: true }
+                - { name: etc-rancher, mountPath: /etc/rancher, readOnly: true }
+                - { name: journal, mountPath: /var/log/journal, readOnly: true }
+                - { name: run-journal, mountPath: /run/log/journal, readOnly: true }
+          volumes:
+            - { name: work, emptyDir: {} }
+            - { name: tmp, emptyDir: {} }
+            - { name: scripts, configMap: { name: bench-scripts } }
+            - { name: k3s, hostPath: { path: /var/lib/rancher/k3s, type: Directory } }
+            - { name: etc-rancher, hostPath: { path: /etc/rancher, type: Directory } }
+            - { name: journal, hostPath: { path: /var/log/journal, type: Directory } }
+            - { name: run-journal, hostPath: { path: /run/log/journal, type: Directory } }

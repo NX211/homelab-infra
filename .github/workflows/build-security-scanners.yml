@@ -1,11 +1,13 @@
 name: Build security scanners
 
-# Publishes the three images the weekly staging scans run (security-scans/):
+# Publishes the images the weekly staging scans run:
 #   ghcr.io/nx211/zap           upstream ZAP, copied by digest
 #   ghcr.io/nx211/nuclei        Nuclei with a pinned template release baked in
 #   ghcr.io/nx211/scan-uploader evidence + Port sync (apps/scan-uploader)
+#   ghcr.io/nx211/kube-bench    CIS benchmark from a pinned commit (security-bench/)
 # Each is signed keyless so verify-image-signatures-business admits it in the
-# business plane, then its digest is pinned into security-scans/kustomization.yaml.
+# business plane, then its digest is pinned into security-scans/kustomization.yaml
+# (kube-bench: security-bench/kustomization.yaml).
 on:
   workflow_dispatch:
   push:
@@ -26,8 +28,11 @@ env:
   NUCLEI_IMAGE: ghcr.io/nx211/nuclei
   NUCLEI_TAG: "3.11.1-templates-10.5.2"
   UPLOADER_IMAGE: ghcr.io/nx211/scan-uploader
-  UPLOADER_TAG: "0.1.0"
+  UPLOADER_TAG: "0.2.0"
+  KUBE_BENCH_IMAGE: ghcr.io/nx211/kube-bench
+  KUBE_BENCH_TAG: "e278a59"
   KUSTOMIZATION: security-scans/kustomization.yaml
+  BENCH_KUSTOMIZATION: security-bench/kustomization.yaml
 
 jobs:
   build:
@@ -82,6 +87,17 @@ jobs:
           sbom: false
           tags: ${{ env.NUCLEI_IMAGE }}:${{ env.NUCLEI_TAG }}
 
+      - name: Build & push kube-bench
+        id: kubebench
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: security-scans/images/kube-bench
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ env.KUBE_BENCH_IMAGE }}:${{ env.KUBE_BENCH_TAG }}
+
       # No rebuild: the upstream index is copied as-is, so the signature vouches
       # for exactly the bytes ZAP published at that digest.
       - name: Copy zap
@@ -98,10 +114,12 @@ jobs:
           D_UPLOADER: ${{ steps.uploader.outputs.digest }}
           D_NUCLEI: ${{ steps.nuclei.outputs.digest }}
           D_ZAP: ${{ steps.zap.outputs.digest }}
+          D_KUBE_BENCH: ${{ steps.kubebench.outputs.digest }}
         run: |
           cosign sign --yes "${UPLOADER_IMAGE}@${D_UPLOADER}"
           cosign sign --yes "${NUCLEI_IMAGE}@${D_NUCLEI}"
           cosign sign --yes "${ZAP_IMAGE}@${D_ZAP}"
+          cosign sign --yes "${KUBE_BENCH_IMAGE}@${D_KUBE_BENCH}"
 
       - uses: mikefarah/yq@c14f446382944492701b16c1ddb48bb9dbe683e3 # v4
 
@@ -110,7 +128,9 @@ jobs:
           D_UPLOADER: ${{ steps.uploader.outputs.digest }}
           D_NUCLEI: ${{ steps.nuclei.outputs.digest }}
           D_ZAP: ${{ steps.zap.outputs.digest }}
+          D_KUBE_BENCH: ${{ steps.kubebench.outputs.digest }}
         run: |
+          yq -i '(.images[] | select(.name == strenv(KUBE_BENCH_IMAGE))) |= (.newTag = strenv(KUBE_BENCH_TAG) | .digest = strenv(D_KUBE_BENCH))' "$BENCH_KUSTOMIZATION"
           yq -i '
             (.images[] | select(.name == strenv(UPLOADER_IMAGE))) |= (.newTag = strenv(UPLOADER_TAG) | .digest = strenv(D_UPLOADER)) |
             (.images[] | select(.name == strenv(NUCLEI_IMAGE)))   |= (.newTag = strenv(NUCLEI_TAG)   | .digest = strenv(D_NUCLEI)) |
@@ -121,11 +141,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- "$KUSTOMIZATION"; then
+          if git diff --quiet -- "$KUSTOMIZATION" "$BENCH_KUSTOMIZATION"; then
             echo "No change; digests already pinned."
             exit 0
           fi
-          git add "$KUSTOMIZATION"
+          git add "$KUSTOMIZATION" "$BENCH_KUSTOMIZATION"
           git commit -m "chore(security-scans): pin scanner image digests"
           for attempt in 1 2 3 4 5; do
             if git push; then exit 0; fi
