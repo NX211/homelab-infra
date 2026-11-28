@@ -18,7 +18,7 @@ images:
     digest: sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af
   - name: ghcr.io/nx211/nuclei
     newTag: "3.11.1-templates-10.5.2"
-    digest: sha256:8d2933cbeed668508b6563bfb072184fb4fb759317fd629a7d470b6225156eb4
+    digest: sha256:02d3846856ecc8f628058fed5720d71e42392ef631975e2a48d6cbab4e314062
   - name: ghcr.io/nx211/scan-uploader
-    newTag: "0.2.1"
-    digest: sha256:f892276391d4e9ff1dd75be39b68a7811802aab06defc09c5701616ab596be42
+    newTag: "0.3.0"
+    digest: sha256:f60b84d1a41e9d76470568a4dee0f155a3859486f16655b7a5275f9bfd931090

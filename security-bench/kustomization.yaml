@@ -11,4 +11,4 @@ resources:
 images:
   - name: ghcr.io/nx211/kube-bench
     newTag: "e278a59"
-    digest: sha256:354ed121b2e4ce2ed514fa70d7b90dfe09e12584010065dbe0aa686f44d100c8
+    digest: sha256:c9152a6c9ba97fe73f706089718cda625147ebc5d1cfcee4623b8f8c6a693342
