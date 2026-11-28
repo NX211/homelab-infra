@@ -36,7 +36,7 @@ spec:
             seccompProfile: { type: RuntimeDefault }
           containers:
             - name: upload
-              image: ghcr.io/nx211/scan-uploader:0.2.1
+              image: ghcr.io/nx211/scan-uploader:0.3.0
               env:
                 - { name: TOOL, value: kube-bench }
                 - { name: CLUSTER, value: homelab-staging }
