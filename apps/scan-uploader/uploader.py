@@ -5,7 +5,8 @@ ZAP and Nuclei: runs after the scanner (security-scans/cronjob-*.yaml) has
 written, per target, REPORTS_DIR/<app>/status.json plus the tool's raw output.
 kube-bench (TOOL=kube-bench): collects the newest security-bench run's per-node
 results from its pod logs, and treats the cluster as the one target; the run
-succeeded only if every node reported a completed benchmark. For each target it:
+succeeded only if every node (or, with COVERAGE_LABEL, every node pool)
+reported a completed benchmark. For each target it:
 
 1. uploads every file and then manifest.json (sha256, versions, target, deployed
    images, UTC times, severity counts, requirements) to
@@ -207,6 +208,12 @@ def http(method, url, body=None, headers=None, ctx=None, timeout=60):
 
 
 def gcp_token() -> str:
+    """A token for the evidence bucket. On k3s: the projected token federated
+    through STS (WIF_AUDIENCE). On GKE: the metadata server, which returns the
+    pod's own Workload Identity token."""
+    if not os.environ.get("WIF_AUDIENCE"):
+        return http("GET", "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+                    headers={"Metadata-Flavor": "Google"})["access_token"]
     form = urllib.parse.urlencode({
         "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
         "audience": os.environ["WIF_AUDIENCE"],
@@ -258,8 +265,10 @@ class Kube:
         q = urllib.parse.urlencode({"container": container})
         return self.call("GET", f"/api/v1/namespaces/{ns}/pods/{pod}/log?{q}").decode()
 
-    def nodes(self) -> list:
-        return sorted(n["metadata"]["name"] for n in self.call("GET", "/api/v1/nodes").get("items") or [])
+    def nodes(self) -> dict:
+        """Node name -> labels."""
+        return {n["metadata"]["name"]: n["metadata"].get("labels") or {}
+                for n in self.call("GET", "/api/v1/nodes").get("items") or []}
 
     def images(self, app) -> list:
         try:
@@ -301,11 +310,13 @@ def sync(kube, webhook, state_cm, tool, app, run, items, nxt) -> None:
     kube.save(state_cm, app, nxt)
 
 
-def collect_bench(kube, ns, now, max_age_hours):
+def collect_bench(kube, ns, now, max_age_hours, group_label=None):
     """The newest kube-bench run: (job, {node: (raw, doc)}, scanner images, problems).
 
     Coverage is judged against the cluster's nodes now, not the Job's status, so
-    a node that never ran or a node added since both fail the run."""
+    a node that never ran or a node added since both fail the run. With
+    group_label (an autoscaled GKE cluster: the node pool label), one completed
+    node per group covers it, since a pool's nodes share one template."""
     pods = kube.pods(ns, "app.kubernetes.io/name=kube-bench")
     if not pods:
         return None, {}, [], ["no kube-bench pods"]
@@ -330,9 +341,18 @@ def collect_bench(kube, ns, now, max_age_hours):
         if doc.get("status") != "ok":
             problems.append(f"{node}: {doc.get('reason') or 'failed'}")
         results[node] = (raw, doc)
-    for node in kube.nodes():
-        if node not in results:
-            problems.append(f"{node}: no result")
+    nodes = kube.nodes()
+    if group_label:
+        groups = {}
+        for node, labels in nodes.items():
+            groups.setdefault(labels.get(group_label, "unlabelled"), []).append(node)
+        for group, members in sorted(groups.items()):
+            if not any(n in results for n in members):
+                problems.append(f"{group_label}={group}: no result")
+    else:
+        for node in sorted(nodes):
+            if node not in results:
+                problems.append(f"{node}: no result")
     return job, results, sorted(x for x in images if x), problems
 
 
@@ -340,7 +360,8 @@ def bench_main(kube, token, webhook, bucket, requirements) -> int:
     cluster = os.environ["CLUSTER"]
     ns = os.environ.get("BENCH_NAMESPACE", "security-bench")
     state_cm, now = "scan-state-kube-bench", dt.datetime.now(dt.timezone.utc)
-    job, results, images, problems = collect_bench(kube, ns, now, int(os.environ.get("MAX_AGE_HOURS", "6")))
+    group_label = os.environ.get("COVERAGE_LABEL") or None
+    job, results, images, problems = collect_bench(kube, ns, now, int(os.environ.get("MAX_AGE_HOURS", "6")), group_label)
     run = job or os.environ.get("RUN_ID", "manual")
     docs = {n: d for n, (_, d) in results.items()}
     ok = not problems
@@ -350,8 +371,10 @@ def bench_main(kube, token, webhook, bucket, requirements) -> int:
     manifest = {
         "schema": 1, "tool": "kube-bench", "benchmark": first.get("benchmark"),
         "kube_bench_commit": first.get("kube_bench_commit"), "scanner_images": images,
-        "cluster": cluster, "nodes": {n: {"role": d.get("role"), "targets": d.get("targets"),
-                                          "status": d.get("status"), "reason": d.get("reason")}
+        "cluster": cluster, "coverage": f"one node per {group_label}" if group_label else "every node",
+        "nodes": {n: {"role": d.get("role"), "targets": d.get("targets"),
+                                          "status": d.get("status"), "reason": d.get("reason"),
+                                          "skipped": d.get("skipped") or []}
                                       for n, d in docs.items()},
         "run_id": run, "started_at": min((d.get("started_at") or "" for d in docs.values()), default=None),
         "finished_at": max((d.get("finished_at") or "" for d in docs.values()), default=None),

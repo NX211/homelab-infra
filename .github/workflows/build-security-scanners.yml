@@ -28,7 +28,7 @@ env:
   NUCLEI_IMAGE: ghcr.io/nx211/nuclei
   NUCLEI_TAG: "3.11.1-templates-10.5.2"
   UPLOADER_IMAGE: ghcr.io/nx211/scan-uploader
-  UPLOADER_TAG: "0.2.0"
+  UPLOADER_TAG: "0.3.0"
   KUBE_BENCH_IMAGE: ghcr.io/nx211/kube-bench
   KUBE_BENCH_TAG: "e278a59"
   KUSTOMIZATION: security-scans/kustomization.yaml

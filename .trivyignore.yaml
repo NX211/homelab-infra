@@ -151,8 +151,8 @@ misconfigurations:
     paths:
       - "security-bench/cronjob.yaml"
     statement: >-
-      The CIS file and argument checks read the k3s state, /etc/rancher and the
-      journal; all four hostPath mounts are read-only, of type Directory (never
+      The CIS file and argument checks read the k3s state, /etc/rancher, the
+      CNI state and the journal; all five hostPath mounts are read-only, of type Directory (never
       created), and the pods reach only the API server. Ends with KSV-0010.
     expired_at: 2027-02-20
   - id: KSV-0125

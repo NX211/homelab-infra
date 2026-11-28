@@ -120,7 +120,9 @@ def bench_log(doc):
 
 class FakeKube:
     def __init__(self, docs, nodes, phase="Succeeded", created="2026-12-06T05:00:00Z"):
-        self.docs, self._nodes, self.phase, self.created = docs, nodes, phase, created
+        # nodes: a list of names, or a dict of name -> labels
+        self.docs, self.phase, self.created = docs, phase, created
+        self._nodes = nodes if isinstance(nodes, dict) else {n: {} for n in nodes}
 
     def pods(self, ns, selector):
         old = {"metadata": {"name": "old-0", "creationTimestamp": "2026-11-29T05:00:00Z",
@@ -166,8 +168,9 @@ class KubeBench(unittest.TestCase):
         self.assertEqual(items[0]["target_date"], "2027-01-05T03:00:00Z")
         self.assertIsNone(items[0]["service"])
 
-    def collect(self, kube):
-        return u.collect_bench(kube, "security-bench", dt.datetime(2026, 12, 6, 5, 30, tzinfo=dt.timezone.utc), 6)
+    def collect(self, kube, group_label=None):
+        return u.collect_bench(kube, "security-bench", dt.datetime(2026, 12, 6, 5, 30, tzinfo=dt.timezone.utc), 6,
+                               group_label)
 
     def test_complete_run(self):
         job, results, images, problems = self.collect(FakeKube({"a": bench_doc("a"), "b": bench_doc("b")}, ["a", "b"]))
@@ -187,6 +190,14 @@ class KubeBench(unittest.TestCase):
         _, results, _, problems = self.collect(FakeKube({"a": bench_doc("a")}, ["a"], phase="Failed"))
         self.assertEqual(results, {})
         self.assertIn("a: no result", problems)
+
+    def test_pool_coverage(self):
+        pool = "cloud.google.com/gke-nodepool"
+        nodes = {"i1": {pool: "infra"}, "i2": {pool: "infra"}, "a1": {pool: "apps"}}
+        _, _, _, ok = self.collect(FakeKube({"i2": bench_doc("i2"), "a1": bench_doc("a1")}, nodes), pool)
+        self.assertEqual(ok, [], "one node per pool covers it")
+        _, _, _, missing = self.collect(FakeKube({"i1": bench_doc("i1")}, nodes), pool)
+        self.assertEqual(missing, [f"{pool}=apps: no result"])
 
 
 if __name__ == "__main__":

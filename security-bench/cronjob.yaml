@@ -2,9 +2,9 @@
 # Weekly CIS benchmark of every staging node (VUL-2.7; configuration-baseline
 # procedure: monthly and after each k3s upgrade, so weekly covers both). One pod
 # per node; security-scans/cronjob-kube-bench-upload.yaml collects the results
-# 30 minutes later. kube-bench needs the host's PID namespace and read-only views
-# of the k3s state and journal, so this namespace is privileged and outside the
-# business plane; it holds nothing else.
+# at 06:15, after the deadline below. kube-bench needs the host's PID namespace
+# and read-only views of the k3s state and journal, so this namespace is
+# privileged and outside the business plane; it holds nothing else.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -25,7 +25,9 @@ spec:
       completions: 4
       parallelism: 4
       backoffLimit: 0
-      activeDeadlineSeconds: 1200
+      # The server's policies section runs kubectl per pod per check: 16 minutes
+      # at 291 pods.
+      activeDeadlineSeconds: 3600
       ttlSecondsAfterFinished: 1209600
       template:
         metadata:
@@ -72,6 +74,7 @@ spec:
                 - { name: scripts, mountPath: /scripts, readOnly: true }
                 - { name: k3s, mountPath: /var/lib/rancher/k3s, readOnly: true }
                 - { name: etc-rancher, mountPath: /etc/rancher, readOnly: true }
+                - { name: cni, mountPath: /var/lib/cni, readOnly: true }
                 - { name: journal, mountPath: /var/log/journal, readOnly: true }
                 - { name: run-journal, mountPath: /run/log/journal, readOnly: true }
           volumes:
@@ -80,5 +83,6 @@ spec:
             - { name: scripts, configMap: { name: bench-scripts } }
             - { name: k3s, hostPath: { path: /var/lib/rancher/k3s, type: Directory } }
             - { name: etc-rancher, hostPath: { path: /etc/rancher, type: Directory } }
+            - { name: cni, hostPath: { path: /var/lib/cni, type: Directory } }
             - { name: journal, hostPath: { path: /var/log/journal, type: Directory } }
             - { name: run-journal, hostPath: { path: /run/log/journal, type: Directory } }

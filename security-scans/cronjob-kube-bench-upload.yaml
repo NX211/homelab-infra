@@ -1,6 +1,6 @@
 ---
-# Collects the weekly CIS benchmark (security-bench/cronjob.yaml, 05:00) from its
-# pod logs 30 minutes later, stores it as evidence and syncs failed checks to
+# Collects the weekly CIS benchmark (security-bench/cronjob.yaml, 05:00, ends by
+# 06:00) from its pod logs at 06:15, stores it as evidence and syncs failed checks to
 # Port (VUL-2.7). Runs here, not in security-bench, so the identity that can
 # write evidence never shares a pod with the host mounts.
 apiVersion: batch/v1
@@ -9,7 +9,7 @@ metadata:
   name: kube-bench-upload
   namespace: security-scans
 spec:
-  schedule: "30 5 * * 0"
+  schedule: "15 6 * * 0"
   timeZone: Etc/UTC
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600
@@ -36,7 +36,7 @@ spec:
             seccompProfile: { type: RuntimeDefault }
           containers:
             - name: upload
-              image: ghcr.io/nx211/scan-uploader:0.2.0
+              image: ghcr.io/nx211/scan-uploader:0.3.0
               env:
                 - { name: TOOL, value: kube-bench }
                 - { name: CLUSTER, value: homelab-staging }

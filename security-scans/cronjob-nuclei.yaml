@@ -56,7 +56,7 @@ spec:
                 - { name: tmp, mountPath: /tmp }
           containers:
             - name: upload
-              image: ghcr.io/nx211/scan-uploader:0.2.0
+              image: ghcr.io/nx211/scan-uploader:0.3.0
               env:
                 - { name: TOOL, value: nuclei }
                 - { name: REQUIREMENTS, value: "VUL-2.8" }

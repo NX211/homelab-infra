@@ -16,14 +16,12 @@ data:
     started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     export K3S_STARTUP_LOG=/work/k3s-startup.log
     : > /work/result.json; : > /work/kube-bench.log
-    status=ok; reason=""
+    status=ok; reason=""; skip=""; skipped=""
 
     # Role from the running k3s process, not from which host paths exist.
     if pid=$(pgrep -o -f '^/usr/local/bin/k3s server( |$)'); then
       role=server; unit=k3s; targets=master,node,policies
       need=(kube-apiserver kube-scheduler kube-controller-manager kubelet kube-proxy)
-      # The etcd section covers embedded etcd only; a SQLite datastore has none.
-      [ -d /var/lib/rancher/k3s/server/db/etcd ] && targets=master,etcd,node,policies
     elif pid=$(pgrep -o -f '^/usr/local/bin/k3s agent( |$)'); then
       role=agent; unit=k3s-agent; targets=node
       need=(kubelet kube-proxy)
@@ -36,19 +34,33 @@ data:
     # so a missing line fails this node instead.
     if [ "$status" = ok ]; then
       since=$(date -d "$(ps -o lstart= -p "$pid")" +%s)
+      # k3s logs each command line inside msg="...", so the closing quote would
+      # stick to the last flag (--read-only-port=0" is not 0); drop it.
       /usr/bin/journalctl -m -u "$unit" --since "@$((since - 60))" --until "@$((since + 600))" \
-        --no-pager > "$K3S_STARTUP_LOG" 2>> /work/kube-bench.log
+        --no-pager 2>> /work/kube-bench.log | sed -E '/msg="Running /s/"$//' > "$K3S_STARTUP_LOG"
       missing=""
       for c in "${need[@]}"; do grep -q "Running $c" "$K3S_STARTUP_LOG" || missing="$missing $c"; done
       if [ -n "$missing" ]; then
         status=failed
         reason="k3s startup arguments not in the journal for:${missing}"
       fi
+      # The etcd section covers embedded etcd only. Same signal as the benchmark's
+      # own checks: a SQLite server can still hold an empty db/etcd directory.
+      # 1.2.26 (--etcd-cafile) has no such fallback, so it is skipped, and said
+      # so in the result, when there is no etcd to verify.
+      if [ "$role" = server ]; then
+        if grep -q 'Managed etcd cluster' "$K3S_STARTUP_LOG"; then
+          targets=master,etcd,node,policies
+        else
+          skip=1.2.26; skipped="1.2.26: not applicable, the datastore is not etcd"
+        fi
+      fi
     fi
 
     if [ "$status" = ok ]; then
       kube-bench run --config-dir /opt/kube-bench/cfg --config /opt/kube-bench/cfg/config.yaml \
-        --benchmark "$benchmark" --targets "$targets" --json > /work/result.json 2>> /work/kube-bench.log
+        --benchmark "$benchmark" --targets "$targets" ${skip:+--skip "$skip"} --json \
+        > /work/result.json 2>> /work/kube-bench.log
       rc=$?
       if [ $rc -ne 0 ] || ! jq -e '.Controls | length > 0' /work/result.json > /dev/null 2>&1; then
         status=failed
@@ -62,8 +74,9 @@ data:
       --arg node "${NODE_NAME:-}" --arg role "$role" --arg benchmark "$benchmark" \
       --arg commit "$(cat /etc/kube-bench-commit)" --arg targets "$targets" \
       --arg started "$started" --arg finished "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      --arg status "$status" --arg reason "$reason" \
+      --arg status "$status" --arg reason "$reason" --arg skipped "$skipped" \
       '{schema: 1, node: $node, role: $role, benchmark: $benchmark, kube_bench_commit: $commit,
         targets: ($targets | split(",")), started_at: $started, finished_at: $finished,
+        skipped: (($skipped | select(. != "") | [.]) // []),
         status: $status, reason: $reason, result: ($r[0] // null)}'
     echo "-----END KUBE-BENCH RESULT-----"
